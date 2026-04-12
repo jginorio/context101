@@ -100,6 +100,48 @@ def get_db() -> sqlite3.Connection:
 
 db = get_db()
 
+
+# ── Auto-seed from knowledge/ on first run ───────────────────────────
+
+def _auto_seed():
+    """If DB is empty, index all .md files from knowledge/ directory."""
+    count = db.execute("SELECT COUNT(*) FROM knowledge").fetchone()[0]
+    if count > 0:
+        return
+
+    knowledge_dir = Path(__file__).parent / "knowledge"
+    if not knowledge_dir.exists():
+        return
+
+    md_files = sorted(knowledge_dir.rglob("*.md"))
+    if not md_files:
+        return
+
+    import sys
+    print(f"Auto-seeding from {len(md_files)} knowledge files...", file=sys.stderr)
+
+    for f in md_files:
+        rel = f.relative_to(knowledge_dir)
+        tags = [p for p in rel.parent.parts] + [rel.stem]
+        title = f.stem.replace("-", " ").replace("_", " ").title()
+        content = f.read_text().strip()
+
+        entry_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        embedding = embed_documents([f"{title}\n\n{content}"])[0]
+
+        db.execute(
+            """INSERT INTO knowledge (id, title, content, tags, author, embedding, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+            (entry_id, title, content, json.dumps(tags), "seed", _vec_to_bytes(embedding), now, now),
+        )
+
+    db.commit()
+    print(f"Auto-seeded {len(md_files)} entries.", file=sys.stderr)
+
+
+_auto_seed()
+
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
