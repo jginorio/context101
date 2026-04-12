@@ -140,8 +140,6 @@ def _auto_seed():
     print(f"Auto-seeded {len(md_files)} entries.", file=sys.stderr)
 
 
-_auto_seed()
-
 # ── Helpers ───────────────────────────────────────────────────────────
 
 
@@ -156,6 +154,8 @@ def _bytes_to_vec(b: bytes) -> np.ndarray:
 def _cosine_similarity(a: np.ndarray, b: np.ndarray) -> float:
     return float(np.dot(a, b) / (np.linalg.norm(a) * np.linalg.norm(b) + 1e-10))
 
+
+_auto_seed()
 
 # ── MCP Server ────────────────────────────────────────────────────────
 
