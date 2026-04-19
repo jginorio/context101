@@ -1,5 +1,5 @@
 """
-Upload local knowledge/ files to the S3 docs bucket.
+Upload local knowledge/ files to the Context101 S3 docs bucket.
 
 After the upload, the auto-ingest Lambda will trigger a Bedrock KB
 ingestion job automatically. Allow ~1-3 minutes for indexing to complete.

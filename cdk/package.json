@@ -1,8 +1,8 @@
 {
-  "name": "team-brain-cdk",
+  "name": "context101-cdk",
   "version": "0.1.0",
   "bin": {
-    "team-brain": "bin/team-brain.js"
+    "context101": "bin/context101.js"
   },
   "scripts": {
     "build": "tsc",

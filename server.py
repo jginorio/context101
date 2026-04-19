@@ -1,5 +1,5 @@
 """
-Team Brain — Shared team knowledge base via MCP, backed by Amazon Bedrock Knowledge Bases.
+Context101 — Shared team knowledge base via MCP, backed by Amazon Bedrock Knowledge Bases.
 
 Tools:
   - search_knowledge: Semantic search against the KB (wraps bedrock-agent-runtime:Retrieve)
@@ -10,6 +10,11 @@ Stack:
   - FastMCP (Python) for MCP protocol
   - boto3 for Bedrock Agent Runtime + S3
   - Knowledge Base (Titan embed v2 + S3 Vectors) provisioned via CDK
+
+Auth:
+  - If CONTEXT101_TOKEN env var is set, the server requires
+    `Authorization: Bearer <token>` on every request.
+  - If unset (e.g. local dev), the server runs without auth.
 """
 
 import os
@@ -23,8 +28,9 @@ from fastmcp import FastMCP
 
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 KB_ID = os.environ.get("KB_ID")
-DOCS_BUCKET = os.environ.get("DOCS_BUCKET")  # Optional; required for read_knowledge / list_sources
-AWS_PROFILE = os.environ.get("AWS_PROFILE")  # Respected by boto3 Session automatically
+DOCS_BUCKET = os.environ.get("DOCS_BUCKET")  # Needed for read_knowledge / list_sources
+AWS_PROFILE = os.environ.get("AWS_PROFILE")
+TOKEN = os.environ.get("CONTEXT101_TOKEN")  # Optional bearer token
 
 if not KB_ID:
     raise RuntimeError(
@@ -40,11 +46,25 @@ _boto_cfg = Config(retries={"max_attempts": 3, "mode": "standard"})
 bedrock_runtime = _session.client("bedrock-agent-runtime", config=_boto_cfg)
 s3 = _session.client("s3", config=_boto_cfg)
 
+
+# ── Auth ──────────────────────────────────────────────────────────────
+
+def _build_auth():
+    """Return a StaticTokenVerifier if CONTEXT101_TOKEN is set, else None."""
+    if not TOKEN:
+        return None
+    from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+
+    return StaticTokenVerifier(
+        tokens={TOKEN: {"client_id": "context101-team", "scopes": ["read"]}},
+    )
+
+
 # ── MCP Server ────────────────────────────────────────────────────────
 
 mcp = FastMCP(
-    "Team Brain",
-    instructions="""You are the librarian for a shared team knowledge base.
+    "Context101",
+    instructions="""You are the librarian for Context101, a shared team knowledge base.
 
 The knowledge base is built on Amazon Bedrock — queries use semantic similarity
 over the team's markdown documents, so natural-language questions like
@@ -63,6 +83,7 @@ Available tools:
 - read_knowledge(s3_key): full content of a source document
 - list_sources(): list all documents in the knowledge base
 """,
+    auth=_build_auth(),
 )
 
 
@@ -74,9 +95,7 @@ def _source_key_from_retrieval(result: dict[str, Any]) -> str:
     loc = result.get("location", {})
     s3_loc = loc.get("s3Location") or {}
     uri = s3_loc.get("uri", "")
-    # uri is like s3://bucket/path/to/file.md
     if uri.startswith("s3://"):
-        # Strip s3://<bucket>/
         without_scheme = uri[5:]
         return without_scheme.split("/", 1)[1] if "/" in without_scheme else without_scheme
     return uri
@@ -133,9 +152,6 @@ def read_knowledge(s3_key: str) -> str:
 
     Args:
         s3_key: Object key inside the docs bucket, e.g. "domain-knowledge/amplia.md"
-
-    Returns:
-        Full text of the document.
     """
     if not DOCS_BUCKET:
         return (
@@ -154,11 +170,7 @@ def read_knowledge(s3_key: str) -> str:
 
 @mcp.tool()
 def list_sources() -> str:
-    """List all documents available in the knowledge base.
-
-    Lists objects in the S3 docs bucket. Useful for discovering what
-    knowledge exists before searching.
-    """
+    """List all documents available in the knowledge base."""
     if not DOCS_BUCKET:
         return (
             "DOCS_BUCKET env var is not set. This tool needs to know which "
@@ -169,7 +181,6 @@ def list_sources() -> str:
     paginator = s3.get_paginator("list_objects_v2")
     for page in paginator.paginate(Bucket=DOCS_BUCKET):
         for obj in page.get("Contents", []):
-            # Skip Bedrock metadata sidecars and empty folder placeholders
             if obj["Key"].endswith(".metadata.json") or obj["Key"].endswith("/"):
                 continue
             keys.append(obj["Key"])

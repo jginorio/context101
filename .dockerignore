@@ -1,0 +1,14 @@
+.venv/
+__pycache__/
+*.pyc
+.git/
+.gitignore
+cdk/
+knowledge/
+data/
+*.db*
+*.zip
+oauth-tokens.txt
+.env
+README.md
+upload.py

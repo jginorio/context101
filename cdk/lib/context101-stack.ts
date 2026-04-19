@@ -5,20 +5,26 @@ import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
+import * as apprunner from "aws-cdk-lib/aws-apprunner";
+import * as ecr_assets from "aws-cdk-lib/aws-ecr-assets";
+import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as path from "path";
 
 /**
- * Team Brain — shared team knowledge base.
+ * Context101 — shared team knowledge base.
  *
- * Stack:
  *   S3 docs bucket  →  Bedrock KB (Titan embed v2)  →  S3 Vectors index
  *                       ↑
  *                   Lambda auto-ingests on S3 PutObject
+ *
+ * Optional: if `-c token=<value>` is passed at deploy time, also provisions
+ * an App Runner service running the FastMCP server with bearer-token auth.
  */
-export class TeamBrainStack extends cdk.Stack {
+export class Context101Stack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    const namePrefix = "team-brain";
+    const namePrefix = "context101";
     const embedDim = 1024;
     const embedModelArn = `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`;
 
@@ -27,19 +33,16 @@ export class TeamBrainStack extends cdk.Stack {
       versioned: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
-      removalPolicy: cdk.RemovalPolicy.RETAIN, // don't nuke docs on stack delete
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
     // ── 2. S3 Vectors bucket + index ─────────────────────────────────
-    // No L2 constructs exist yet for S3 Vectors — use L1 CfnResource.
     const vectorBucketName = `${namePrefix}-vectors-${this.account}`;
     const indexName = `${namePrefix}-index`;
 
     const vectorBucket = new cdk.CfnResource(this, "VectorBucket", {
       type: "AWS::S3Vectors::VectorBucket",
-      properties: {
-        VectorBucketName: vectorBucketName,
-      },
+      properties: { VectorBucketName: vectorBucketName },
     });
     vectorBucket.applyRemovalPolicy(cdk.RemovalPolicy.RETAIN);
 
@@ -70,9 +73,7 @@ export class TeamBrainStack extends cdk.Stack {
         },
       }),
     });
-
     docsBucket.grantRead(kbRole);
-
     kbRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "InvokeEmbeddingModel",
@@ -80,7 +81,6 @@ export class TeamBrainStack extends cdk.Stack {
         resources: [embedModelArn],
       })
     );
-
     kbRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "S3VectorsAccess",
@@ -108,33 +108,26 @@ export class TeamBrainStack extends cdk.Stack {
         vectorKnowledgeBaseConfiguration: {
           embeddingModelArn: embedModelArn,
           embeddingModelConfiguration: {
-            bedrockEmbeddingModelConfiguration: {
-              dimensions: embedDim,
-            },
+            bedrockEmbeddingModelConfiguration: { dimensions: embedDim },
           },
         },
       },
       storageConfiguration: {
         type: "S3_VECTORS",
-        s3VectorsConfiguration: {
-          indexArn: vectorIndexArn,
-        },
+        s3VectorsConfiguration: { indexArn: vectorIndexArn },
       },
     });
     kb.addDependency(vectorIndex);
     kb.node.addDependency(kbRole);
 
-    // ── 5. Data source (points KB at docs bucket) ─────────────────────
+    // ── 5. Data source ────────────────────────────────────────────────
     const dataSource = new bedrock.CfnDataSource(this, "DataSource", {
       knowledgeBaseId: kb.attrKnowledgeBaseId,
       name: "markdown-docs",
       dataSourceConfiguration: {
         type: "S3",
-        s3Configuration: {
-          bucketArn: docsBucket.bucketArn,
-        },
+        s3Configuration: { bucketArn: docsBucket.bucketArn },
       },
-      // Default fixed-size chunking; bump to hierarchical/semantic later.
     });
 
     // ── 6. Auto-ingest Lambda ─────────────────────────────────────────
@@ -148,14 +141,12 @@ export class TeamBrainStack extends cdk.Stack {
         DS_ID: dataSource.attrDataSourceId,
       },
     });
-
     ingestFn.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ["bedrock:StartIngestionJob"],
         resources: [kb.attrKnowledgeBaseArn],
       })
     );
-
     docsBucket.addEventNotification(
       s3.EventType.OBJECT_CREATED,
       new s3n.LambdaDestination(ingestFn)
@@ -165,7 +156,88 @@ export class TeamBrainStack extends cdk.Stack {
       new s3n.LambdaDestination(ingestFn)
     );
 
-    // ── 7. Outputs ────────────────────────────────────────────────────
+    // ── 7. Optional: App Runner service hosting the MCP server ────────
+    //      Only provisioned if -c token=<value> is passed at deploy time.
+    const teamToken = this.node.tryGetContext("token") as string | undefined;
+
+    if (teamToken) {
+      // a) Store the bearer token in Secrets Manager
+      const tokenSecret = new secretsmanager.Secret(this, "TokenSecret", {
+        secretName: `${namePrefix}-bearer-token`,
+        description: "Shared bearer token for the Context101 MCP server",
+        secretStringValue: cdk.SecretValue.unsafePlainText(teamToken),
+      });
+
+      // b) Build Docker image from the repo root (parent of cdk/)
+      const image = new ecr_assets.DockerImageAsset(this, "McpImage", {
+        directory: path.resolve(__dirname, "..", ".."),
+        platform: ecr_assets.Platform.LINUX_AMD64,
+        file: "Dockerfile",
+      });
+
+      // c) App Runner instance role — runtime perms (what the MCP can do)
+      const instanceRole = new iam.Role(this, "AppRunnerInstanceRole", {
+        assumedBy: new iam.ServicePrincipal("tasks.apprunner.amazonaws.com"),
+        description: "Runtime role for the Context101 MCP App Runner service",
+      });
+      instanceRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "RetrieveFromKb",
+          actions: ["bedrock:Retrieve"],
+          resources: [kb.attrKnowledgeBaseArn],
+        })
+      );
+      docsBucket.grantRead(instanceRole);
+      tokenSecret.grantRead(instanceRole);
+
+      // d) App Runner access role — permission to pull from ECR
+      const accessRole = new iam.Role(this, "AppRunnerAccessRole", {
+        assumedBy: new iam.ServicePrincipal("build.apprunner.amazonaws.com"),
+      });
+      accessRole.addManagedPolicy(
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AWSAppRunnerServicePolicyForECRAccess"
+        )
+      );
+
+      // e) The service itself
+      const service = new apprunner.CfnService(this, "McpService", {
+        serviceName: `${namePrefix}-mcp`,
+        sourceConfiguration: {
+          authenticationConfiguration: { accessRoleArn: accessRole.roleArn },
+          autoDeploymentsEnabled: false,
+          imageRepository: {
+            imageIdentifier: image.imageUri,
+            imageRepositoryType: "ECR",
+            imageConfiguration: {
+              port: "8787",
+              runtimeEnvironmentVariables: [
+                { name: "AWS_REGION", value: this.region },
+                { name: "KB_ID", value: kb.attrKnowledgeBaseId },
+                { name: "DOCS_BUCKET", value: docsBucket.bucketName },
+              ],
+              runtimeEnvironmentSecrets: [
+                { name: "CONTEXT101_TOKEN", value: tokenSecret.secretArn },
+              ],
+            },
+          },
+        },
+        instanceConfiguration: {
+          instanceRoleArn: instanceRole.roleArn,
+          cpu: "0.25 vCPU",
+          memory: "0.5 GB",
+        },
+        healthCheckConfiguration: { protocol: "TCP" },
+      });
+
+      new cdk.CfnOutput(this, "McpUrl", {
+        value: cdk.Fn.join("", ["https://", service.attrServiceUrl, "/mcp"]),
+        description:
+          "Share with the team. Requires Authorization: Bearer <token> header.",
+      });
+    }
+
+    // ── 8. Outputs ────────────────────────────────────────────────────
     new cdk.CfnOutput(this, "DocsBucketName", {
       value: docsBucket.bucketName,
       description: "Upload markdown files here; Lambda auto-ingests them.",
