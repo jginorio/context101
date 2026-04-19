@@ -37,8 +37,12 @@ export class Context101Stack extends cdk.Stack {
     });
 
     // ── 2. S3 Vectors bucket + index ─────────────────────────────────
+    // Version suffix — bump this whenever a change to the Index config
+    // requires replacement (S3 Vectors doesn't support in-place metadata
+    // config updates, and Bedrock KB's indexArn is immutable).
+    const version = "v2";
     const vectorBucketName = `${namePrefix}-vectors-${this.account}`;
-    const indexName = `${namePrefix}-index`;
+    const indexName = `${namePrefix}-index-${version}`;
 
     const vectorBucket = new cdk.CfnResource(this, "VectorBucket", {
       type: "AWS::S3Vectors::VectorBucket",
@@ -54,6 +58,16 @@ export class Context101Stack extends cdk.Stack {
         DataType: "float32",
         Dimension: embedDim,
         DistanceMetric: "cosine",
+        // Mark Bedrock-reserved metadata keys as non-filterable so the
+        // chunk text doesn't count against the 2KB filterable-metadata
+        // per-vector cap. Without this, ingestion fails on any doc
+        // whose chunk text is longer than ~2KB.
+        MetadataConfiguration: {
+          NonFilterableMetadataKeys: [
+            "AMAZON_BEDROCK_TEXT",
+            "AMAZON_BEDROCK_METADATA",
+          ],
+        },
       },
     });
     vectorIndex.addDependency(vectorBucket);
@@ -100,7 +114,7 @@ export class Context101Stack extends cdk.Stack {
 
     // ── 4. Bedrock Knowledge Base ─────────────────────────────────────
     const kb = new bedrock.CfnKnowledgeBase(this, "KnowledgeBase", {
-      name: namePrefix,
+      name: `${namePrefix}-${version}`,
       description: "Shared team knowledge base",
       roleArn: kbRole.roleArn,
       knowledgeBaseConfiguration: {
