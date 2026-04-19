@@ -3,7 +3,8 @@
 import * as React from "react";
 import "@aws-amplify/ui-react/styles.css";
 import { signOut } from "aws-amplify/auth";
-import { FilePlus, FolderPlus } from "lucide-react";
+import Link from "next/link";
+import { FilePlus, FolderPlus, Info } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { KnowledgeTree } from "@/components/knowledge-tree";
@@ -52,6 +53,11 @@ export default function Home() {
           >
             <FilePlus className="mr-1 h-3.5 w-3.5" /> New file
           </Button>
+          <Link href="/about">
+            <Button variant="ghost" size="sm">
+              <Info className="mr-1 h-3.5 w-3.5" /> About
+            </Button>
+          </Link>
           <ThemeToggle />
           <Button
             variant="outline"
