@@ -103,7 +103,26 @@ Once deployed with `-c token=<value>`, teammates point their MCP client at `McpU
 }
 ```
 
-**Claude Desktop** — use `fastmcp install` to generate a local stdio proxy that forwards to the App Runner service with auth. See [FastMCP proxy docs](https://gofastmcp.com/integrations/claude-desktop).
+**Claude Desktop** — Claude Desktop only speaks MCP over stdio, so use `mcp-remote` as a local proxy that forwards to the streamable-HTTP URL with the auth header. Edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "context101": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://<McpUrl>/mcp",
+        "--header",
+        "Authorization: Bearer <your-shared-token>"
+      ]
+    }
+  }
+}
+```
+
+Restart Claude Desktop and Context101 should appear in the tools list. The `-y` lets `npx` auto-install `mcp-remote` the first time.
 
 ## Daily Workflow
 
