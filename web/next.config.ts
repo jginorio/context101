@@ -7,9 +7,10 @@ const nextConfig: NextConfig = {
   env: {
     DOCS_BUCKET: process.env.DOCS_BUCKET,
   },
-  // AWS SDK v3 uses dynamic/conditional requires that Next's bundler
-  // can't resolve cleanly. External = leave as a runtime require().
-  serverExternalPackages: ["@aws-sdk/client-s3"],
+  // NOTE: don't use serverExternalPackages with @aws-sdk — Turbopack
+  // (the default builder in Next 16) suffixes externalized modules with
+  // a hash (e.g. "@aws-sdk/client-s3-611b56be8ae898f4") and then can't
+  // resolve them at runtime on Amplify Hosting. Let it bundle the SDK.
 };
 
 export default nextConfig;

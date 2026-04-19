@@ -288,6 +288,22 @@ export class Context101Stack extends cdk.Stack {
           "service-role/AmplifyBackendDeployFullAccess"
         )
       );
+      // Amplify itself (not our SSR code) uses THIS role to deliver SSR
+      // hosting compute logs to CloudWatch. Without these perms, log groups
+      // never get created. See:
+      // https://github.com/aws-amplify/amplify-hosting/issues/3964
+      amplifyServiceRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "AmplifyDeliverLogs",
+          actions: [
+            "logs:CreateLogStream",
+            "logs:CreateLogGroup",
+            "logs:DescribeLogGroups",
+            "logs:PutLogEvents",
+          ],
+          resources: ["arn:aws:logs:*:*:*"],
+        })
+      );
 
       // b) Amplify App — points at the GitHub repo
       const webApp = new amplify.CfnApp(this, "WebApp", {
@@ -340,9 +356,19 @@ export class Context101Stack extends cdk.Stack {
           resources: [`${docsBucket.bucketArn}/*`],
         })
       );
+      // CloudWatch Logs perms. DescribeLogGroups needs resource "*"
+      // (you can't describe a specific log group by ARN); the write
+      // actions are tighter-scoped.
       ssrComputeRole.addToPolicy(
         new iam.PolicyStatement({
-          sid: "WriteCloudWatchLogs",
+          sid: "DescribeAnyLogGroup",
+          actions: ["logs:DescribeLogGroups"],
+          resources: ["*"],
+        })
+      );
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "WriteAmplifyLogs",
           actions: [
             "logs:CreateLogGroup",
             "logs:CreateLogStream",
@@ -350,6 +376,7 @@ export class Context101Stack extends cdk.Stack {
           ],
           resources: [
             `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/amplify/*`,
+            `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/amplify/*:log-stream:*`,
           ],
         })
       );
