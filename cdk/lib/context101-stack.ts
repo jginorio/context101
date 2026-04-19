@@ -9,6 +9,7 @@ import * as apprunner from "aws-cdk-lib/aws-apprunner";
 import * as ecr_assets from "aws-cdk-lib/aws-ecr-assets";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
+import * as amplify from "aws-cdk-lib/aws-amplify";
 import * as path from "path";
 
 /**
@@ -268,7 +269,91 @@ export class Context101Stack extends cdk.Stack {
       });
     }
 
-    // ── 9. Outputs ────────────────────────────────────────────────────
+    // ── 9. Optional: Amplify Hosting for the web admin UI ─────────────
+    //      Only provisioned if -c githubToken=<pat> is passed.
+    const githubToken = this.node.tryGetContext("githubToken") as
+      | string
+      | undefined;
+
+    if (githubToken) {
+      // a) Service role Amplify uses during builds (runs `ampx pipeline-deploy`,
+      //    which provisions the prod Cognito pool via CloudFormation).
+      const amplifyServiceRole = new iam.Role(this, "AmplifyServiceRole", {
+        assumedBy: new iam.ServicePrincipal("amplify.amazonaws.com"),
+        description:
+          "Used by Amplify Hosting during builds for backend deploys",
+      });
+      amplifyServiceRole.addManagedPolicy(
+        iam.ManagedPolicy.fromAwsManagedPolicyName(
+          "service-role/AmplifyBackendDeployFullAccess"
+        )
+      );
+
+      // b) Amplify App — points at the GitHub repo
+      const webApp = new amplify.CfnApp(this, "WebApp", {
+        name: `${namePrefix}-web`,
+        description: "Context101 knowledge admin UI",
+        repository: "https://github.com/jginorio/context101",
+        accessToken: githubToken,
+        iamServiceRole: amplifyServiceRole.roleArn,
+        platform: "WEB_COMPUTE", // Next.js SSR
+        environmentVariables: [
+          { name: "DOCS_BUCKET", value: docsBucket.bucketName },
+          // AWS_REGION can't be set — Amplify reserves the "AWS_" prefix.
+          // Lambda's runtime sets it automatically, so utils/s3.ts picks
+          // it up from process.env.AWS_REGION without us configuring it.
+          { name: "AMPLIFY_MONOREPO_APP_ROOT", value: "web" },
+        ],
+      });
+
+      // c) Branch — tracks main and auto-builds on push
+      const mainBranch = new amplify.CfnBranch(this, "WebAppMain", {
+        appId: webApp.attrAppId,
+        branchName: "main",
+        stage: "PRODUCTION",
+        enableAutoBuild: true,
+        framework: "Next.js - SSR",
+      });
+      mainBranch.addDependency(webApp);
+
+      // d) Managed policy for the SSR compute role (attached post-deploy)
+      const ssrPolicy = new iam.ManagedPolicy(this, "WebSsrDocsBucketPolicy", {
+        managedPolicyName: `${namePrefix}-web-ssr-docs-bucket`,
+        description:
+          "Attach to the Amplify SSR compute role to let it CRUD the docs bucket",
+        statements: [
+          new iam.PolicyStatement({
+            sid: "ListDocsBucket",
+            actions: ["s3:ListBucket"],
+            resources: [docsBucket.bucketArn],
+          }),
+          new iam.PolicyStatement({
+            sid: "RwDocsObjects",
+            actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+            resources: [`${docsBucket.bucketArn}/*`],
+          }),
+        ],
+      });
+
+      new cdk.CfnOutput(this, "WebAppId", {
+        value: webApp.attrAppId,
+        description: "Amplify App ID (for the AWS console + CLI)",
+      });
+      new cdk.CfnOutput(this, "WebAppDefaultDomain", {
+        value: cdk.Fn.join("", [
+          "https://main.",
+          webApp.attrDefaultDomain,
+        ]),
+        description: "The web admin URL once the first build finishes.",
+      });
+      new cdk.CfnOutput(this, "WebSsrPolicyArn", {
+        value: ssrPolicy.managedPolicyArn,
+        description:
+          "After the first deploy, attach this policy to the SSR role. Run: aws iam attach-role-policy --role-name <ssr-role> --policy-arn <this-arn>",
+      });
+    }
+
+    // ── 10. Outputs ───────────────────────────────────────────────────
     new cdk.CfnOutput(this, "DocsBucketName", {
       value: docsBucket.bucketName,
       description: "Upload markdown files here; Lambda auto-ingests them.",
