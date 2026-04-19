@@ -9,6 +9,15 @@ const nextConfig: NextConfig = {
     CONTEXT101_AWS_ACCESS_KEY_ID: process.env.CONTEXT101_AWS_ACCESS_KEY_ID,
     CONTEXT101_AWS_SECRET_ACCESS_KEY: process.env.CONTEXT101_AWS_SECRET_ACCESS_KEY,
   },
+  // AWS SDK v3 uses dynamic/conditional requires that Next.js's bundler
+  // (Turbopack/webpack) can't resolve cleanly. Marking them "external"
+  // tells Next to leave them as runtime `require()` calls.
+  serverExternalPackages: [
+    "@aws-sdk/client-s3",
+    "@aws-sdk/credential-providers",
+    "aws-amplify",
+    "@aws-amplify/adapter-nextjs",
+  ],
 };
 
 export default nextConfig;
