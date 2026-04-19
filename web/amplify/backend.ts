@@ -1,5 +1,5 @@
 import { defineBackend } from "@aws-amplify/backend";
-import { auth } from "./auth/resource";
+import { auth } from "./auth/resource.ts";
 
 /**
  * Amplify Gen 2 backend for Context101.
