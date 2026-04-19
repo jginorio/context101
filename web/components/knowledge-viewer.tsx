@@ -3,6 +3,38 @@
 import * as React from "react";
 import { FileText } from "lucide-react";
 
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { MarkdownPreview } from "@/components/previews/markdown-preview";
+import { CsvPreview } from "@/components/previews/csv-preview";
+import { JsonPreview } from "@/components/previews/json-preview";
+
+type Ext = "md" | "csv" | "json" | "other";
+
+function extOf(key: string): Ext {
+  const lower = key.toLowerCase();
+  if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "md";
+  if (lower.endsWith(".csv")) return "csv";
+  if (lower.endsWith(".json")) return "json";
+  return "other";
+}
+
+function Preview({ ext, content }: { ext: Ext; content: string }) {
+  switch (ext) {
+    case "md":
+      return <MarkdownPreview content={content} />;
+    case "csv":
+      return <CsvPreview content={content} />;
+    case "json":
+      return <JsonPreview content={content} />;
+    default:
+      return (
+        <p className="text-sm text-muted-foreground">
+          No preview available for this file type. See the Raw tab.
+        </p>
+      );
+  }
+}
+
 export function KnowledgeViewer({ fileKey }: { fileKey: string | null }) {
   const [content, setContent] = React.useState<string | null>(null);
   const [loading, setLoading] = React.useState(false);
@@ -42,25 +74,37 @@ export function KnowledgeViewer({ fileKey }: { fileKey: string | null }) {
   }
 
   if (loading) {
-    return (
-      <div className="p-6 text-sm text-muted-foreground">Loading…</div>
-    );
+    return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
   }
 
   if (error) {
     return <div className="p-6 text-sm text-destructive">{error}</div>;
   }
 
+  const ext = extOf(fileKey);
+  const text = content ?? "";
+
   return (
-    <div className="flex h-full flex-col">
-      <div className="border-b px-4 py-2">
+    <Tabs defaultValue="preview" className="flex h-full flex-col gap-0">
+      <div className="border-b px-4 py-2 flex items-center justify-between gap-4 shrink-0">
         <p className="text-xs font-mono text-muted-foreground truncate">
           {fileKey}
         </p>
+        <TabsList>
+          <TabsTrigger value="preview">Preview</TabsTrigger>
+          <TabsTrigger value="raw">Raw</TabsTrigger>
+        </TabsList>
       </div>
-      <pre className="flex-1 overflow-auto p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed">
-        {content}
-      </pre>
-    </div>
+
+      <TabsContent value="preview" className="flex-1 min-h-0 overflow-auto p-6">
+        <Preview ext={ext} content={text} />
+      </TabsContent>
+
+      <TabsContent value="raw" className="flex-1 min-h-0 overflow-auto">
+        <pre className="p-4 text-sm whitespace-pre-wrap font-mono leading-relaxed">
+          {text}
+        </pre>
+      </TabsContent>
+    </Tabs>
   );
 }
