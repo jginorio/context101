@@ -7,10 +7,11 @@ const nextConfig: NextConfig = {
   env: {
     DOCS_BUCKET: process.env.DOCS_BUCKET,
   },
-  // NOTE: don't use serverExternalPackages with @aws-sdk — Turbopack
-  // (the default builder in Next 16) suffixes externalized modules with
-  // a hash (e.g. "@aws-sdk/client-s3-611b56be8ae898f4") and then can't
-  // resolve them at runtime on Amplify Hosting. Let it bundle the SDK.
+  // Force Turbopack to BUNDLE @aws-sdk instead of externalizing it.
+  // Next 16's Turbopack auto-externalizes @aws-sdk/* by default, but it
+  // renames them with a hash ("@aws-sdk/client-s3-611b56...") that
+  // Amplify's Lambda runtime can't resolve. Bundling side-steps the issue.
+  transpilePackages: ["@aws-sdk/client-s3"],
 };
 
 export default nextConfig;
