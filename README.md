@@ -126,41 +126,39 @@ Restart Claude Desktop and Context101 should appear in the tools list. The `-y` 
 
 ## Inviting teammates to the web app
 
-The web admin UI (`WebAppDefaultDomain`) is gated by Cognito. Self-signup is off by design — you invite people explicitly. Each invite sends an email with a one-time temp password; on first login they'll be forced to set a real one.
+The web admin UI is gated by Cognito. Self-signup is off by design — you invite people explicitly. Each invite sends an email with a one-time temp password; on first login they set a real one.
 
-1. Find the prod user pool ID (the one created by the Amplify Gen 2 backend — not your local `ampx sandbox` pool):
+Share this URL with teammates: **https://main.dxnsray95mqcv.amplifyapp.com**
 
-   ```bash
-   aws cognito-idp list-user-pools --max-results 20 --profile plateapr.com --region us-east-1 \
-     --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)].[Id,Name,CreationDate]' \
-     --output table
-   ```
+### Invite a teammate (copy-paste)
 
-   Pick the one whose name matches your Amplify app's most recent build timestamp. Export it:
+```bash
+aws cognito-idp admin-create-user \
+  --user-pool-id us-east-1_QsP1U4XHv \
+  --username TEAMMATE_EMAIL \
+  --user-attributes Name=email,Value=TEAMMATE_EMAIL Name=email_verified,Value=true \
+  --profile plateapr.com --region us-east-1
+```
 
-   ```bash
-   export POOL_ID=us-east-1_XXXXXXXXX
-   ```
+Replace `TEAMMATE_EMAIL` (both places) with their actual email. They'll get an email titled "Your temporary password" from `no-reply@verificationemail.com`.
 
-2. Create the user:
-
-   ```bash
-   aws cognito-idp admin-create-user \
-     --user-pool-id $POOL_ID \
-     --username teammate@redventures.com \
-     --user-attributes Name=email,Value=teammate@redventures.com Name=email_verified,Value=true \
-     --profile plateapr.com --region us-east-1
-   ```
-
-   They'll receive an email titled something like "Your temporary password" from `no-reply@verificationemail.com`. Share the web URL (`WebAppDefaultDomain`) — they sign in, set a new password, and they're in.
-
-### Revoking access
+### Revoke access
 
 ```bash
 aws cognito-idp admin-delete-user \
-  --user-pool-id $POOL_ID \
-  --username teammate@redventures.com \
+  --user-pool-id us-east-1_QsP1U4XHv \
+  --username TEAMMATE_EMAIL \
   --profile plateapr.com --region us-east-1
+```
+
+### If you ever redeploy the stack from scratch
+
+The pool ID above is for this specific deployment. On a fresh deploy, find the new pool with:
+
+```bash
+aws cognito-idp list-user-pools --max-results 20 --profile plateapr.com --region us-east-1 \
+  --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)].[Id,Name,CreationDate]' \
+  --output table
 ```
 
 ### Separate from the MCP bearer token
