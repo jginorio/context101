@@ -39,7 +39,6 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 │   ├── lib/context101-stack.ts
 │   └── lambda/auto-ingest/       # S3 event → StartIngestionJob
 ├── server.py                     # Python MCP server (FastMCP + boto3)
-├── upload.py                     # Syncs knowledge/ → S3 docs bucket
 ├── Dockerfile                    # Used by App Runner
 ├── knowledge/                    # Your markdown — source of truth
 └── requirements.txt
@@ -69,16 +68,10 @@ Outputs include:
 ### 2. Upload your knowledge
 
 ```bash
-AWS_PROFILE=plateapr.com DOCS_BUCKET=<DocsBucketName> python upload.py
-```
-
-Or directly with the CLI:
-
-```bash
 aws s3 sync knowledge/ s3://<DocsBucketName>/ --profile plateapr.com
 ```
 
-The auto-ingest Lambda triggers a Bedrock ingestion job. Wait ~1-3 min for indexing (check the KB status in the AWS console).
+Only changed files get re-uploaded on subsequent syncs. The auto-ingest Lambda triggers a Bedrock ingestion job after each upload. Wait ~1-3 min for indexing (check the KB status in the AWS console).
 
 ### 3a. Run locally for dev
 
@@ -119,7 +112,7 @@ Once deployed with `-c token=<value>`, teammates point their MCP client at `McpU
 ## Daily Workflow
 
 1. Edit a markdown file in `knowledge/` (or directly in the S3 console).
-2. Upload: `python upload.py` (or `aws s3 sync`).
+2. `aws s3 sync knowledge/ s3://<DocsBucketName>/ --profile plateapr.com`
 3. Wait ~1 min for ingestion.
 4. Everyone on the team sees the new knowledge immediately.
 
