@@ -122,6 +122,82 @@ On re-deploys, CDK's `BucketDeployment` only uploads files that changed and `pru
 | `read_knowledge(s3_key)` | Full content of a source doc |
 | `list_sources()` | Enumerate all documents currently in the KB |
 
+## How it works under the hood
+
+### Ingestion: markdown → vectors
+
+```
+knowledge/databases.md                   (local markdown)
+         │
+         │  cdk deploy (BucketDeployment)
+         ▼
+┌─────────────────────────┐
+│  S3 docs bucket         │  ← versioned
+└────────────┬────────────┘
+             │  S3 PutObject event
+             ▼
+┌─────────────────────────┐
+│  Auto-ingest Lambda     │
+│  StartIngestionJob      │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│  Bedrock KB ingestion   │
+│                         │
+│  1. Parse markdown      │
+│  2. Chunk the doc       │  ← default: fixed-size ~300 tokens
+│                         │    with 20% overlap between chunks
+│  3. Embed each chunk    │  ← Titan embed v2 → float32[1024]
+│  4. Write to index      │
+└────────────┬────────────┘
+             │
+             ▼
+    ┌────────┐ ┌────────┐ ┌────────┐
+    │chunk 1 │ │chunk 2 │ │chunk 3 │  …
+    │vec+meta│ │vec+meta│ │vec+meta│
+    └────────┘ └────────┘ └────────┘
+         (stored in S3 Vectors)
+```
+
+**Why 20% overlap?** So a question whose answer spans a chunk boundary still retrieves a chunk that contains the full answer.
+
+**Why non-filterable metadata?** S3 Vectors caps **filterable** metadata at 2KB/vector. Bedrock stores the raw chunk text under `AMAZON_BEDROCK_TEXT` — which for documents with long chunks would blow past the cap. We mark that key (and `AMAZON_BEDROCK_METADATA`) non-filterable so they don't count against the cap. They're still retrievable — you just can't use them as filter predicates.
+
+### Retrieval: query → top-K chunks
+
+```
+"how do I query amplia listings?"
+            │
+            │  search_knowledge(query, limit=5)
+            ▼
+┌─────────────────────────┐
+│  MCP server (FastMCP)   │
+│  calls bedrock:Retrieve │
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│  Titan embed v2         │  query → float32[1024]
+└────────────┬────────────┘
+             │
+             ▼
+┌─────────────────────────┐
+│  S3 Vectors             │
+│  cosine top-K search    │  ← over all chunk vectors
+└────────────┬────────────┘
+             │
+             ▼
+   top-K chunks, each with:
+     • text      (the chunk content)
+     • s3 uri    (source doc)
+     • score     (0.0 – 1.0)
+             │
+             ▼
+   agent may call read_knowledge(key)
+   if it needs the full source doc
+```
+
 ## Cleanup
 
 ```bash
@@ -142,6 +218,62 @@ The S3 docs bucket and S3 Vectors bucket have `RETAIN` policies — you won't lo
 ## Notes
 
 - `removalPolicy: RETAIN` on docs and vector buckets — accidental `cdk destroy` won't wipe your data.
-- The MCP server doesn't write to the KB — documents are managed via S3 (console, CLI, or `upload.py`).
+- The MCP server doesn't write to the KB — documents are managed via the `knowledge/` folder + `cdk deploy`.
 - Each S3 upload triggers a full ingestion job. Bedrock handles dedup/delta indexing internally.
 - To rotate the bearer token: re-run `cdk deploy -c token=<new-value>`. Redeploys the App Runner service with the new secret.
+
+## Roadmap / TODO
+
+### Metadata sidecars for filtered retrieval
+
+Bedrock KB supports per-document metadata via `.metadata.json` sidecar files alongside each doc in S3. This lets agents filter results by attributes — e.g. "only Platea docs" or "only docs updated after April".
+
+```
+knowledge/
+├── databases.md
+├── databases.md.metadata.json          ← sidecar
+│     {
+│       "metadataAttributes": {
+│         "team":    "platea",
+│         "source":  "notion",
+│         "updated": "2026-04-18"
+│       }
+│     }
+├── domain-knowledge/amplia.md
+└── domain-knowledge/amplia.md.metadata.json
+```
+
+At query time, the MCP would accept a filter:
+
+```
+search_knowledge(
+  query  = "pricing strategy",
+  filter = { equals: { key: "team", value: "platea" } }
+)
+         │
+         ▼
+┌─────────────────────────┐
+│  bedrock:Retrieve with  │  ← Bedrock translates the filter
+│  filter expression      │    into an S3 Vectors metadata
+└────────────┬────────────┘    filter on the search
+             │
+             ▼
+   Only chunks from docs whose sidecar
+   has { team: "platea" } are returned
+```
+
+**To enable this:**
+1. Write sidecar files (manually, or auto-generate from markdown frontmatter).
+2. Extend `search_knowledge` to accept an optional `filter` arg and pass it through to `bedrock:Retrieve`.
+3. No Index config change needed — custom attributes from sidecars default to filterable, subject to the 2KB-per-vector cap. For short string values this is fine.
+
+**When it's worth adding:**
+- Multiple distinct knowledge domains in one KB and you want queries scoped to one.
+- Freshness filtering (e.g. "exclude anything older than 6 months").
+- Per-audience views (engineering-only docs vs shared team docs).
+
+### Other ideas
+
+- **Hierarchical or semantic chunking** — better retrieval on long, structured docs. Higher ingestion cost. Swap the `chunkingConfiguration` on `CfnDataSource`.
+- **Per-user auth via Cognito + JWT** — graduate from the shared bearer token when you need per-person audit trails. Swap `StaticTokenVerifier` for FastMCP's `JWTVerifier` pointing at a Cognito user pool.
+- **Multimodal ingestion** — Bedrock KB supports images and tables via `SupplementalDataStorageLocation`. Worth it if team knowledge ever includes diagrams/screenshots.
