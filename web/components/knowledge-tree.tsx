@@ -254,9 +254,21 @@ export function KnowledgeTree({
 
   return (
     <>
-      <div className="space-y-0.5">
-        <FolderNode prefix="" name="/" depth={0} ctx={ctx} />
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger>
+          <div className="space-y-0.5 min-h-full">
+            <FolderNode prefix="" name="/" depth={0} ctx={ctx} />
+          </div>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onClick={() => onNewFile("")}>
+            <FilePlus className="mr-2 h-3.5 w-3.5" /> New file at root
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => onNewFolder("")}>
+            <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder at root
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
 
       <AlertDialog
         open={!!deleteTarget}
