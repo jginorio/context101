@@ -316,24 +316,47 @@ export class Context101Stack extends cdk.Stack {
       });
       mainBranch.addDependency(webApp);
 
-      // d) Managed policy for the SSR compute role (attached post-deploy)
-      const ssrPolicy = new iam.ManagedPolicy(this, "WebSsrDocsBucketPolicy", {
-        managedPolicyName: `${namePrefix}-web-ssr-docs-bucket`,
-        description:
-          "Attach to the Amplify SSR compute role to let it CRUD the docs bucket",
-        statements: [
-          new iam.PolicyStatement({
-            sid: "ListDocsBucket",
-            actions: ["s3:ListBucket"],
-            resources: [docsBucket.bucketArn],
-          }),
-          new iam.PolicyStatement({
-            sid: "RwDocsObjects",
-            actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-            resources: [`${docsBucket.bucketArn}/*`],
-          }),
-        ],
+      // d) SSR Compute role — the IAM role the Amplify Hosting compute
+      //    Lambda assumes at runtime. Granting it S3 perms on the docs
+      //    bucket means API routes don't need access keys, and any writes
+      //    are attributable via CloudTrail. Also grants logs:* so SSR
+      //    logs land in CloudWatch.
+      const ssrComputeRole = new iam.Role(this, "WebSsrComputeRole", {
+        roleName: `${namePrefix}-web-ssr-compute`,
+        assumedBy: new iam.ServicePrincipal("amplify.amazonaws.com"),
+        description: "Runtime role for the Amplify Hosting SSR compute",
       });
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "ListDocsBucket",
+          actions: ["s3:ListBucket"],
+          resources: [docsBucket.bucketArn],
+        })
+      );
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "RwDocsObjects",
+          actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+          resources: [`${docsBucket.bucketArn}/*`],
+        })
+      );
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "WriteCloudWatchLogs",
+          actions: [
+            "logs:CreateLogGroup",
+            "logs:CreateLogStream",
+            "logs:PutLogEvents",
+          ],
+          resources: [
+            `arn:aws:logs:${this.region}:${this.account}:log-group:/aws/amplify/*`,
+          ],
+        })
+      );
+
+      // Attach the compute role to the Amplify App
+      webApp.addPropertyOverride("ComputeRoleArn", ssrComputeRole.roleArn);
+      webApp.node.addDependency(ssrComputeRole);
 
       new cdk.CfnOutput(this, "WebAppId", {
         value: webApp.attrAppId,
@@ -346,10 +369,10 @@ export class Context101Stack extends cdk.Stack {
         ]),
         description: "The web admin URL once the first build finishes.",
       });
-      new cdk.CfnOutput(this, "WebSsrPolicyArn", {
-        value: ssrPolicy.managedPolicyArn,
+      new cdk.CfnOutput(this, "WebSsrComputeRoleArn", {
+        value: ssrComputeRole.roleArn,
         description:
-          "After the first deploy, attach this policy to the SSR role. Run: aws iam attach-role-policy --role-name <ssr-role> --policy-arn <this-arn>",
+          "IAM role the Amplify SSR Lambda runs under. Has S3 docs bucket + CloudWatch logs perms.",
       });
     }
 
