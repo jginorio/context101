@@ -8,6 +8,7 @@ import * as bedrock from "aws-cdk-lib/aws-bedrock";
 import * as apprunner from "aws-cdk-lib/aws-apprunner";
 import * as ecr_assets from "aws-cdk-lib/aws-ecr-assets";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
+import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import * as path from "path";
 
 /**
@@ -170,7 +171,23 @@ export class Context101Stack extends cdk.Stack {
       new s3n.LambdaDestination(ingestFn)
     );
 
-    // ── 7. Optional: App Runner service hosting the MCP server ────────
+    // ── 7. Sync local knowledge/ → docs bucket on every deploy ────────
+    //      The local knowledge/ folder is the source of truth.
+    //      prune: true = S3 files not in knowledge/ get deleted. Matches
+    //      the "git repo is source of truth" model.
+    const deployment = new s3deploy.BucketDeployment(this, "KnowledgeSync", {
+      sources: [
+        s3deploy.Source.asset(path.resolve(__dirname, "..", "..", "knowledge")),
+      ],
+      destinationBucket: docsBucket,
+      prune: true,
+      retainOnDelete: true, // keep files on stack destroy
+    });
+    // Ensure the notification → Lambda wiring exists before files land,
+    // so the auto-ingest Lambda fires on the initial upload.
+    deployment.node.addDependency(ingestFn);
+
+    // ── 8. Optional: App Runner service hosting the MCP server ────────
     //      Only provisioned if -c token=<value> is passed at deploy time.
     const teamToken = this.node.tryGetContext("token") as string | undefined;
 
@@ -251,7 +268,7 @@ export class Context101Stack extends cdk.Stack {
       });
     }
 
-    // ── 8. Outputs ────────────────────────────────────────────────────
+    // ── 9. Outputs ────────────────────────────────────────────────────
     new cdk.CfnOutput(this, "DocsBucketName", {
       value: docsBucket.bucketName,
       description: "Upload markdown files here; Lambda auto-ingests them.",

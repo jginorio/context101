@@ -46,7 +46,7 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 
 ## Setup
 
-### 1. Deploy the AWS infrastructure
+### 1. Deploy everything
 
 ```bash
 cd cdk
@@ -60,20 +60,16 @@ AWS_PROFILE=plateapr.com npx cdk bootstrap aws://<ACCOUNT_ID>/us-east-1
 AWS_PROFILE=plateapr.com npx cdk deploy -c token=<your-shared-bearer-token>
 ```
 
-Outputs include:
-- `DocsBucketName` — where to upload your markdown
+`cdk deploy` provisions the infra **and** syncs the local `knowledge/` folder into the S3 docs bucket in one step. The auto-ingest Lambda then kicks off a Bedrock ingestion job. Wait ~1-3 min for indexing (check the KB status in the AWS console).
+
+Outputs:
+- `DocsBucketName` — the S3 bucket holding your markdown
 - `KnowledgeBaseId` — set as `KB_ID` env var
 - `McpUrl` — the App Runner URL (only shown if `-c token=...` was passed)
 
-### 2. Upload your knowledge
+> **Source of truth:** The local `knowledge/` folder drives the S3 bucket contents on every `cdk deploy`. Files deleted locally are removed from S3. Don't edit files directly in the S3 console — they'll be overwritten on the next deploy. Edit markdown locally, commit to Git, run `cdk deploy`.
 
-```bash
-aws s3 sync knowledge/ s3://<DocsBucketName>/ --profile plateapr.com
-```
-
-Only changed files get re-uploaded on subsequent syncs. The auto-ingest Lambda triggers a Bedrock ingestion job after each upload. Wait ~1-3 min for indexing (check the KB status in the AWS console).
-
-### 3a. Run locally for dev
+### 2a. Run locally for dev
 
 Without a bearer token — no auth, anyone on your machine can hit it:
 
@@ -88,7 +84,7 @@ export DOCS_BUCKET=<DocsBucketName>
 fastmcp run server.py:mcp --transport streamable-http --port 8787
 ```
 
-### 3b. Use the deployed App Runner service (team)
+### 2b. Use the deployed App Runner service (team)
 
 Once deployed with `-c token=<value>`, teammates point their MCP client at `McpUrl` and add the `Authorization: Bearer <token>` header.
 
@@ -111,10 +107,12 @@ Once deployed with `-c token=<value>`, teammates point their MCP client at `McpU
 
 ## Daily Workflow
 
-1. Edit a markdown file in `knowledge/` (or directly in the S3 console).
-2. `aws s3 sync knowledge/ s3://<DocsBucketName>/ --profile plateapr.com`
+1. Edit a markdown file in `knowledge/` locally.
+2. `AWS_PROFILE=plateapr.com npx cdk deploy -c token=<your-token>` from the `cdk/` dir.
 3. Wait ~1 min for ingestion.
 4. Everyone on the team sees the new knowledge immediately.
+
+On re-deploys, CDK's `BucketDeployment` only uploads files that changed and `prune: true` removes files you deleted locally. No infra changes → quick deploy (~20s).
 
 ## Tools
 
