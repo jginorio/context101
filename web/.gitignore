@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# amplify
+.amplify/
+# NOTE: we commit a placeholder amplify_outputs.json so TypeScript
+# compiles before you run `npx ampx sandbox`. Once you run sandbox,
+# it'll be overwritten locally with real values — but don't commit
+# those. Uncomment the line below after your first sandbox run.
+# amplify_outputs.json
