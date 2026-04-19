@@ -124,6 +124,49 @@ Once deployed with `-c token=<value>`, teammates point their MCP client at `McpU
 
 Restart Claude Desktop and Context101 should appear in the tools list. The `-y` lets `npx` auto-install `mcp-remote` the first time.
 
+## Inviting teammates to the web app
+
+The web admin UI (`WebAppDefaultDomain`) is gated by Cognito. Self-signup is off by design — you invite people explicitly. Each invite sends an email with a one-time temp password; on first login they'll be forced to set a real one.
+
+1. Find the prod user pool ID (the one created by the Amplify Gen 2 backend — not your local `ampx sandbox` pool):
+
+   ```bash
+   aws cognito-idp list-user-pools --max-results 20 --profile plateapr.com --region us-east-1 \
+     --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)].[Id,Name,CreationDate]' \
+     --output table
+   ```
+
+   Pick the one whose name matches your Amplify app's most recent build timestamp. Export it:
+
+   ```bash
+   export POOL_ID=us-east-1_XXXXXXXXX
+   ```
+
+2. Create the user:
+
+   ```bash
+   aws cognito-idp admin-create-user \
+     --user-pool-id $POOL_ID \
+     --username teammate@redventures.com \
+     --user-attributes Name=email,Value=teammate@redventures.com Name=email_verified,Value=true \
+     --profile plateapr.com --region us-east-1
+   ```
+
+   They'll receive an email titled something like "Your temporary password" from `no-reply@verificationemail.com`. Share the web URL (`WebAppDefaultDomain`) — they sign in, set a new password, and they're in.
+
+### Revoking access
+
+```bash
+aws cognito-idp admin-delete-user \
+  --user-pool-id $POOL_ID \
+  --username teammate@redventures.com \
+  --profile plateapr.com --region us-east-1
+```
+
+### Separate from the MCP bearer token
+
+Note: the Cognito accounts control access to the **web admin UI**. The **MCP endpoint** uses a separate shared bearer token (set at `cdk deploy -c token=...`). Rotating one doesn't affect the other. To rotate the MCP token: re-deploy with a new `-c token=...` value and redistribute to teammates' MCP client configs.
+
 ## Daily Workflow
 
 1. Edit a markdown file in `knowledge/` locally.
