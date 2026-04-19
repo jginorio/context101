@@ -1,0 +1,8 @@
+{
+  "name": "auto-ingest",
+  "version": "0.1.0",
+  "type": "module",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agent": "^3.700.0"
+  }
+}

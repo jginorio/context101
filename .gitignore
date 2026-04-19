@@ -6,4 +6,14 @@ data/
 *.db-wal
 *.db-shm
 .env
+oauth-tokens.txt
+*.pem
+*.key
 *.zip
+
+# CDK
+cdk/node_modules/
+cdk/cdk.out/
+cdk/*.js
+cdk/*.d.ts
+cdk/lambda/**/node_modules/
