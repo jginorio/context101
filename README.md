@@ -182,6 +182,22 @@ On re-deploys, CDK's `BucketDeployment` only uploads files that changed and `pru
 | `read_knowledge(s3_key)` | Full content of a source doc |
 | `list_sources()` | Enumerate all documents currently in the KB |
 
+## Improve with AI (web app)
+
+Open any `.md` file in the admin UI and click **Improve**. The current document goes to **Claude Opus 4.7 via Amazon Bedrock** (`us.anthropic.claude-opus-4-7`), which returns a rewritten version alongside a summary of what changed. You see a side-by-side diff and choose **Accept & save** or **Cancel**.
+
+The system prompt constrains the model to:
+- **Never invent facts, IDs, URLs, schema details, or technical terms** — preserve every concrete value from the original
+- Keep the author's voice; don't formalize or casualize
+- Keep markdown valid (GFM, fenced code blocks, heading hierarchy)
+- Allowed: fix typos, split long paragraphs, clarify headings, convert prose ↔ lists/tables where it improves scannability, rewrite ambiguous sentences, add a one-line opening summary if missing
+
+Cost: ~$0.02–0.05 per call on a typical 10KB doc. Nothing is written to S3 unless you Accept.
+
+**Requires on the AWS account:**
+- Bedrock model access granted for Claude Opus 4.7 (one-time: `aws bedrock create-foundation-model-agreement`)
+- `bedrock:InvokeModel` + `aws-marketplace:*` on the Amplify SSR compute role (handled by CDK)
+
 ## How it works under the hood
 
 ### Ingestion: markdown → vectors
