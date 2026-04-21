@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Pencil, Save, Trash2, X } from "lucide-react";
+import { FileText, Pencil, Save, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -10,6 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { MarkdownPreview } from "@/components/previews/markdown-preview";
 import { CsvPreview } from "@/components/previews/csv-preview";
 import { JsonPreview } from "@/components/previews/json-preview";
+import { ImproveDialog } from "@/components/improve-dialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -62,6 +63,7 @@ export function KnowledgeViewer({
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [confirmDelete, setConfirmDelete] = React.useState(false);
+  const [improveOpen, setImproveOpen] = React.useState(false);
 
   React.useEffect(() => {
     if (!fileKey) {
@@ -178,6 +180,15 @@ export function KnowledgeViewer({
             </div>
           ) : (
             <div className="flex items-center gap-2">
+              {ext === "md" && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setImproveOpen(true)}
+                >
+                  <Sparkles className="mr-1 h-3.5 w-3.5" /> Improve
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={startEdit}>
                 <Pencil className="mr-1 h-3.5 w-3.5" /> Edit
               </Button>
@@ -243,6 +254,18 @@ export function KnowledgeViewer({
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {improveOpen && (
+        <ImproveDialog
+          open={improveOpen}
+          fileKey={fileKey}
+          originalContent={text}
+          onOpenChange={setImproveOpen}
+          onAccepted={(newContent) => {
+            setContent(newContent);
+          }}
+        />
+      )}
     </>
   );
 }
