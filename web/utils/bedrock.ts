@@ -7,10 +7,9 @@ const client = new BedrockRuntimeClient({
   region: process.env.AWS_REGION ?? "us-east-1",
 });
 
-// Global inference profile for Claude Opus 4.7 — broadest availability.
-// If your account only has regional profiles, swap to
-// "us.anthropic.claude-opus-4-7-v1:0".
-const MODEL_ID = "global.anthropic.claude-opus-4-7-v1:0";
+// US cross-region inference profile for Claude Opus 4.7.
+// (Opus 4.7 doesn't have a global profile yet — only us.* is active.)
+const MODEL_ID = "us.anthropic.claude-opus-4-7";
 
 const SYSTEM_PROMPT = `You are an expert technical editor for Context101, a shared team knowledge base queried by AI agents via semantic search. Your job is to improve a single markdown document so it's clearer to read and more retrievable.
 

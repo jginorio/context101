@@ -382,14 +382,16 @@ export class Context101Stack extends cdk.Stack {
       );
       // Invoke Claude Opus 4.7 via Bedrock — used by the "Improve with AI"
       // button in the web UI. Grant both the foundation model and
-      // inference-profile ARNs so either routing path works.
+      // cross-region inference-profile ARNs. We use a wildcard on the
+      // suffix because AWS uses different naming for different Opus
+      // versions (e.g. claude-opus-4-7 vs claude-opus-4-5-20251101-v1:0).
       ssrComputeRole.addToPolicy(
         new iam.PolicyStatement({
           sid: "InvokeClaudeOpus",
           actions: ["bedrock:InvokeModel"],
           resources: [
-            `arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-7-v1:0`,
-            `arn:aws:bedrock:*:${this.account}:inference-profile/*.anthropic.claude-opus-4-7-v1:0`,
+            `arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-7*`,
+            `arn:aws:bedrock:*:${this.account}:inference-profile/*claude-opus-4-7*`,
           ],
         })
       );
