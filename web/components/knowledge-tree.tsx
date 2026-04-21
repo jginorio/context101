@@ -29,6 +29,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Entry =
@@ -112,6 +114,10 @@ type TreeContext = {
   onRename: (key: string, isFolder: boolean) => void;
   onDeleteRequest: (key: string, isFolder: boolean) => void;
   onMoved: () => void; // refresh after a successful move
+  // Multi-select for ZIP export. Keys use the S3 convention: files are
+  // e.g. "foo/bar.md", folders end with "/".
+  checked: Set<string>;
+  onToggleCheck: (key: string) => void;
 };
 
 // Compute the destination key when dropping `src` into folder `destPrefix`.
@@ -196,33 +202,44 @@ function FolderNode({
     depth === 0 ? null : (
       <ContextMenu>
         <ContextMenuTrigger>
-          <button
-            onClick={() => setOpen((o) => !o)}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.setData(
-                DRAG_MIME,
-                JSON.stringify({ key: prefix, isFolder: true } as DragPayload)
-              );
-              e.dataTransfer.effectAllowed = "move";
-            }}
+          <div
             onDragOver={handleDragOver}
             onDragLeave={handleDragLeave}
             onDrop={handleDrop}
             className={cn(
-              "flex items-center gap-1.5 w-full text-sm py-1 px-2 rounded hover:bg-muted text-left",
+              "flex items-center gap-1 w-full text-sm py-1 px-2 rounded hover:bg-muted",
               dragOver && "bg-accent ring-1 ring-ring"
             )}
             style={{ paddingLeft: `${depth * 12 + 8}px` }}
           >
-            {open ? (
-              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
-            ) : (
-              <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
-            )}
-            <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" />
-            <span>{name}</span>
-          </button>
+            <Checkbox
+              checked={ctx.checked.has(prefix)}
+              onCheckedChange={() => ctx.onToggleCheck(prefix)}
+              onClick={(e) => e.stopPropagation()}
+              className="h-3.5 w-3.5 shrink-0"
+              aria-label={`select folder ${name}`}
+            />
+            <button
+              onClick={() => setOpen((o) => !o)}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData(
+                  DRAG_MIME,
+                  JSON.stringify({ key: prefix, isFolder: true } as DragPayload)
+                );
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+            >
+              {open ? (
+                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              ) : (
+                <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              )}
+              <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" />
+              <span className="truncate">{name}</span>
+            </button>
+          </div>
         </ContextMenuTrigger>
         <ContextMenuContent>
           <ContextMenuItem onClick={() => ctx.onNewFile(prefix)}>
@@ -270,28 +287,39 @@ function FolderNode({
           {data?.files.map((file) => (
             <ContextMenu key={file.key}>
               <ContextMenuTrigger>
-                <button
-                  onClick={() => ctx.onSelectFile(file.key)}
-                  draggable
-                  onDragStart={(e) => {
-                    e.dataTransfer.setData(
-                      DRAG_MIME,
-                      JSON.stringify({
-                        key: file.key,
-                        isFolder: false,
-                      } as DragPayload)
-                    );
-                    e.dataTransfer.effectAllowed = "move";
-                  }}
+                <div
                   className={cn(
-                    "flex items-center gap-1.5 w-full text-sm py-1 px-2 rounded hover:bg-muted text-left",
+                    "flex items-center gap-1 w-full text-sm py-1 px-2 rounded hover:bg-muted",
                     ctx.selectedKey === file.key && "bg-muted"
                   )}
                   style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
                 >
-                  <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                  <span className="truncate">{file.name}</span>
-                </button>
+                  <Checkbox
+                    checked={ctx.checked.has(file.key)}
+                    onCheckedChange={() => ctx.onToggleCheck(file.key)}
+                    onClick={(e) => e.stopPropagation()}
+                    className="h-3.5 w-3.5 shrink-0"
+                    aria-label={`select ${file.name}`}
+                  />
+                  <button
+                    onClick={() => ctx.onSelectFile(file.key)}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData(
+                        DRAG_MIME,
+                        JSON.stringify({
+                          key: file.key,
+                          isFolder: false,
+                        } as DragPayload)
+                      );
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
+                  >
+                    <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                    <span className="truncate">{file.name}</span>
+                  </button>
+                </div>
               </ContextMenuTrigger>
               <ContextMenuContent>
                 <ContextMenuItem onClick={() => downloadFile(file.key)}>
@@ -350,6 +378,52 @@ export function KnowledgeTree({
   const [deleting, setDeleting] = React.useState(false);
   const [rootDragOver, setRootDragOver] = React.useState(false);
   const [localRefresh, setLocalRefresh] = React.useState(0);
+
+  // Multi-select for zip export. Keys follow S3 convention — folders
+  // end with "/", files don't. The /api/files/zip route expands folder
+  // prefixes on the server.
+  const [checked, setChecked] = React.useState<Set<string>>(new Set());
+  const [zipping, setZipping] = React.useState(false);
+
+  const toggleCheck = React.useCallback((key: string) => {
+    setChecked((prev) => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key);
+      else next.add(key);
+      return next;
+    });
+  }, []);
+
+  async function downloadZip() {
+    if (checked.size === 0) return;
+    setZipping(true);
+    try {
+      const res = await fetch("/api/files/zip", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ keys: [...checked] }),
+      });
+      if (!res.ok) {
+        const j = await res.json().catch(() => ({ error: res.statusText }));
+        throw new Error(j.error ?? `zip failed: ${res.status}`);
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const stamp = new Date().toISOString().slice(0, 10);
+      a.download = `context101-export-${stamp}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${checked.size} item(s)`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setZipping(false);
+    }
+  }
 
   // When the parent bumps refreshKey, or we need to refresh internally
   // (e.g. after a drag-and-drop move), we merge them here.
@@ -422,10 +496,33 @@ export function KnowledgeTree({
     onRename,
     onDeleteRequest: (key, isFolder) => setDeleteTarget({ key, isFolder }),
     onMoved: () => setLocalRefresh((n) => n + 1),
+    checked,
+    onToggleCheck: toggleCheck,
   };
 
   return (
     <>
+      {checked.size > 0 && (
+        <div className="sticky top-0 z-10 mb-1 flex items-center justify-between gap-2 rounded-md border bg-background/95 backdrop-blur px-2 py-1.5">
+          <span className="text-xs text-muted-foreground">
+            {checked.size} selected
+          </span>
+          <div className="flex items-center gap-1">
+            <Button
+              size="sm"
+              variant="ghost"
+              onClick={() => setChecked(new Set())}
+              disabled={zipping}
+            >
+              Clear
+            </Button>
+            <Button size="sm" onClick={downloadZip} disabled={zipping}>
+              <Download className="mr-1 h-3.5 w-3.5" />
+              {zipping ? "Zipping…" : "Download ZIP"}
+            </Button>
+          </div>
+        </div>
+      )}
       <ContextMenu>
         <ContextMenuTrigger>
           <div

@@ -1,7 +1,9 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, CircleDashed, Construction } from "lucide-react";
+import { ArrowLeft, CheckCircle2, CircleDashed, Construction, Check, Copy } from "lucide-react";
+import { toast } from "sonner";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
@@ -9,6 +11,60 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 
 import "@/utils/amplify-client-config";
+
+const MCP_CONFIG_SNIPPET = `"context101": {
+  "url": "https://nqdr4qhnun.us-east-1.awsapprunner.com/mcp",
+  "headers": {
+    "Authorization": "Bearer context101-platea-2026-bearer"
+  }
+}`;
+
+function CopyMcpConfig() {
+  const [copied, setCopied] = React.useState(false);
+  async function copy() {
+    try {
+      await navigator.clipboard.writeText(MCP_CONFIG_SNIPPET);
+      setCopied(true);
+      toast.success("MCP config copied");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Copy failed — select and copy manually");
+    }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center justify-between gap-2">
+          <span>Connect your MCP client</span>
+          <Button size="sm" variant="outline" onClick={copy}>
+            {copied ? (
+              <Check className="mr-1 h-3.5 w-3.5" />
+            ) : (
+              <Copy className="mr-1 h-3.5 w-3.5" />
+            )}
+            {copied ? "Copied" : "Copy"}
+          </Button>
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-3">
+        <p className="text-sm text-muted-foreground">
+          Paste this block into your MCP client&apos;s{" "}
+          <code className="font-mono text-xs">mcpServers</code> config
+          (Cursor <code className="font-mono text-xs">.cursor/mcp.json</code>,
+          etc).
+        </p>
+        <pre className="text-xs font-mono whitespace-pre overflow-x-auto rounded-md border bg-muted/30 p-3">
+          {MCP_CONFIG_SNIPPET}
+        </pre>
+        <p className="text-xs text-muted-foreground">
+          Claude Desktop needs the{" "}
+          <code className="font-mono">mcp-remote</code> stdio proxy — see the
+          README for that variant.
+        </p>
+      </CardContent>
+    </Card>
+  );
+}
 
 type Status = "done" | "in-progress" | "later";
 
@@ -152,6 +208,8 @@ export default function AboutPage() {
             plugs into the same brain with zero custom work.
           </p>
         </section>
+
+        <CopyMcpConfig />
 
         <section>
           <h2 className="text-2xl font-semibold tracking-tight mb-3">
