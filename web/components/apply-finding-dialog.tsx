@@ -59,8 +59,29 @@ export function ApplyFindingDialog({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ finding }),
         });
-        const j = await r.json();
-        if (!r.ok) throw new Error(j.error ?? `apply failed: ${r.status}`);
+        const text = await r.text();
+        if (!r.ok) {
+          if (!text)
+            throw new Error(
+              `HTTP ${r.status} — empty response (likely a gateway timeout). Try again.`
+            );
+          try {
+            const j = JSON.parse(text);
+            throw new Error(j.error ?? `apply failed: HTTP ${r.status}`);
+          } catch {
+            throw new Error(
+              `HTTP ${r.status}: ${text.slice(0, 200)}`
+            );
+          }
+        }
+        let j: { diffs?: Diff[] };
+        try {
+          j = JSON.parse(text);
+        } catch {
+          throw new Error(
+            `Server returned non-JSON (first 200 chars): ${text.slice(0, 200)}`
+          );
+        }
         if (cancelled) return;
         setDiffs(j.diffs ?? []);
       } catch (e) {

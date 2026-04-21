@@ -118,8 +118,30 @@ export default function AuditPage() {
     setFindings(null);
     try {
       const r = await fetch("/api/brain/audit", { method: "POST" });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? `audit failed: ${r.status}`);
+      const text = await r.text();
+      if (!r.ok) {
+        // 504s / platform errors often return empty body or HTML
+        if (!text)
+          throw new Error(
+            `HTTP ${r.status} — empty response (likely a gateway timeout; the audit is still running on the backend, but the browser gave up). Try again.`
+          );
+        try {
+          const j = JSON.parse(text);
+          throw new Error(j.error ?? `audit failed: HTTP ${r.status}`);
+        } catch {
+          throw new Error(
+            `HTTP ${r.status}: ${text.slice(0, 200)}`
+          );
+        }
+      }
+      let j: { findings?: Finding[]; fileCount?: number };
+      try {
+        j = JSON.parse(text);
+      } catch {
+        throw new Error(
+          `Server returned non-JSON (first 200 chars): ${text.slice(0, 200)}`
+        );
+      }
       setFindings(j.findings ?? []);
       setFileCount(j.fileCount ?? 0);
       setDismissed(new Set());
