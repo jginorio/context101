@@ -8,6 +8,7 @@ import {
   Folder,
   FilePlus,
   FolderPlus,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -46,11 +47,61 @@ type ListResponse = {
   files: Extract<Entry, { type: "file" }>[];
 };
 
+// ── Drag & drop payload ──────────────────────────────────────────────
+// We use a single custom MIME type so drag events from outside the app
+// (e.g. dragging a .md file from the OS) don't accidentally trigger a
+// move. If the payload isn't our MIME type, we don't handle the drop.
+const DRAG_MIME = "application/x-context101";
+type DragPayload = { key: string; isFolder: boolean };
+
 async function fetchList(prefix: string): Promise<ListResponse> {
   const r = await fetch(`/api/files/list?prefix=${encodeURIComponent(prefix)}`);
   if (!r.ok) throw new Error(`list ${prefix} failed: ${r.status}`);
   return r.json();
 }
+
+async function moveItem(from: string, to: string): Promise<void> {
+  const r = await fetch("/api/files/move", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ from, to }),
+  });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error(j?.error ?? `move failed: ${r.status}`);
+}
+
+function lastSegment(key: string, isFolder: boolean): string {
+  const trimmed = isFolder ? key.replace(/\/$/, "") : key;
+  const idx = trimmed.lastIndexOf("/");
+  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
+}
+
+function downloadBlob(filename: string, content: string) {
+  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, 0);
+}
+
+async function downloadFile(key: string) {
+  try {
+    const r = await fetch(`/api/files/get?key=${encodeURIComponent(key)}`);
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error ?? `download failed: ${r.status}`);
+    downloadBlob(lastSegment(key, false), j.content ?? "");
+  } catch (e) {
+    toast.error(e instanceof Error ? e.message : String(e));
+  }
+}
+
+// ── Tree context shared between nodes ────────────────────────────────
 
 type TreeContext = {
   selectedKey: string | null;
@@ -60,7 +111,31 @@ type TreeContext = {
   onNewFolder: (parentPrefix: string) => void;
   onRename: (key: string, isFolder: boolean) => void;
   onDeleteRequest: (key: string, isFolder: boolean) => void;
+  onMoved: () => void; // refresh after a successful move
 };
+
+// Compute the destination key when dropping `src` into folder `destPrefix`.
+// Returns null if the drop should be rejected (same parent, moving folder
+// into itself/descendant, etc).
+function computeMoveTarget(
+  src: DragPayload,
+  destPrefix: string
+): string | null {
+  const name = lastSegment(src.key, src.isFolder);
+  const currentParent = src.isFolder
+    ? src.key.slice(0, -(name.length + 1)) // strip "name/"
+    : src.key.slice(0, src.key.length - name.length);
+
+  // Same parent = no-op
+  if (currentParent === destPrefix) return null;
+
+  // Moving a folder into itself or a descendant
+  if (src.isFolder && destPrefix.startsWith(src.key)) return null;
+
+  return src.isFolder ? `${destPrefix}${name}/` : `${destPrefix}${name}`;
+}
+
+// ── Folder node (recursive) ──────────────────────────────────────────
 
 function FolderNode({
   prefix,
@@ -76,8 +151,8 @@ function FolderNode({
   const [open, setOpen] = React.useState(depth === 0);
   const [data, setData] = React.useState<ListResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
+  const [dragOver, setDragOver] = React.useState(false);
 
-  // Refetch when opened OR when the refreshKey bumps
   React.useEffect(() => {
     if (!open) return;
     setError(null);
@@ -86,45 +161,89 @@ function FolderNode({
       .catch((e) => setError(e.message));
   }, [open, prefix, ctx.refreshKey]);
 
-  const header = depth === 0 ? null : (
-    <ContextMenu>
-      <ContextMenuTrigger>
-        <button
-          onClick={() => setOpen((o) => !o)}
-          className={cn(
-            "flex items-center gap-1.5 w-full text-sm py-1 px-2 rounded hover:bg-muted text-left"
-          )}
-          style={{ paddingLeft: `${depth * 12 + 8}px` }}
-        >
-          {open ? (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
-          ) : (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
-          )}
-          <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" />
-          <span>{name}</span>
-        </button>
-      </ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onClick={() => ctx.onNewFile(prefix)}>
-          <FilePlus className="mr-2 h-3.5 w-3.5" /> New file here
-        </ContextMenuItem>
-        <ContextMenuItem onClick={() => ctx.onNewFolder(prefix)}>
-          <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder here
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => ctx.onRename(prefix, true)}>
-          Rename
-        </ContextMenuItem>
-        <ContextMenuItem
-          variant="destructive"
-          onClick={() => ctx.onDeleteRequest(prefix, true)}
-        >
-          Delete folder
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
-  );
+  // ── D&D handlers for dropping into this folder ─────────────────────
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOver(true);
+  };
+  const handleDragLeave = () => setDragOver(false);
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    const raw = e.dataTransfer.getData(DRAG_MIME);
+    if (!raw) return;
+    let payload: DragPayload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const to = computeMoveTarget(payload, prefix);
+    if (!to) return;
+    try {
+      await moveItem(payload.key, to);
+      toast.success(`Moved to ${prefix || "/"}`);
+      ctx.onMoved();
+      if (!open) setOpen(true);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  const header =
+    depth === 0 ? null : (
+      <ContextMenu>
+        <ContextMenuTrigger>
+          <button
+            onClick={() => setOpen((o) => !o)}
+            draggable
+            onDragStart={(e) => {
+              e.dataTransfer.setData(
+                DRAG_MIME,
+                JSON.stringify({ key: prefix, isFolder: true } as DragPayload)
+              );
+              e.dataTransfer.effectAllowed = "move";
+            }}
+            onDragOver={handleDragOver}
+            onDragLeave={handleDragLeave}
+            onDrop={handleDrop}
+            className={cn(
+              "flex items-center gap-1.5 w-full text-sm py-1 px-2 rounded hover:bg-muted text-left",
+              dragOver && "bg-accent ring-1 ring-ring"
+            )}
+            style={{ paddingLeft: `${depth * 12 + 8}px` }}
+          >
+            {open ? (
+              <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+            ) : (
+              <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
+            )}
+            <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" />
+            <span>{name}</span>
+          </button>
+        </ContextMenuTrigger>
+        <ContextMenuContent>
+          <ContextMenuItem onClick={() => ctx.onNewFile(prefix)}>
+            <FilePlus className="mr-2 h-3.5 w-3.5" /> New file here
+          </ContextMenuItem>
+          <ContextMenuItem onClick={() => ctx.onNewFolder(prefix)}>
+            <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder here
+          </ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem onClick={() => ctx.onRename(prefix, true)}>
+            Rename
+          </ContextMenuItem>
+          <ContextMenuItem
+            variant="destructive"
+            onClick={() => ctx.onDeleteRequest(prefix, true)}
+          >
+            Delete folder
+          </ContextMenuItem>
+        </ContextMenuContent>
+      </ContextMenu>
+    );
 
   return (
     <div>
@@ -153,6 +272,17 @@ function FolderNode({
               <ContextMenuTrigger>
                 <button
                   onClick={() => ctx.onSelectFile(file.key)}
+                  draggable
+                  onDragStart={(e) => {
+                    e.dataTransfer.setData(
+                      DRAG_MIME,
+                      JSON.stringify({
+                        key: file.key,
+                        isFolder: false,
+                      } as DragPayload)
+                    );
+                    e.dataTransfer.effectAllowed = "move";
+                  }}
                   className={cn(
                     "flex items-center gap-1.5 w-full text-sm py-1 px-2 rounded hover:bg-muted text-left",
                     ctx.selectedKey === file.key && "bg-muted"
@@ -164,6 +294,10 @@ function FolderNode({
                 </button>
               </ContextMenuTrigger>
               <ContextMenuContent>
+                <ContextMenuItem onClick={() => downloadFile(file.key)}>
+                  <Download className="mr-2 h-3.5 w-3.5" /> Download
+                </ContextMenuItem>
+                <ContextMenuSeparator />
                 <ContextMenuItem onClick={() => ctx.onRename(file.key, false)}>
                   Rename
                 </ContextMenuItem>
@@ -190,6 +324,8 @@ function FolderNode({
   );
 }
 
+// ── Root ─────────────────────────────────────────────────────────────
+
 export function KnowledgeTree({
   selectedKey,
   refreshKey,
@@ -212,6 +348,12 @@ export function KnowledgeTree({
     isFolder: boolean;
   } | null>(null);
   const [deleting, setDeleting] = React.useState(false);
+  const [rootDragOver, setRootDragOver] = React.useState(false);
+  const [localRefresh, setLocalRefresh] = React.useState(0);
+
+  // When the parent bumps refreshKey, or we need to refresh internally
+  // (e.g. after a drag-and-drop move), we merge them here.
+  const mergedRefreshKey = refreshKey + localRefresh;
 
   async function confirmDelete() {
     if (!deleteTarget) return;
@@ -242,21 +384,59 @@ export function KnowledgeTree({
     }
   }
 
+  // Root drop = move to root (prefix "")
+  const handleRootDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setRootDragOver(true);
+  };
+  const handleRootDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setRootDragOver(false);
+    const raw = e.dataTransfer.getData(DRAG_MIME);
+    if (!raw) return;
+    let payload: DragPayload;
+    try {
+      payload = JSON.parse(raw);
+    } catch {
+      return;
+    }
+    const to = computeMoveTarget(payload, "");
+    if (!to) return;
+    try {
+      await moveItem(payload.key, to);
+      toast.success("Moved to /");
+      setLocalRefresh((n) => n + 1);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const ctx: TreeContext = {
     selectedKey,
-    refreshKey,
+    refreshKey: mergedRefreshKey,
     onSelectFile,
     onNewFile,
     onNewFolder,
     onRename,
     onDeleteRequest: (key, isFolder) => setDeleteTarget({ key, isFolder }),
+    onMoved: () => setLocalRefresh((n) => n + 1),
   };
 
   return (
     <>
       <ContextMenu>
         <ContextMenuTrigger>
-          <div className="space-y-0.5 min-h-full">
+          <div
+            onDragOver={handleRootDragOver}
+            onDragLeave={() => setRootDragOver(false)}
+            onDrop={handleRootDrop}
+            className={cn(
+              "space-y-0.5 min-h-full rounded",
+              rootDragOver && "bg-accent/40 ring-1 ring-ring"
+            )}
+          >
             <FolderNode prefix="" name="/" depth={0} ctx={ctx} />
           </div>
         </ContextMenuTrigger>
