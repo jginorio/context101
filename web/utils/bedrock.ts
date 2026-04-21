@@ -62,9 +62,9 @@ export async function improveDocument(
           content: [{ text: userMessage }],
         },
       ],
+      // Note: Claude Opus 4.7 deprecated the `temperature` param — omit it.
       inferenceConfig: {
         maxTokens: 8192,
-        temperature: 0.3,
       },
     })
   );
