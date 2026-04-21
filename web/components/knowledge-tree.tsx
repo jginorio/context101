@@ -394,6 +394,24 @@ export function KnowledgeTree({
     });
   }, []);
 
+  async function selectAll() {
+    try {
+      const r = await fetch("/api/files/list?prefix=");
+      if (!r.ok) throw new Error(`list failed: ${r.status}`);
+      const j = (await r.json()) as {
+        folders?: { key: string }[];
+        files?: { key: string }[];
+      };
+      const all = new Set<string>();
+      for (const f of j.folders ?? []) all.add(f.key);
+      for (const f of j.files ?? []) all.add(f.key);
+      setChecked(all);
+      if (all.size === 0) toast.info("Nothing to select");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  }
+
   async function downloadZip() {
     if (checked.size === 0) return;
     setZipping(true);
@@ -502,11 +520,22 @@ export function KnowledgeTree({
 
   return (
     <>
-      {checked.size > 0 && (
-        <div className="sticky top-0 z-10 mb-1 flex items-center justify-between gap-2 rounded-md border bg-background/95 backdrop-blur px-2 py-1.5">
-          <span className="text-xs text-muted-foreground">
+      <div className="sticky top-0 z-10 mb-1 flex items-center justify-between gap-2 rounded-md border bg-background/95 backdrop-blur px-2 py-1.5">
+        {checked.size === 0 ? (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 text-xs"
+            onClick={selectAll}
+          >
+            Select all
+          </Button>
+        ) : (
+          <span className="text-xs text-muted-foreground pl-1">
             {checked.size} selected
           </span>
+        )}
+        {checked.size > 0 && (
           <div className="flex items-center gap-1">
             <Button
               size="sm"
@@ -521,8 +550,9 @@ export function KnowledgeTree({
               {zipping ? "Zipping…" : "Download ZIP"}
             </Button>
           </div>
-        </div>
-      )}
+        )}
+      </div>
+
       <ContextMenu>
         <ContextMenuTrigger>
           <div

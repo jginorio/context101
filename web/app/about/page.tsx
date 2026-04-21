@@ -12,55 +12,86 @@ import { Separator } from "@/components/ui/separator";
 
 import "@/utils/amplify-client-config";
 
-const MCP_CONFIG_SNIPPET = `"context101": {
+const SNIPPET_HTTP = `"context101": {
   "url": "https://nqdr4qhnun.us-east-1.awsapprunner.com/mcp",
   "headers": {
     "Authorization": "Bearer context101-platea-2026-bearer"
   }
 }`;
 
-function CopyMcpConfig() {
+const SNIPPET_STDIO = `"context101": {
+  "command": "npx",
+  "args": [
+    "-y",
+    "mcp-remote",
+    "https://nqdr4qhnun.us-east-1.awsapprunner.com/mcp",
+    "--header",
+    "Authorization: Bearer context101-platea-2026-bearer"
+  ]
+}`;
+
+function CopyableSnippet({
+  label,
+  snippet,
+  note,
+}: {
+  label: string;
+  snippet: string;
+  note: string;
+}) {
   const [copied, setCopied] = React.useState(false);
   async function copy() {
     try {
-      await navigator.clipboard.writeText(MCP_CONFIG_SNIPPET);
+      await navigator.clipboard.writeText(snippet);
       setCopied(true);
-      toast.success("MCP config copied");
+      toast.success(`${label} config copied`);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       toast.error("Copy failed — select and copy manually");
     }
   }
   return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-sm font-medium">{label}</p>
+        <Button size="sm" variant="outline" onClick={copy}>
+          {copied ? (
+            <Check className="mr-1 h-3.5 w-3.5" />
+          ) : (
+            <Copy className="mr-1 h-3.5 w-3.5" />
+          )}
+          {copied ? "Copied" : "Copy"}
+        </Button>
+      </div>
+      <p className="text-xs text-muted-foreground">{note}</p>
+      <pre className="text-xs font-mono whitespace-pre overflow-x-auto rounded-md border bg-muted/30 p-3">
+        {snippet}
+      </pre>
+    </div>
+  );
+}
+
+function CopyMcpConfig() {
+  return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base flex items-center justify-between gap-2">
-          <span>Connect your MCP client</span>
-          <Button size="sm" variant="outline" onClick={copy}>
-            {copied ? (
-              <Check className="mr-1 h-3.5 w-3.5" />
-            ) : (
-              <Copy className="mr-1 h-3.5 w-3.5" />
-            )}
-            {copied ? "Copied" : "Copy"}
-          </Button>
-        </CardTitle>
+        <CardTitle className="text-base">Connect your MCP client</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-3">
-        <p className="text-sm text-muted-foreground">
-          Paste this block into your MCP client&apos;s{" "}
-          <code className="font-mono text-xs">mcpServers</code> config
-          (Cursor <code className="font-mono text-xs">.cursor/mcp.json</code>,
-          etc).
-        </p>
-        <pre className="text-xs font-mono whitespace-pre overflow-x-auto rounded-md border bg-muted/30 p-3">
-          {MCP_CONFIG_SNIPPET}
-        </pre>
-        <p className="text-xs text-muted-foreground">
-          Claude Desktop needs the{" "}
-          <code className="font-mono">mcp-remote</code> stdio proxy — see the
-          README for that variant.
-        </p>
+      <CardContent className="space-y-5">
+        <CopyableSnippet
+          label="Cursor / Claude Code / Devin"
+          snippet={SNIPPET_HTTP}
+          note={
+            "Paste into the mcpServers object in .cursor/mcp.json or the equivalent. Streamable-HTTP native."
+          }
+        />
+        <CopyableSnippet
+          label="Claude Desktop"
+          snippet={SNIPPET_STDIO}
+          note={
+            "Claude Desktop only speaks stdio — mcp-remote is a tiny proxy (auto-installed by npx on first run). Paste into claude_desktop_config.json, then restart Claude Desktop."
+          }
+        />
       </CardContent>
     </Card>
   );
