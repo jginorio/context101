@@ -395,6 +395,21 @@ export class Context101Stack extends cdk.Stack {
           ],
         })
       );
+      // Bedrock validates the Anthropic model subscription via AWS
+      // Marketplace on each cold-start invoke. Without these actions the
+      // Lambda gets "not authorized to perform aws-marketplace:Subscribe".
+      // These actions don't support resource-level scoping.
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "BedrockMarketplaceCheck",
+          actions: [
+            "aws-marketplace:ViewSubscriptions",
+            "aws-marketplace:Subscribe",
+            "aws-marketplace:Unsubscribe",
+          ],
+          resources: ["*"],
+        })
+      );
 
       // Attach the compute role to the Amplify App
       webApp.addPropertyOverride("ComputeRoleArn", ssrComputeRole.roleArn);
