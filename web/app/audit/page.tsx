@@ -118,32 +118,72 @@ export default function AuditPage() {
     setFindings(null);
     try {
       const r = await fetch("/api/brain/audit", { method: "POST" });
-      const text = await r.text();
-      if (!r.ok) {
-        // 504s / platform errors often return empty body or HTML
-        if (!text)
-          throw new Error(
-            `HTTP ${r.status} — empty response (likely a gateway timeout; the audit is still running on the backend, but the browser gave up). Try again.`
-          );
-        try {
-          const j = JSON.parse(text);
-          throw new Error(j.error ?? `audit failed: HTTP ${r.status}`);
-        } catch {
-          throw new Error(
-            `HTTP ${r.status}: ${text.slice(0, 200)}`
-          );
-        }
+      if (!r.ok || !r.body) {
+        const text = await r.text().catch(() => "");
+        throw new Error(
+          text
+            ? `HTTP ${r.status}: ${text.slice(0, 200)}`
+            : `HTTP ${r.status} — empty response`
+        );
       }
-      let j: { findings?: Finding[]; fileCount?: number };
+
+      // Read the streamed response; the server prepends a meta line
+      // (__meta__:{...}\n) and may append an __error__ line. Model
+      // tokens arrive in between. Accumulate everything, strip the
+      // meta markers, then JSON-parse the model output at the end.
+      const reader = r.body.getReader();
+      const decoder = new TextDecoder();
+      let accumulated = "";
+      let fileCountLocal = 0;
+      let streamError: string | null = null;
+
+      // Read until done — the connection stays alive because bytes
+      // flow continuously from the model.
+      // eslint-disable-next-line no-constant-condition
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        accumulated += decoder.decode(value, { stream: true });
+      }
+      accumulated += decoder.decode(); // flush
+
+      // Parse any framed meta lines out before JSON-parsing the body.
+      const metaMatch = accumulated.match(/^__meta__:(\{[^\n]*\})\n/);
+      if (metaMatch) {
+        try {
+          fileCountLocal = JSON.parse(metaMatch[1]).fileCount ?? 0;
+        } catch {
+          /* ignore */
+        }
+        accumulated = accumulated.slice(metaMatch[0].length);
+      }
+      const errMatch = accumulated.match(/\n__error__:(\{[^\n]*\})\n?$/);
+      if (errMatch) {
+        try {
+          streamError = JSON.parse(errMatch[1]).error ?? "stream error";
+        } catch {
+          streamError = "stream error";
+        }
+        accumulated = accumulated.slice(0, errMatch.index);
+      }
+      if (streamError) throw new Error(streamError);
+
+      const cleaned = accumulated
+        .trim()
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/, "")
+        .trim();
+
+      let j: { findings?: Finding[] };
       try {
-        j = JSON.parse(text);
+        j = JSON.parse(cleaned);
       } catch {
         throw new Error(
-          `Server returned non-JSON (first 200 chars): ${text.slice(0, 200)}`
+          `Model returned non-JSON (first 200 chars): ${cleaned.slice(0, 200)}`
         );
       }
       setFindings(j.findings ?? []);
-      setFileCount(j.fileCount ?? 0);
+      setFileCount(fileCountLocal);
       setDismissed(new Set());
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

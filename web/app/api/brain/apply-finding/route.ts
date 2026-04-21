@@ -1,43 +1,47 @@
 import { GetObjectCommand } from "@aws-sdk/client-s3";
-import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { DOCS_BUCKET, s3 } from "@/utils/s3";
-import { applyFinding, type Finding } from "@/utils/bedrock";
+import { applyFindingStream, type Finding } from "@/utils/bedrock";
 
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 /**
  * POST /api/brain/apply-finding
  * Body: { finding: Finding }
  *
- * Loads the files the finding implicates, sends them + the finding to
- * Claude Opus with a surgical prompt, and returns the proposed new
- * contents for each affected file. Does NOT write anything to S3 —
- * the UI shows a diff and hits /api/files/put for each file the user
- * accepts.
+ * Same streaming pattern as /audit — Claude's tokens flow continuously
+ * so the edge doesn't 504. The client accumulates, parses JSON at end.
+ * We prepend an "__originals__" line so the client can render diffs
+ * without a separate round-trip.
  */
 export async function POST(request: NextRequest) {
   if (!DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "DOCS_BUCKET env var is not set" },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ error: "DOCS_BUCKET env var is not set" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.finding !== "object") {
-    return NextResponse.json({ error: "finding is required" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "finding is required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
   const finding = body.finding as Finding;
   if (!Array.isArray(finding.file_paths) || finding.file_paths.length === 0) {
-    return NextResponse.json(
-      { error: "finding.file_paths must be a non-empty array" },
-      { status: 400 }
+    return new Response(
+      JSON.stringify({ error: "finding.file_paths must be a non-empty array" }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
   if (finding.file_paths.some((p) => typeof p !== "string" || p.includes(".."))) {
-    return NextResponse.json({ error: "invalid path in finding" }, { status: 400 });
+    return new Response(JSON.stringify({ error: "invalid path in finding" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 
   try {
@@ -51,26 +55,50 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    const applied = await applyFinding(finding, files);
-
-    // Build a response that pairs each proposed new_content with its
-    // original so the UI can render diffs without re-fetching.
-    const diffs = applied.files.map((a) => {
-      const src = files.find((f) => f.path === a.path);
-      return {
-        path: a.path,
-        original_content: src?.content ?? "",
-        new_content: a.new_content,
-        changed: !!src && src.content !== a.new_content,
-      };
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        // Send the originals so the client can compute diffs without
+        // re-fetching once the new_content arrives.
+        controller.enqueue(
+          encoder.encode(
+            `__originals__:${JSON.stringify({
+              originals: files.map((f) => ({
+                path: f.path,
+                content: f.content,
+              })),
+            })}\n`
+          )
+        );
+        try {
+          for await (const chunk of applyFindingStream(finding, files)) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          controller.enqueue(
+            encoder.encode(`\n__error__:${JSON.stringify({ error: msg })}\n`)
+          );
+        } finally {
+          controller.close();
+        }
+      },
     });
 
-    return NextResponse.json({ diffs });
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, no-transform",
+        "X-Accel-Buffering": "no",
+      },
+    });
   } catch (err) {
     console.error("apply-finding failed:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({
+        error: err instanceof Error ? err.message : String(err),
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }

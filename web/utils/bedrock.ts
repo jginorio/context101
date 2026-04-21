@@ -1,6 +1,7 @@
 import {
   BedrockRuntimeClient,
   ConverseCommand,
+  ConverseStreamCommand,
 } from "@aws-sdk/client-bedrock-runtime";
 
 const client = new BedrockRuntimeClient({
@@ -238,4 +239,58 @@ export async function applyFinding(
   }
   if (!Array.isArray(parsed.files)) parsed.files = [];
   return parsed;
+}
+
+// ── Streaming variants ────────────────────────────────────────────────
+// Amplify Hosting's edge cuts connections with no activity (~30s). Using
+// ConverseStream and forwarding bytes to the client keeps the connection
+// alive for the full duration Opus needs. The client accumulates all
+// chunks and parses the JSON at the end.
+
+async function* streamModelText(
+  systemPrompt: string,
+  userMessage: string,
+  maxTokens = 16_384
+): AsyncGenerator<string> {
+  const res = await client.send(
+    new ConverseStreamCommand({
+      modelId: MODEL_ID,
+      system: [{ text: systemPrompt }],
+      messages: [{ role: "user", content: [{ text: userMessage }] }],
+      inferenceConfig: { maxTokens },
+    })
+  );
+
+  if (!res.stream) return;
+  for await (const event of res.stream) {
+    const delta = event.contentBlockDelta?.delta;
+    if (delta?.text) yield delta.text;
+  }
+}
+
+export function auditBrainStream(
+  files: { path: string; content: string }[]
+): AsyncGenerator<string> {
+  const body = files
+    .map((f) => `<doc path="${f.path}">\n${f.content}\n</doc>`)
+    .join("\n\n");
+  const userMessage = `Here are all the documents in the brain. Audit them.\n\n${body}`;
+  return streamModelText(AUDIT_SYSTEM_PROMPT, userMessage);
+}
+
+export function applyFindingStream(
+  finding: Finding,
+  files: { path: string; content: string }[]
+): AsyncGenerator<string> {
+  const filesXml = files
+    .map((f) => `<file path="${f.path}">\n${f.content}\n</file>`)
+    .join("\n\n");
+  const userMessage = `THE FIX TO APPLY:\n<finding>\n${JSON.stringify(finding, null, 2)}\n</finding>\n\nTHE FILES (each may or may not be modified):\n${filesXml}`;
+  return streamModelText(APPLY_SYSTEM_PROMPT, userMessage);
+}
+
+// Helper to strip the SSE-style framing on the server when responding —
+// exported for the routes so they don't duplicate this code.
+export function stripJsonFencesPublic(s: string): string {
+  return stripJsonFences(s);
 }

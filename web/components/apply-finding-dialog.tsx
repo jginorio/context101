@@ -59,31 +59,77 @@ export function ApplyFindingDialog({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ finding }),
         });
-        const text = await r.text();
-        if (!r.ok) {
-          if (!text)
-            throw new Error(
-              `HTTP ${r.status} — empty response (likely a gateway timeout). Try again.`
-            );
-          try {
-            const j = JSON.parse(text);
-            throw new Error(j.error ?? `apply failed: HTTP ${r.status}`);
-          } catch {
-            throw new Error(
-              `HTTP ${r.status}: ${text.slice(0, 200)}`
-            );
-          }
-        }
-        let j: { diffs?: Diff[] };
-        try {
-          j = JSON.parse(text);
-        } catch {
+        if (!r.ok || !r.body) {
+          const text = await r.text().catch(() => "");
           throw new Error(
-            `Server returned non-JSON (first 200 chars): ${text.slice(0, 200)}`
+            text
+              ? `HTTP ${r.status}: ${text.slice(0, 200)}`
+              : `HTTP ${r.status} — empty response`
           );
         }
+
+        // Streaming read. Server prepends "__originals__:{...}\n" with
+        // the file contents, then the model tokens, then optionally an
+        // "__error__:{...}\n" on failure.
+        const reader = r.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulated = "";
+        // eslint-disable-next-line no-constant-condition
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          accumulated += decoder.decode(value, { stream: true });
+        }
+        accumulated += decoder.decode();
+
+        let originals: { path: string; content: string }[] = [];
+        const origMatch = accumulated.match(/^__originals__:(\{[\s\S]*?\})\n/);
+        if (origMatch) {
+          try {
+            originals = JSON.parse(origMatch[1]).originals ?? [];
+          } catch {
+            /* ignore */
+          }
+          accumulated = accumulated.slice(origMatch[0].length);
+        }
+        const errMatch = accumulated.match(/\n__error__:(\{[\s\S]*?\})\n?$/);
+        if (errMatch) {
+          let msg = "stream error";
+          try {
+            msg = JSON.parse(errMatch[1]).error ?? msg;
+          } catch {
+            /* keep default */
+          }
+          throw new Error(msg);
+        }
+
+        const cleaned = accumulated
+          .trim()
+          .replace(/^```(?:json)?\s*/i, "")
+          .replace(/\s*```$/, "")
+          .trim();
+
+        let parsed: { files?: { path: string; new_content: string }[] };
+        try {
+          parsed = JSON.parse(cleaned);
+        } catch {
+          throw new Error(
+            `Model returned non-JSON (first 200 chars): ${cleaned.slice(0, 200)}`
+          );
+        }
+
+        const diffs: Diff[] = (parsed.files ?? []).map((a) => {
+          const src = originals.find((o) => o.path === a.path);
+          return {
+            path: a.path,
+            original_content: src?.content ?? "",
+            new_content: a.new_content,
+            changed: !!src && src.content !== a.new_content,
+          };
+        });
+
         if (cancelled) return;
-        setDiffs(j.diffs ?? []);
+        setDiffs(diffs);
       } catch (e) {
         if (!cancelled) setError(e instanceof Error ? e.message : String(e));
       } finally {

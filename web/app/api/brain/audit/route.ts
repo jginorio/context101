@@ -2,32 +2,31 @@ import {
   GetObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
-import { NextResponse } from "next/server";
 
 import { DOCS_BUCKET, s3 } from "@/utils/s3";
-import { auditBrain } from "@/utils/bedrock";
+import { auditBrainStream } from "@/utils/bedrock";
 
-export const maxDuration = 180; // audit + opus call can take a couple min
+export const maxDuration = 300;
 
 /**
  * POST /api/brain/audit
  *
- * Reads every .md file in the docs bucket and sends the corpus to
- * Claude Opus 4.7, asking for cross-document findings (overlaps,
- * missing cross-references, inconsistencies, consolidation hints).
- *
- * Returns: { findings: Finding[] }
+ * Streams Claude Opus's tokens straight to the client so the connection
+ * stays alive past Amplify Hosting's edge timeout (~30s). The client
+ * accumulates the full text and JSON-parses at the end. We also prepend
+ * a fileCount header line ("__meta__:{"fileCount":N}\n") so the UI can
+ * report coverage without a separate request.
  */
 export async function POST() {
   if (!DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "DOCS_BUCKET env var is not set" },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({ error: "DOCS_BUCKET env var is not set" }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 
   try {
-    // List all markdown files in the bucket (paginated)
+    // List all .md files (paginated)
     const keys: string[] = [];
     let token: string | undefined;
     do {
@@ -50,10 +49,9 @@ export async function POST() {
     } while (token);
 
     if (keys.length === 0) {
-      return NextResponse.json({ findings: [] });
+      return Response.json({ findings: [], fileCount: 0 });
     }
 
-    // Fetch each file's content in parallel
     const files = await Promise.all(
       keys.map(async (k) => {
         const obj = await s3.send(
@@ -64,13 +62,42 @@ export async function POST() {
       })
     );
 
-    const findings = await auditBrain(files);
-    return NextResponse.json({ findings, fileCount: files.length });
+    const encoder = new TextEncoder();
+    const stream = new ReadableStream<Uint8Array>({
+      async start(controller) {
+        // Small meta header so the client knows how many files got audited.
+        controller.enqueue(
+          encoder.encode(`__meta__:${JSON.stringify({ fileCount: files.length })}\n`)
+        );
+        try {
+          for await (const chunk of auditBrainStream(files)) {
+            controller.enqueue(encoder.encode(chunk));
+          }
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          controller.enqueue(
+            encoder.encode(`\n__error__:${JSON.stringify({ error: msg })}\n`)
+          );
+        } finally {
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/plain; charset=utf-8",
+        "Cache-Control": "no-cache, no-store, no-transform",
+        "X-Accel-Buffering": "no",
+      },
+    });
   } catch (err) {
     console.error("audit failed:", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : String(err) },
-      { status: 500 }
+    return new Response(
+      JSON.stringify({
+        error: err instanceof Error ? err.message : String(err),
+      }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 }
