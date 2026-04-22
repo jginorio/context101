@@ -41,6 +41,8 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 ├── server.py                     # Python MCP server (FastMCP + boto3)
 ├── Dockerfile                    # Used by App Runner
 ├── knowledge/                    # Your markdown — source of truth
+├── web/                          # Next.js admin UI (Amplify Hosting)
+├── wiki-generator/               # Fargate task that synthesizes the wiki
 └── requirements.txt
 ```
 
@@ -174,6 +176,8 @@ Note: the Cognito accounts control access to the **web admin UI**. The **MCP end
 
 On re-deploys, CDK's `BucketDeployment` only uploads files that changed and `prune: true` removes files you deleted locally. No infra changes → quick deploy (~20s).
 
+The synthesized wiki regenerates automatically every 10h, so it'll catch up to your changes on the next schedule tick. If you want it immediately, open the **Wiki** tab in the admin UI and hit **Refresh now**.
+
 ## Tools
 
 | Tool | Purpose |
@@ -197,6 +201,42 @@ Cost: ~$0.02–0.05 per call on a typical 10KB doc. Nothing is written to S3 unl
 **Requires on the AWS account:**
 - Bedrock model access granted for Claude Opus 4.7 (one-time: `aws bedrock create-foundation-model-agreement`)
 - `bedrock:InvokeModel` + `aws-marketplace:*` on the Amplify SSR compute role (handled by CDK)
+
+## Auto-generated wiki (web app)
+
+Raw contributions to `knowledge/` don't need to be structured — people drop in whatever makes sense for them. A scheduled **Fargate task** reads the whole corpus and synthesizes a cross-referenced wiki (DeepWiki-style) under `wiki/` in the docs bucket. The admin UI's **Wiki** tab renders it read-only with Mermaid diagrams and source citations back to the original markdown.
+
+**User flow:**
+1. Sign in and click **Wiki** in the header.
+2. Left sidebar lists pages (e.g. "Overview", "System Architecture", "Data Flow"); main pane renders the selected page.
+3. Right-side card shows **Last indexed** timestamp and a **Refresh now** button — one click triggers a fresh regen and polls until it finishes (~1-3 min).
+
+The wiki auto-regenerates every 10 hours via an EventBridge schedule. The scheduled runs and the manual button hit the same Fargate task.
+
+**What gets written to S3:**
+- `wiki/<slug>.md` — one page per topic, full markdown with Mermaid blocks and `Sources: [file.md]()` citations
+- `wiki/_index.json` — nav order, titles, descriptions, source mappings per page
+- `wiki/_meta.json` — timestamps + page/source counts (drives the "Last indexed" badge)
+
+Generated pages land in the same bucket as raw docs, so the auto-ingest Lambda picks them up and Bedrock re-embeds them — **wiki pages are searchable via the same `search_knowledge` MCP tool** as raw docs.
+
+Cost: ~$0.30–0.80 per full regen (one Opus call for the structure + one per page). Fargate runtime is ~3-5 min at $0.04/hr-ish for a 0.5 vCPU / 1 GB task — negligible compared to the Opus spend.
+
+### Run the generator locally
+
+```bash
+cd wiki-generator
+pip install -r requirements.txt
+
+AWS_PROFILE=plateapr.com \
+AWS_REGION=us-east-1 \
+DOCS_BUCKET=<DocsBucketName> \
+python generate.py
+```
+
+Env knobs (all optional): `WIKI_PREFIX` (default `wiki/`), `MODEL_ID` (default `us.anthropic.claude-opus-4-7`), `MIN_PAGES` / `MAX_PAGES` (default 4 / 8), `CORPUS_PREVIEW_CHARS` (default 600 — how much of each source doc feeds into the structure call), `MAX_TOKENS` (default 8192 per Opus call).
+
+Set `WIKI_PREFIX=wiki-preview/` to iterate on prompts without overwriting the live wiki.
 
 ## How it works under the hood
 
@@ -274,6 +314,59 @@ knowledge/databases.md                   (local markdown)
    if it needs the full source doc
 ```
 
+### Wiki generation: corpus → synthesized pages
+
+```
+                               ┌────────────────────────┐
+                               │  EventBridge (10h)     │
+    ┌──────────────────────────┤  OR  web UI click      │
+    │                          │  → ecs:RunTask         │
+    ▼                          └────────────────────────┘
+┌──────────────────┐
+│  Fargate task    │   (0.5 vCPU, ~3-5 min)
+│  generate.py     │
+└────────┬─────────┘
+         │
+         │  1. List s3://docs/ *.md (excluding wiki/)
+         │  2. Build corpus summary (filename + preview)
+         │
+         ▼
+┌──────────────────────┐
+│  Opus call #1        │  ← structure prompt
+│  "plan the wiki"     │    returns <wiki_structure> XML:
+└────────┬─────────────┘    { pages: [{title, description,
+         │                     relevant_files, related}] }
+         │
+         │  3. Parse XML → list of page specs
+         │
+         ▼
+┌──────────────────────┐
+│  Opus call per page  │  ← per-page prompt + relevant source MDs
+│  "write the page"    │    returns markdown with Mermaid blocks
+└────────┬─────────────┘    and Sources: [file.md]() citations
+         │
+         │  4. Write each generated page + _index.json + _meta.json
+         │
+         ▼
+┌──────────────────────┐
+│  S3 docs bucket      │
+│  wiki/*.md           │  ← the artifact (markdown, not XML)
+│  wiki/_index.json    │
+│  wiki/_meta.json     │
+└────────┬─────────────┘
+         │  S3 PutObject event
+         ▼
+   auto-ingest Lambda → Bedrock KB → S3 Vectors
+       (same pipeline as raw docs — wiki pages
+        become retrievable via search_knowledge)
+```
+
+**Why two LLM calls instead of one?** The structure call plans topically using just filenames + first-N-chars of each source — cheap, wide context. The per-page call gets the full content of that page's `relevant_files` — deep context, narrow scope. Generating the whole wiki in one prompt would blow the context window on anything beyond a handful of docs and produce worse structure.
+
+**Why XML for the plan?** Nested lists-of-lists (sections → pages → relevant_files + related_pages) serialize cleanly in XML and Opus emits it reliably without JSON-mode. The XML is scratch — only the generated markdown lands in S3.
+
+**Source citations.** Each page's per-page prompt requires `Sources: [file.md]()` lines under every claim. Combined with the `sources[]` array in `_index.json`, this gives the Wiki tab the "Synthesized from" footer and preserves the provenance chain back to the raw docs (which are still there, unchanged).
+
 ## Cleanup
 
 ```bash
@@ -297,6 +390,7 @@ The S3 docs bucket and S3 Vectors bucket have `RETAIN` policies — you won't lo
 - The MCP server doesn't write to the KB — documents are managed via the `knowledge/` folder + `cdk deploy`.
 - Each S3 upload triggers a full ingestion job. Bedrock handles dedup/delta indexing internally.
 - To rotate the bearer token: re-run `cdk deploy -c token=<new-value>`. Redeploys the App Runner service with the new secret.
+- The wiki generator writes one file per page on each run, so a full regen kicks N ingestion jobs in rapid succession. Bedrock dedups internally — it's safe, just noisy in the console.
 
 ## Roadmap / TODO
 
