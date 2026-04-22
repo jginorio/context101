@@ -15,6 +15,7 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as events_targets from "aws-cdk-lib/aws-events-targets";
+import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as path from "path";
 
 /**
@@ -41,6 +42,27 @@ export class Context101Stack extends cdk.Stack {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       encryption: s3.BucketEncryption.S3_MANAGED,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // ── 1a. Suggestions table ────────────────────────────────────────
+    //      Agents (via the MCP tool `suggest_knowledge`) write rows
+    //      here. The web admin lists / approves / rejects them. On
+    //      approval, the web route writes the content to the docs
+    //      bucket and flips status to `accepted`.
+    const suggestionsTable = new dynamodb.TableV2(this, "SuggestionsTable", {
+      tableName: `${namePrefix}-suggestions`,
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billing: dynamodb.Billing.onDemand(),
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      globalSecondaryIndexes: [
+        {
+          // Lets the UI list all suggestions in a given status newest first.
+          indexName: "status-created_at-index",
+          partitionKey: { name: "status", type: dynamodb.AttributeType.STRING },
+          sortKey: { name: "created_at", type: dynamodb.AttributeType.STRING },
+        },
+      ],
     });
 
     // ── 2. S3 Vectors bucket + index ─────────────────────────────────
@@ -366,6 +388,8 @@ export class Context101Stack extends cdk.Stack {
       );
       docsBucket.grantRead(instanceRole);
       tokenSecret.grantRead(instanceRole);
+      // MCP's `suggest_knowledge` tool writes to the Suggestions table.
+      suggestionsTable.grantWriteData(instanceRole);
 
       // d) App Runner access role — permission to pull from ECR
       const accessRole = new iam.Role(this, "AppRunnerAccessRole", {
@@ -392,6 +416,7 @@ export class Context101Stack extends cdk.Stack {
                 { name: "AWS_REGION", value: this.region },
                 { name: "KB_ID", value: kb.attrKnowledgeBaseId },
                 { name: "DOCS_BUCKET", value: docsBucket.bucketName },
+                { name: "SUGGESTIONS_TABLE", value: suggestionsTable.tableName },
               ],
               runtimeEnvironmentSecrets: [
                 { name: "CONTEXT101_TOKEN", value: tokenSecret.secretArn },
@@ -460,6 +485,7 @@ export class Context101Stack extends cdk.Stack {
         platform: "WEB_COMPUTE", // Next.js SSR
         environmentVariables: [
           { name: "DOCS_BUCKET", value: docsBucket.bucketName },
+          { name: "SUGGESTIONS_TABLE", value: suggestionsTable.tableName },
           // AWS_REGION can't be set — Amplify reserves the "AWS_" prefix.
           // Lambda's runtime sets it automatically, so utils/s3.ts picks
           // it up from process.env.AWS_REGION without us configuring it.
@@ -570,6 +596,9 @@ export class Context101Stack extends cdk.Stack {
           resources: ["*"],
         })
       );
+      // Suggestions table — SSR lists (GSI query), reads for diff, and
+      // updates status on approve/reject.
+      suggestionsTable.grantReadWriteData(ssrComputeRole);
       // "Refresh now" button on /wiki — lets SSR trigger one-off runs of
       // the wiki generator and poll task status for UI feedback.
       ssrComputeRole.addToPolicy(

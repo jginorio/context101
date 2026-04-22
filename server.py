@@ -2,14 +2,16 @@
 Context101 — Shared team knowledge base via MCP, backed by Amazon Bedrock Knowledge Bases.
 
 Tools:
-  - search_knowledge: Semantic search against the KB (wraps bedrock-agent-runtime:Retrieve)
-  - read_knowledge:   Fetch the full content of a source document by S3 key
-  - list_sources:     List available documents in the S3 docs bucket
+  - search_knowledge:   Semantic search against the KB (wraps bedrock-agent-runtime:Retrieve)
+  - read_knowledge:     Fetch the full content of a source document by S3 key
+  - list_sources:       List available documents in the S3 docs bucket
+  - suggest_knowledge:  Propose a new doc or an improvement — queued for human review
 
 Stack:
   - FastMCP (Python) for MCP protocol
-  - boto3 for Bedrock Agent Runtime + S3
+  - boto3 for Bedrock Agent Runtime + S3 + DynamoDB
   - Knowledge Base (Titan embed v2 + S3 Vectors) provisioned via CDK
+  - Suggestions queue in DynamoDB (context101-suggestions)
 
 Auth:
   - If CONTEXT101_TOKEN env var is set, the server requires
@@ -18,6 +20,8 @@ Auth:
 """
 
 import os
+import uuid
+from datetime import datetime, timezone
 from typing import Any
 
 import boto3
@@ -29,6 +33,7 @@ from fastmcp import FastMCP
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 KB_ID = os.environ.get("KB_ID")
 DOCS_BUCKET = os.environ.get("DOCS_BUCKET")  # Needed for read_knowledge / list_sources
+SUGGESTIONS_TABLE = os.environ.get("SUGGESTIONS_TABLE")  # Needed for suggest_knowledge
 AWS_PROFILE = os.environ.get("AWS_PROFILE")
 TOKEN = os.environ.get("CONTEXT101_TOKEN")  # Optional bearer token
 
@@ -45,6 +50,7 @@ _boto_cfg = Config(retries={"max_attempts": 3, "mode": "standard"})
 
 bedrock_runtime = _session.client("bedrock-agent-runtime", config=_boto_cfg)
 s3 = _session.client("s3", config=_boto_cfg)
+ddb = _session.resource("dynamodb", config=_boto_cfg)
 
 
 # ── Auth ──────────────────────────────────────────────────────────────
@@ -77,11 +83,16 @@ Workflow:
   2. If a chunk looks promising but you need more context, call read_knowledge
      with the source S3 key to read the full document.
   3. Use list_sources if you just want to see what documents exist.
+  4. If you discover something worth preserving (a missing fact, an inaccuracy,
+     a better explanation), call suggest_knowledge. The suggestion is queued
+     for human review in the admin UI — not written to the brain automatically.
 
 Available tools:
 - search_knowledge(query, limit=5): semantic search, returns ranked chunks
 - read_knowledge(s3_key): full content of a source document
 - list_sources(): list all documents in the knowledge base
+- suggest_knowledge(title, content, target_path?, rationale?, trigger?):
+    propose a new doc or update an existing one; goes to the review queue
 """,
     auth=_build_auth(),
 )
@@ -191,3 +202,79 @@ def list_sources() -> str:
     lines = [f"**{len(keys)} document(s) in the knowledge base:**", ""]
     lines.extend(f"- `{k}`" for k in sorted(keys))
     return "\n".join(lines)
+
+
+@mcp.tool()
+def suggest_knowledge(
+    title: str,
+    content: str,
+    target_path: str | None = None,
+    rationale: str | None = None,
+    trigger: str | None = None,
+) -> str:
+    """Suggest new knowledge or an improvement to an existing doc.
+
+    The suggestion lands in the review queue — it is NOT written to the brain
+    automatically. A human reviews it in the Context101 admin UI and either
+    approves (it becomes part of the brain) or rejects it.
+
+    Use this when you discover:
+      - A new fact, pattern, or convention worth preserving
+      - An inaccuracy in an existing doc
+      - A missing cross-reference
+      - A better explanation of something already covered
+
+    Args:
+        title: Short headline describing the suggestion (max 80 chars).
+        content: Full proposed markdown. For updates, this is the complete
+                 replacement content (not a patch). For new docs, this is the
+                 full document body.
+        target_path: S3 key of an existing doc to update. Omit for a new doc
+                     — the reviewer picks the destination path when approving.
+        rationale: Why this suggestion is useful. What prompted it.
+        trigger: When the reader is likely to need this
+                 (e.g. "when querying amplia", "when deploying to ECS").
+
+    Returns:
+        The suggestion's ID (for audit/traceability).
+    """
+    if not SUGGESTIONS_TABLE:
+        return (
+            "Suggestions are disabled: SUGGESTIONS_TABLE env var is not set. "
+            "Deploy the CDK stack with the Suggestions table, or ask an admin."
+        )
+    if not title.strip() or not content.strip():
+        return "Both `title` and `content` are required."
+    if len(title) > 200:
+        return "Title too long (max 200 chars)."
+    if len(content) > 200_000:
+        return "Content too large (>200KB). Split into a smaller suggestion."
+
+    table = ddb.Table(SUGGESTIONS_TABLE)
+    suggestion_id = str(uuid.uuid4())
+    now = datetime.now(timezone.utc).isoformat()
+
+    item: dict[str, Any] = {
+        "id": suggestion_id,
+        "status": "pending",
+        "created_at": now,
+        "title": title.strip()[:200],
+        "content": content,
+    }
+    if target_path:
+        item["target_path"] = target_path.strip()
+    if rationale:
+        item["rationale"] = rationale.strip()[:2000]
+    if trigger:
+        item["trigger"] = trigger.strip()[:500]
+
+    table.put_item(Item=item)
+
+    kind = f"update to `{target_path}`" if target_path else "new document"
+    return (
+        f"✅ Suggestion submitted ({kind}).\n\n"
+        f"**ID:** `{suggestion_id}`\n"
+        f"**Title:** {title}\n"
+        f"**Status:** pending — a human will review it in the Context101 admin UI. "
+        f"The change will not be part of the brain until approved."
+    )
