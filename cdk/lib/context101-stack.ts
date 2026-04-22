@@ -388,7 +388,10 @@ export class Context101Stack extends cdk.Stack {
       ssrComputeRole.addToPolicy(
         new iam.PolicyStatement({
           sid: "InvokeClaudeOpus",
-          actions: ["bedrock:InvokeModel"],
+          actions: [
+            "bedrock:InvokeModel",
+            "bedrock:InvokeModelWithResponseStream",
+          ],
           resources: [
             `arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-7*`,
             `arn:aws:bedrock:*:${this.account}:inference-profile/*claude-opus-4-7*`,
