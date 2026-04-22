@@ -10,6 +10,11 @@ import * as ecr_assets from "aws-cdk-lib/aws-ecr-assets";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
 import * as amplify from "aws-cdk-lib/aws-amplify";
+import * as ec2 from "aws-cdk-lib/aws-ec2";
+import * as ecs from "aws-cdk-lib/aws-ecs";
+import * as logs from "aws-cdk-lib/aws-logs";
+import * as events from "aws-cdk-lib/aws-events";
+import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import * as path from "path";
 
 /**
@@ -188,6 +193,146 @@ export class Context101Stack extends cdk.Stack {
     // so the auto-ingest Lambda fires on the initial upload.
     deployment.node.addDependency(ingestFn);
 
+    // ── Wiki generator (Fargate + EventBridge schedule) ───────────────
+    //      Periodically synthesizes the raw markdown corpus into a
+    //      structured wiki under s3://docsBucket/wiki/. Triggered on a
+    //      schedule; also invocable on-demand from the web UI via
+    //      ecs:RunTask (see SSR role grants in section 9).
+
+    // a) Minimal VPC — public subnets only, no NAT (zero idle cost).
+    //    The task has short-lived outbound needs (S3 + Bedrock), so
+    //    assignPublicIp is enough and saves ~$32/mo vs a NAT gateway.
+    const wikiVpc = new ec2.Vpc(this, "WikiGenVpc", {
+      maxAzs: 2,
+      natGateways: 0,
+      subnetConfiguration: [
+        { name: "public", subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
+      ],
+    });
+
+    // b) ECS cluster (free; only tasks incur cost)
+    const wikiCluster = new ecs.Cluster(this, "WikiGenCluster", {
+      vpc: wikiVpc,
+      clusterName: `${namePrefix}-wiki`,
+    });
+
+    // c) Container image from wiki-generator/
+    const wikiImage = new ecr_assets.DockerImageAsset(this, "WikiGenImage", {
+      directory: path.resolve(__dirname, "..", "..", "wiki-generator"),
+      platform: ecr_assets.Platform.LINUX_AMD64,
+    });
+
+    // d) Task role — what the generator container can do at runtime
+    const wikiTaskRole = new iam.Role(this, "WikiGenTaskRole", {
+      assumedBy: new iam.ServicePrincipal("ecs-tasks.amazonaws.com"),
+      description: "Runtime role for the Context101 wiki generator",
+    });
+    wikiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "ListDocsBucket",
+        actions: ["s3:ListBucket"],
+        resources: [docsBucket.bucketArn],
+      })
+    );
+    wikiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "RwDocsObjects",
+        actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
+        resources: [`${docsBucket.bucketArn}/*`],
+      })
+    );
+    // Same Opus + marketplace grants as the SSR compute role. Wildcard
+    // ARN suffix handles Opus version bumps; cross-region inference
+    // profiles are per-account.
+    wikiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "InvokeClaudeOpus",
+        actions: [
+          "bedrock:InvokeModel",
+          "bedrock:InvokeModelWithResponseStream",
+        ],
+        resources: [
+          `arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-7*`,
+          `arn:aws:bedrock:*:${this.account}:inference-profile/*claude-opus-4-7*`,
+        ],
+      })
+    );
+    wikiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "BedrockMarketplaceCheck",
+        actions: [
+          "aws-marketplace:ViewSubscriptions",
+          "aws-marketplace:Subscribe",
+          "aws-marketplace:Unsubscribe",
+        ],
+        resources: ["*"],
+      })
+    );
+
+    // e) CloudWatch log group
+    const wikiLogGroup = new logs.LogGroup(this, "WikiGenLogs", {
+      logGroupName: `/ecs/${namePrefix}-wiki`,
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // f) Task definition — 0.5 vCPU / 1 GB. Generator is I/O-bound
+    //    (Opus latency dominates); CPU/memory are incidental.
+    const wikiTaskDef = new ecs.FargateTaskDefinition(this, "WikiGenTaskDef", {
+      cpu: 512,
+      memoryLimitMiB: 1024,
+      taskRole: wikiTaskRole,
+    });
+    wikiTaskDef.addContainer("generator", {
+      image: ecs.ContainerImage.fromDockerImageAsset(wikiImage),
+      logging: ecs.LogDrivers.awsLogs({
+        logGroup: wikiLogGroup,
+        streamPrefix: "generator",
+      }),
+      environment: {
+        AWS_REGION: this.region,
+        DOCS_BUCKET: docsBucket.bucketName,
+        WIKI_PREFIX: "wiki/",
+        MODEL_ID: "us.anthropic.claude-opus-4-7",
+      },
+    });
+
+    // g) Security group — outbound only (AWS API calls)
+    const wikiSg = new ec2.SecurityGroup(this, "WikiGenSg", {
+      vpc: wikiVpc,
+      description: "Context101 wiki generator Fargate task",
+      allowAllOutbound: true,
+    });
+
+    // h) EventBridge rule — scheduled run every 10h
+    new events.Rule(this, "WikiGenSchedule", {
+      description: "Regenerate the Context101 wiki every 10h",
+      schedule: events.Schedule.rate(cdk.Duration.hours(10)),
+      targets: [
+        new events_targets.EcsTask({
+          cluster: wikiCluster,
+          taskDefinition: wikiTaskDef,
+          subnetSelection: { subnetType: ec2.SubnetType.PUBLIC },
+          assignPublicIp: true,
+          securityGroups: [wikiSg],
+        }),
+      ],
+    });
+
+    new cdk.CfnOutput(this, "WikiGenClusterArn", {
+      value: wikiCluster.clusterArn,
+      description: "ECS cluster hosting the wiki generator task",
+    });
+    new cdk.CfnOutput(this, "WikiGenTaskDefArn", {
+      value: wikiTaskDef.taskDefinitionArn,
+    });
+    new cdk.CfnOutput(this, "WikiGenSubnetIds", {
+      value: cdk.Fn.join(",", wikiVpc.publicSubnets.map((s) => s.subnetId)),
+    });
+    new cdk.CfnOutput(this, "WikiGenSecurityGroupId", {
+      value: wikiSg.securityGroupId,
+    });
+
     // ── 8. Optional: App Runner service hosting the MCP server ────────
     //      Only provisioned if -c token=<value> is passed at deploy time.
     const teamToken = this.node.tryGetContext("token") as string | undefined;
@@ -319,6 +464,18 @@ export class Context101Stack extends cdk.Stack {
           // Lambda's runtime sets it automatically, so utils/s3.ts picks
           // it up from process.env.AWS_REGION without us configuring it.
           { name: "AMPLIFY_MONOREPO_APP_ROOT", value: "web" },
+          // Wiki generator plumbing — the "Refresh now" button on /wiki
+          // calls ecs:RunTask against this task def in this cluster.
+          { name: "WIKI_CLUSTER_ARN", value: wikiCluster.clusterArn },
+          { name: "WIKI_TASK_DEF_ARN", value: wikiTaskDef.taskDefinitionArn },
+          {
+            name: "WIKI_SUBNET_IDS",
+            value: cdk.Fn.join(
+              ",",
+              wikiVpc.publicSubnets.map((s) => s.subnetId)
+            ),
+          },
+          { name: "WIKI_SECURITY_GROUP_ID", value: wikiSg.securityGroupId },
         ],
       });
 
@@ -411,6 +568,34 @@ export class Context101Stack extends cdk.Stack {
             "aws-marketplace:Unsubscribe",
           ],
           resources: ["*"],
+        })
+      );
+      // "Refresh now" button on /wiki — lets SSR trigger one-off runs of
+      // the wiki generator and poll task status for UI feedback.
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "RunWikiGenerator",
+          actions: ["ecs:RunTask"],
+          resources: [wikiTaskDef.taskDefinitionArn],
+        })
+      );
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "PassWikiGenRoles",
+          actions: ["iam:PassRole"],
+          resources: [
+            wikiTaskRole.roleArn,
+            wikiTaskDef.executionRole!.roleArn,
+          ],
+        })
+      );
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "DescribeWikiTasks",
+          actions: ["ecs:DescribeTasks"],
+          resources: [
+            `arn:aws:ecs:${this.region}:${this.account}:task/${wikiCluster.clusterName}/*`,
+          ],
         })
       );
 
