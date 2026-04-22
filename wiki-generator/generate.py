@@ -131,10 +131,23 @@ def slugify(title: str) -> str:
     return slug or "page"
 
 
+_ENTITY_RE = re.compile(r"&(?!(?:amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);)")
+
+
+def escape_stray_ampersands(xml: str) -> str:
+    """Escape bare '&' that aren't already part of a valid XML entity.
+
+    Opus occasionally emits titles like "Findit & Amplia" which would
+    otherwise make ElementTree fail with 'not well-formed (invalid token)'.
+    """
+    return _ENTITY_RE.sub("&amp;", xml)
+
+
 def extract_xml(text: str) -> str:
     """Pull the <wiki_structure>...</wiki_structure> block out of the model output.
 
-    Defensive against: leading prose, markdown code fences, stray control chars.
+    Defensive against: leading prose, markdown code fences, stray control chars,
+    unescaped ampersands in text content.
     """
     cleaned = text.strip()
     cleaned = re.sub(r"^```(?:xml)?\s*", "", cleaned)
@@ -147,11 +160,23 @@ def extract_xml(text: str) -> str:
             f"No <wiki_structure> block in model output. First 400 chars: {text[:400]!r}"
         )
     # Strip control chars that break ET.
-    return re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", match.group(0))
+    without_controls = re.sub(r"[\x00-\x08\x0b\x0c\x0e-\x1f]", "", match.group(0))
+    return escape_stray_ampersands(without_controls)
 
 
 def parse_structure(xml_text: str, valid_keys: set[str]) -> tuple[str, str, list[PageSpec]]:
-    root = ET.fromstring(xml_text)
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        # Dump the XML for post-mortem so we don't have to re-run Opus.
+        dump_path = os.environ.get("XML_DUMP_PATH", "/tmp/wiki-structure-broken.xml")
+        try:
+            with open(dump_path, "w", encoding="utf-8") as f:
+                f.write(xml_text)
+            print(f"  [error] dumped failing XML to {dump_path}", file=sys.stderr)
+        except OSError:
+            pass
+        raise
     title = (root.findtext("title") or "Wiki").strip()
     description = (root.findtext("description") or "").strip()
 
