@@ -185,6 +185,52 @@ The synthesized wiki regenerates automatically every 10h, so it'll catch up to y
 | `search_knowledge(query, limit=5)` | Semantic search — returns ranked chunks with source + score |
 | `read_knowledge(s3_key)` | Full content of a source doc |
 | `list_sources()` | Enumerate all documents currently in the KB |
+| `suggest_knowledge(title, content, target_path?, rationale?, trigger?)` | Propose a new doc or update an existing one; goes to the review queue — never writes to the brain directly |
+
+## Knowledge suggestions (web app)
+
+Agents can propose knowledge via the MCP's `suggest_knowledge` tool. Proposals land in a DynamoDB review queue — **nothing is written to the brain until a human approves**.
+
+```
+Agent (Cursor / Claude Desktop / Devin / RV agent)
+    │  suggest_knowledge(title, content, target_path?, rationale?, trigger?)
+    ▼
+MCP (App Runner)
+    │  PutItem status=pending
+    ▼
+DynamoDB: context101-suggestions
+    │
+    ▼
+Web admin UI → /suggestions tab
+    │
+    ├─ filter by status: pending / accepted / rejected / all
+    ├─ click a row → drawer:
+    │     ├─ update case  →  side-by-side diff (existing vs proposed)
+    │     └─ new doc case →  rendered preview + editable destination path
+    └─ ✓ Approve   → writes to S3 → Bedrock auto-ingests → queryable
+       ✗ Reject    → marks rejected (kept for audit)
+```
+
+### When an agent should call it
+
+- Discovered a new fact or pattern worth preserving
+- Caught an inaccuracy in an existing doc
+- Found a missing cross-reference
+- Has a clearer explanation of something already covered
+
+### What the reviewer sees
+
+- **Trigger** (e.g. *"when querying amplia"*) or the title if no trigger was given
+- Content preview + full rationale in the detail drawer
+- For **updates**: a diff of the current file vs the proposed replacement, so you can see exactly what would change
+- For **new docs**: the rendered markdown + an editable destination path (defaults to a slugified title at root; override with a subfolder like `databases/my-doc.md`)
+
+### Useful to know
+
+- Approving writes the **full proposed content** to S3 — the agent is expected to produce a drop-in replacement, not a patch
+- Rejecting doesn't delete the row; it sits in DynamoDB with `status=rejected` for audit
+- The DynamoDB table has a GSI on `(status, created_at)` so listing any status bucket stays fast as the queue grows
+- Approval triggers the standard S3 → auto-ingest Lambda → Bedrock ingestion pipeline, so approved suggestions are retrievable via `search_knowledge` within ~1 min
 
 ## Improve with AI (web app)
 
