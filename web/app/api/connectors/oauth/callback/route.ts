@@ -20,6 +20,7 @@ import {
   sm,
   type Connector,
 } from "@/utils/connectors";
+import { getPublicOrigin } from "@/utils/public-origin";
 
 /**
  * GET /api/connectors/oauth/callback?code=...&state=<connectorId>
@@ -32,7 +33,9 @@ export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get("state");
   const code = request.nextUrl.searchParams.get("code");
   const oauthError = request.nextUrl.searchParams.get("error");
-  const origin = request.nextUrl.origin;
+  // Use forwarded headers — request.nextUrl.origin is unreliable on
+  // Amplify SSR (returns https://localhost:3000).
+  const origin = getPublicOrigin(request);
   const baseRedirect = new URL("/sources", origin);
 
   if (oauthError) {

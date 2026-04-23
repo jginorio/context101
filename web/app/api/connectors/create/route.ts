@@ -13,6 +13,7 @@ import {
   type Connector,
 } from "@/utils/connectors";
 import { getCurrentUserEmail } from "@/utils/amplify-server-utils";
+import { getPublicOrigin } from "@/utils/public-origin";
 
 const SHEETS_SCOPES = [
   "https://www.googleapis.com/auth/spreadsheets.readonly",
@@ -40,9 +41,10 @@ export async function POST(request: NextRequest) {
   }
 
   // The OAuth redirect URI must be whatever is registered in the GCP
-  // OAuth client. Derive it from the request origin so local dev and
-  // prod both work without an env var.
-  const origin = request.nextUrl.origin;
+  // OAuth client. On Amplify SSR, request.nextUrl.origin returns
+  // "https://localhost:3000" because the Lambda runtime doesn't see
+  // the public hostname. Read forwarded headers instead.
+  const origin = getPublicOrigin(request);
   const redirectUri = `${origin}/api/connectors/oauth/callback`;
 
   const body = await request.json().catch(() => null);
