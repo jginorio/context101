@@ -62,14 +62,14 @@ AWS_PROFILE=plateapr.com npx cdk bootstrap aws://<ACCOUNT_ID>/us-east-1
 AWS_PROFILE=plateapr.com npx cdk deploy -c token=<your-shared-bearer-token>
 ```
 
-`cdk deploy` provisions the infra **and** syncs the local `knowledge/` folder into the S3 docs bucket in one step. The auto-ingest Lambda then kicks off a Bedrock ingestion job. Wait ~1-3 min for indexing (check the KB status in the AWS console).
+`cdk deploy` provisions the infra **and** seeds the S3 docs bucket with whatever is in the local `knowledge/` folder — useful so a fresh stack isn't empty, but not the ongoing authoring path (see [Daily Workflow](#daily-workflow)). The auto-ingest Lambda kicks off a Bedrock ingestion job on the initial sync; wait ~1-3 min for indexing (check the KB status in the AWS console).
 
 Outputs:
 - `DocsBucketName` — the S3 bucket holding your markdown
 - `KnowledgeBaseId` — set as `KB_ID` env var
 - `McpUrl` — the App Runner URL (only shown if `-c token=...` was passed)
 
-> **Source of truth:** The local `knowledge/` folder drives the S3 bucket contents on every `cdk deploy`. Files deleted locally are removed from S3. Don't edit files directly in the S3 console — they'll be overwritten on the next deploy. Edit markdown locally, commit to Git, run `cdk deploy`.
+> **Source of truth:** At runtime, the **S3 docs bucket** is the source of truth. Content is managed through the web admin UI, agent `suggest_knowledge` proposals (reviewed in the Suggestions tab), and — soon — data connectors pulling from GitHub / Notion / Sheets / chat. The local `knowledge/` folder is just a **bootstrap seed** synced on the initial `cdk deploy` so a fresh stack isn't empty; it is *not* the ongoing authoring path. Avoid editing files in the S3 console directly — use the web UI so writes go through the app's auth, approval, and audit surfaces.
 
 ### 2a. Run locally for dev
 
@@ -169,23 +169,51 @@ Note: the Cognito accounts control access to the **web admin UI**. The **MCP end
 
 ## Daily Workflow
 
-1. Edit a markdown file in `knowledge/` locally.
-2. `AWS_PROFILE=plateapr.com npx cdk deploy -c token=<your-token>` from the `cdk/` dir.
-3. Wait ~1 min for ingestion.
-4. Everyone on the team sees the new knowledge immediately.
+The docs bucket is the source of truth at runtime. Content flows in through three paths — none of them require a deploy:
 
-On re-deploys, CDK's `BucketDeployment` only uploads files that changed and `prune: true` removes files you deleted locally. No infra changes → quick deploy (~20s).
+1. **Web admin UI** — the primary surface for humans. Create, edit, rename, move, or delete markdown files; use **Improve with AI** for Opus-assisted rewrites; review and approve incoming agent proposals from the Suggestions tab.
+2. **`suggest_knowledge` MCP tool** — agents (Cursor, Claude Desktop, Claude Code, Devin) propose new docs or updates as they work. Proposals land in the review queue; nothing reaches the brain until a human approves. See [Knowledge suggestions](#knowledge-suggestions-web-app).
+3. **Data connectors** *(in progress)* — the direction of travel is pulling content automatically from where teams already write it: GitHub repos, Notion, Google Sheets, chat. Each connector writes markdown + sidecars into the bucket on the same auto-ingest pipeline as the other two paths. The wiki then reconciles across sources.
 
-The synthesized wiki regenerates automatically every 10h, so it'll catch up to your changes on the next schedule tick. If you want it immediately, open the **Wiki** tab in the admin UI and hit **Refresh now**.
+Every S3 write — whichever path it came from — triggers the auto-ingest Lambda, which kicks a Bedrock ingestion job. New content is retrievable via `search_knowledge` within ~1 min once the canonical wiki catches up (next 10h regen, or hit **Refresh now** in the Wiki tab for an immediate re-synthesis).
+
+`cdk deploy` is reserved for **infra changes** (new tools, IAM tweaks, data-source reconfig) and the **initial seed** of the `knowledge/` folder on a fresh stack. It's not part of the content workflow anymore.
 
 ## Tools
 
 | Tool | Purpose |
 |------|---------|
-| `search_knowledge(query, limit=5)` | Semantic search — returns ranked chunks with source + score |
-| `read_knowledge(s3_key)` | Full content of a source doc |
-| `list_sources()` | Enumerate all documents currently in the KB |
+| `search_knowledge(query, limit=5)` | Semantic search over the **canonical wiki** — returns ranked chunks from synthesized, deduplicated pages (never raw docs) |
+| `read_knowledge(s3_key)` | Full content of any document — raw or wiki. The escape hatch to ground truth when you need detail that was compressed out of the canonical view |
+| `list_sources()` | Enumerate all documents currently in the docs bucket |
 | `suggest_knowledge(title, content, target_path?, rationale?, trigger?)` | Propose a new doc or update an existing one; goes to the review queue — never writes to the brain directly |
+
+### Two-tier retrieval: canonical vs. raw
+
+The knowledge base holds two kinds of documents:
+
+- **Raw sources** under `knowledge/` — what contributors write or what connectors drop in (GitHub, Notion, suggest_knowledge approvals).
+- **Wiki pages** under `wiki/` — synthesized, deduplicated pages generated by the Fargate wiki job from the raw corpus. The wiki is the **canonical view**.
+
+`search_knowledge` filters retrieval to wiki chunks only, via a `.metadata.json` sidecar the generator writes alongside each page:
+
+```json
+{
+  "metadataAttributes": {
+    "source":        "wiki",
+    "generated_at":  "2026-04-23T14:30:00Z",
+    "page_slug":     "payments",
+    "source_files":  "knowledge/payments-rfc.md,knowledge/amplia.md"
+  }
+}
+```
+
+Raw docs don't get a sidecar, so they don't match the `source=wiki` equals filter and drop out of retrieval. They stay embedded in the vector index (cheap), but agents only reach them via `read_knowledge(s3_key)` — typically after seeing a canonical chunk cite a raw file in its `Sources: [file]()` footnote or in its `source_files` metadata.
+
+Why this split:
+- **No duplicate-retrieval.** Raw and wiki often say similar things. With both embedded and both retrievable, top-K cosine could return near-duplicates that crowd out distinct content.
+- **Reconciled answers.** The wiki is the layer where conflicting raw sources get merged into one coherent page. Querying the raw directly bypasses that reconciliation.
+- **Traceable.** Every canonical chunk still links back to its raw sources via citations, so verification is a single `read_knowledge` call away.
 
 ## Knowledge suggestions (web app)
 
@@ -261,10 +289,11 @@ The wiki auto-regenerates every 10 hours via an EventBridge schedule. The schedu
 
 **What gets written to S3:**
 - `wiki/<slug>.md` — one page per topic, full markdown with Mermaid blocks and `Sources: [file.md]()` citations
+- `wiki/<slug>.md.metadata.json` — Bedrock KB sidecar tagging the page `source=wiki` (+ `generated_at`, `page_slug`, `source_files`). This is what `search_knowledge` filters on — see [Two-tier retrieval](#two-tier-retrieval-canonical-vs-raw)
 - `wiki/_index.json` — nav order, titles, descriptions, source mappings per page
 - `wiki/_meta.json` — timestamps + page/source counts (drives the "Last indexed" badge)
 
-Generated pages land in the same bucket as raw docs, so the auto-ingest Lambda picks them up and Bedrock re-embeds them — **wiki pages are searchable via the same `search_knowledge` MCP tool** as raw docs.
+Generated pages land in the same bucket as raw docs and the auto-ingest Lambda picks them up the same way. At retrieval time the `source=wiki` sidecar filter is what separates canonical chunks from raw — **`search_knowledge` only returns wiki pages; raw docs are reachable via `read_knowledge`.**
 
 Cost: ~$0.30–0.80 per full regen (one Opus call for the structure + one per page). Fargate runtime is ~3-5 min at $0.04/hr-ish for a 0.5 vCPU / 1 GB task — negligible compared to the Opus spend.
 
@@ -440,18 +469,20 @@ The S3 docs bucket and S3 Vectors bucket have `RETAIN` policies — you won't lo
 
 ## Roadmap / TODO
 
-### Metadata sidecars for filtered retrieval
+### Richer sidecar metadata for filtered retrieval
 
-Bedrock KB supports per-document metadata via `.metadata.json` sidecar files alongside each doc in S3. This lets agents filter results by attributes — e.g. "only Platea docs" or "only docs updated after April".
+Sidecar-based metadata filtering is already wired up — see [Two-tier retrieval](#two-tier-retrieval-canonical-vs-raw). Wiki pages get a `.metadata.json` sidecar with `source`, `generated_at`, `page_slug`, `source_files`, and `search_knowledge` pushes an equals filter on `source=wiki`.
+
+The next extension is opening the same mechanism to raw docs and exposing a `filter` arg on `search_knowledge`:
 
 ```
 knowledge/
 ├── databases.md
-├── databases.md.metadata.json          ← sidecar
+├── databases.md.metadata.json          ← sidecar for a raw doc
 │     {
 │       "metadataAttributes": {
 │         "team":    "platea",
-│         "source":  "notion",
+│         "origin":  "notion",
 │         "updated": "2026-04-18"
 │       }
 │     }
@@ -459,34 +490,26 @@ knowledge/
 └── domain-knowledge/amplia.md.metadata.json
 ```
 
-At query time, the MCP would accept a filter:
+Query-time filter on the raw tier (hypothetical — requires extending `search_knowledge` with a `filter` param and/or a `tier: "raw" | "wiki"` arg):
 
 ```
 search_knowledge(
   query  = "pricing strategy",
+  tier   = "raw",
   filter = { equals: { key: "team", value: "platea" } }
 )
-         │
-         ▼
-┌─────────────────────────┐
-│  bedrock:Retrieve with  │  ← Bedrock translates the filter
-│  filter expression      │    into an S3 Vectors metadata
-└────────────┬────────────┘    filter on the search
-             │
-             ▼
-   Only chunks from docs whose sidecar
-   has { team: "platea" } are returned
 ```
 
-**To enable this:**
-1. Write sidecar files (manually, or auto-generate from markdown frontmatter).
-2. Extend `search_knowledge` to accept an optional `filter` arg and pass it through to `bedrock:Retrieve`.
-3. No Index config change needed — custom attributes from sidecars default to filterable, subject to the 2KB-per-vector cap. For short string values this is fine.
+**To extend:**
+1. Decide on a sidecar-generation path for raw docs (commit alongside, auto-derive from frontmatter, or compute in a custom ingestion transformation Lambda).
+2. Add a `filter` (and possibly `tier`) arg on `search_knowledge`; compose it with the existing `source=wiki` filter via Bedrock's `andAll`/`orAll`.
+3. Custom attributes default to filterable, subject to the 2KB-per-vector cap — short strings only.
 
 **When it's worth adding:**
 - Multiple distinct knowledge domains in one KB and you want queries scoped to one.
 - Freshness filtering (e.g. "exclude anything older than 6 months").
 - Per-audience views (engineering-only docs vs shared team docs).
+- Hybrid retrieval that pulls recent raw docs alongside canonical wiki chunks when the wiki is stale vs. the source.
 
 ### Other ideas
 
