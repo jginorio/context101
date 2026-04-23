@@ -8,20 +8,29 @@ import {
   CONNECTORS_TABLE,
   ddbConnectors,
   GOOGLE_OAUTH_CLIENT_SECRET_ID,
-  parseSheetId,
+  oauthScopesFor,
+  parseGoogleResourceId,
   sm,
   type Connector,
+  type ConnectorType,
 } from "@/utils/connectors";
 import { getCurrentUserEmail } from "@/utils/amplify-server-utils";
 import { getPublicOrigin } from "@/utils/public-origin";
 
-const SHEETS_SCOPES = [
-  "https://www.googleapis.com/auth/spreadsheets.readonly",
-  "https://www.googleapis.com/auth/drive.metadata.readonly",
-  "openid",
-  "email",
-  "profile",
-];
+const SUPPORTED_TYPES: ConnectorType[] = ["sheets", "docs", "slides"];
+
+function defaultLabelFor(type: ConnectorType): string {
+  switch (type) {
+    case "sheets":
+      return "Untitled Sheets source";
+    case "docs":
+      return "Untitled Docs source";
+    case "slides":
+      return "Untitled Slides source";
+    default:
+      return "Untitled source";
+  }
+}
 
 /**
  * POST /api/connectors/create
@@ -50,20 +59,31 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
   if (
     !body ||
-    body.type !== "sheets" ||
+    !SUPPORTED_TYPES.includes(body.type) ||
     typeof body.label !== "string" ||
     typeof body.resource_url !== "string"
   ) {
     return NextResponse.json(
-      { error: "type, label, resource_url required" },
+      {
+        error: `type (one of ${SUPPORTED_TYPES.join("|")}), label, resource_url required`,
+      },
       { status: 400 }
     );
   }
+  const type = body.type as ConnectorType;
 
-  const spreadsheetId = parseSheetId(body.resource_url);
-  if (!spreadsheetId) {
+  const resourceId = parseGoogleResourceId(type, body.resource_url);
+  if (!resourceId) {
     return NextResponse.json(
-      { error: "Couldn't parse spreadsheet id from URL" },
+      {
+        error: `Couldn't parse ${type} id from URL — expected a docs.google.com ${
+          type === "sheets"
+            ? "spreadsheet"
+            : type === "docs"
+              ? "document"
+              : "presentation"
+        } link`,
+      },
       { status: 400 }
     );
   }
@@ -74,11 +94,11 @@ export async function POST(request: NextRequest) {
 
   const row: Connector = {
     id,
-    type: "sheets",
+    type,
     status: "pending_auth",
-    label: body.label.trim().slice(0, 120) || "Untitled Sheets source",
+    label: body.label.trim().slice(0, 120) || defaultLabelFor(type),
     resource_url: body.resource_url.trim(),
-    resource_id: spreadsheetId,
+    resource_id: resourceId,
     created_at: now,
     created_by: userEmail ?? undefined,
   };
@@ -98,7 +118,7 @@ export async function POST(request: NextRequest) {
     oauthUrl.searchParams.set("client_id", client_id);
     oauthUrl.searchParams.set("redirect_uri", redirectUri);
     oauthUrl.searchParams.set("response_type", "code");
-    oauthUrl.searchParams.set("scope", SHEETS_SCOPES.join(" "));
+    oauthUrl.searchParams.set("scope", oauthScopesFor(type).join(" "));
     // access_type=offline + prompt=consent is how Google issues a
     // refresh_token on every consent (otherwise you only get one the
     // first time a user ever approves this client).

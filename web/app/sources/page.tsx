@@ -7,9 +7,11 @@ import {
   ArrowLeft,
   Check,
   ExternalLink,
+  FileText,
   Loader2,
   Plug,
   Plus,
+  Presentation,
   RefreshCw,
   Sheet,
   Trash2,
@@ -49,7 +51,7 @@ type Status =
 
 type Connector = {
   id: string;
-  type: "sheets" | "notion";
+  type: "sheets" | "docs" | "slides" | "notion";
   status: Status;
   label: string;
   resource_url: string;
@@ -84,6 +86,9 @@ function StatusPill({ s }: { s: Status }) {
 
 function TypeIcon({ type }: { type: Connector["type"] }) {
   if (type === "sheets") return <Sheet className="h-4 w-4 opacity-80" />;
+  if (type === "docs") return <FileText className="h-4 w-4 opacity-80" />;
+  if (type === "slides")
+    return <Presentation className="h-4 w-4 opacity-80" />;
   return <Plug className="h-4 w-4 opacity-80" />;
 }
 
@@ -101,7 +106,9 @@ function SourcesContent() {
   const [items, setItems] = React.useState<Connector[] | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [addOpen, setAddOpen] = React.useState(false);
+  const [addType, setAddType] = React.useState<
+    "sheets" | "docs" | "slides" | null
+  >(null);
   const [confirmRemove, setConfirmRemove] = React.useState<Connector | null>(
     null
   );
@@ -210,8 +217,14 @@ function SourcesContent() {
               </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setAddOpen(true)}>
+              <DropdownMenuItem onClick={() => setAddType("sheets")}>
                 <Sheet className="mr-2 h-3.5 w-3.5" /> Google Sheets
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAddType("docs")}>
+                <FileText className="mr-2 h-3.5 w-3.5" /> Google Docs
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAddType("slides")}>
+                <Presentation className="mr-2 h-3.5 w-3.5" /> Google Slides
               </DropdownMenuItem>
               <DropdownMenuItem disabled>
                 <Plug className="mr-2 h-3.5 w-3.5" /> Notion{" "}
@@ -243,8 +256,8 @@ function SourcesContent() {
         {items && items.length === 0 && (
           <Card>
             <CardContent className="p-6 text-center text-sm text-muted-foreground">
-              No data sources yet. Click{" "}
-              <strong>Add new source</strong> to connect a Google Sheet.
+              No data sources yet. Click <strong>Add new source</strong> to
+              connect a Google Sheet, Doc, or Slides deck.
             </CardContent>
           </Card>
         )}
@@ -329,7 +342,11 @@ function SourcesContent() {
         ))}
       </article>
 
-      <AddSourceDialog open={addOpen} onOpenChange={setAddOpen} />
+      <AddSourceDialog
+        open={!!addType}
+        onOpenChange={(v) => !v && setAddType(null)}
+        type={addType ?? "sheets"}
+      />
 
       <AlertDialog
         open={!!confirmRemove}

@@ -4,10 +4,10 @@ import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { InvokeCommand } from "@aws-sdk/client-lambda";
 
 import {
-  CONNECTOR_SYNC_SHEETS_FN_NAME,
   CONNECTORS_TABLE,
   ddbConnectors,
   lambdaClient,
+  syncFnNameFor,
   type Connector,
 } from "@/utils/connectors";
 
@@ -41,8 +41,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
 
-    const fn =
-      row.type === "sheets" ? CONNECTOR_SYNC_SHEETS_FN_NAME : undefined;
+    const fn = syncFnNameFor(row.type);
     if (!fn) {
       return NextResponse.json(
         { error: `no sync Lambda for type=${row.type}` },

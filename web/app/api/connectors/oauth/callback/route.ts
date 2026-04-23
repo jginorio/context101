@@ -11,13 +11,13 @@ import {
 import { InvokeCommand } from "@aws-sdk/client-lambda";
 
 import {
-  CONNECTOR_SYNC_SHEETS_FN_NAME,
   CONNECTOR_TOKEN_SECRET_PREFIX,
   CONNECTORS_TABLE,
   ddbConnectors,
   GOOGLE_OAUTH_CLIENT_SECRET_ID,
   lambdaClient,
   sm,
+  syncFnNameFor,
   type Connector,
 } from "@/utils/connectors";
 import { getPublicOrigin } from "@/utils/public-origin";
@@ -58,7 +58,7 @@ export async function GET(request: NextRequest) {
     );
     const row = got.Item as Connector | undefined;
     if (!row) throw new Error("connector row not found");
-    if (row.type !== "sheets")
+    if (!["sheets", "docs", "slides"].includes(row.type))
       throw new Error(`unexpected type: ${row.type}`);
 
     // Load OAuth client creds
@@ -143,11 +143,12 @@ export async function GET(request: NextRequest) {
     );
 
     // Fire the first sync (fire-and-forget)
-    if (CONNECTOR_SYNC_SHEETS_FN_NAME) {
+    const syncFn = syncFnNameFor(row.type);
+    if (syncFn) {
       await lambdaClient
         .send(
           new InvokeCommand({
-            FunctionName: CONNECTOR_SYNC_SHEETS_FN_NAME,
+            FunctionName: syncFn,
             InvocationType: "Event",
             Payload: new TextEncoder().encode(
               JSON.stringify({ connectorId: row.id })

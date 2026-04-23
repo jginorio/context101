@@ -1,7 +1,13 @@
 "use client";
 
 import * as React from "react";
-import { Loader2, Sheet } from "lucide-react";
+import {
+  FileText,
+  Loader2,
+  Presentation,
+  Sheet,
+  type LucideIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,12 +21,55 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
+type SourceType = "sheets" | "docs" | "slides";
+
+type Copy = {
+  icon: LucideIcon;
+  title: string;
+  description: string;
+  urlLabel: string;
+  urlPlaceholder: string;
+  labelPlaceholder: string;
+};
+
+const COPY: Record<SourceType, Copy> = {
+  sheets: {
+    icon: Sheet,
+    title: "Add a Google Sheet",
+    description:
+      "Paste a spreadsheet URL and give it a friendly label. You'll be redirected to Google to authorize read access. After you approve, every tab is pulled into the brain as markdown and re-synced every 6 hours.",
+    urlLabel: "Spreadsheet URL",
+    urlPlaceholder: "https://docs.google.com/spreadsheets/d/…",
+    labelPlaceholder: "Platea Instagram analytics",
+  },
+  docs: {
+    icon: FileText,
+    title: "Add a Google Doc",
+    description:
+      "Paste a doc URL and give it a friendly label. After you approve Google read access, the doc is rendered to markdown and re-synced every 6 hours.",
+    urlLabel: "Document URL",
+    urlPlaceholder: "https://docs.google.com/document/d/…",
+    labelPlaceholder: "Q2 strategy memo",
+  },
+  slides: {
+    icon: Presentation,
+    title: "Add a Google Slides deck",
+    description:
+      "Paste a deck URL and give it a friendly label. After you approve Google read access, slide text + speaker notes are rendered to markdown and re-synced every 6 hours.",
+    urlLabel: "Presentation URL",
+    urlPlaceholder: "https://docs.google.com/presentation/d/…",
+    labelPlaceholder: "All-hands kickoff deck",
+  },
+};
+
 export function AddSourceDialog({
   open,
   onOpenChange,
+  type,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  type: SourceType;
 }) {
   const [label, setLabel] = React.useState("");
   const [url, setUrl] = React.useState("");
@@ -34,6 +83,9 @@ export function AddSourceDialog({
     }
   }, [open]);
 
+  const copy = COPY[type];
+  const Icon = copy.icon;
+
   async function connect() {
     if (!label.trim() || !url.trim()) return;
     setSubmitting(true);
@@ -42,7 +94,7 @@ export function AddSourceDialog({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          type: "sheets",
+          type,
           label: label.trim(),
           resource_url: url.trim(),
         }),
@@ -50,9 +102,7 @@ export function AddSourceDialog({
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
       if (!j.oauthUrl) throw new Error("No OAuth URL returned");
-      // Hand off to Google. We do a full-page navigation so the consent
-      // screen replaces the dialog; the callback route redirects us back
-      // to /sources with ?connected=<id>.
+      // Full-page navigation → Google consent screen replaces the dialog.
       window.location.href = j.oauthUrl;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -65,14 +115,9 @@ export function AddSourceDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Sheet className="h-4 w-4" /> Add a Google Sheet
+            <Icon className="h-4 w-4" /> {copy.title}
           </DialogTitle>
-          <DialogDescription>
-            Paste a spreadsheet URL and give it a friendly label. You&apos;ll
-            be redirected to Google to authorize read access. After you
-            approve, we pull every tab into the brain as markdown and
-            re-sync every 6 hours.
-          </DialogDescription>
+          <DialogDescription>{copy.description}</DialogDescription>
         </DialogHeader>
 
         <div className="space-y-3">
@@ -81,24 +126,23 @@ export function AddSourceDialog({
             <Input
               value={label}
               onChange={(e) => setLabel(e.target.value)}
-              placeholder="Platea Instagram analytics"
+              placeholder={copy.labelPlaceholder}
               disabled={submitting}
               autoFocus
             />
           </div>
           <div>
-            <p className="text-xs font-medium mb-1">Spreadsheet URL</p>
+            <p className="text-xs font-medium mb-1">{copy.urlLabel}</p>
             <Input
               value={url}
               onChange={(e) => setUrl(e.target.value)}
-              placeholder="https://docs.google.com/spreadsheets/d/…"
+              placeholder={copy.urlPlaceholder}
               disabled={submitting}
               className="font-mono text-xs"
             />
           </div>
           <p className="text-xs text-muted-foreground">
-            You only need <strong>Viewer</strong> access on the sheet — the
-            sync is read-only.
+            You only need <strong>Viewer</strong> access — sync is read-only.
           </p>
         </div>
 

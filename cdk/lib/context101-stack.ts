@@ -422,6 +422,70 @@ export class Context101Stack extends cdk.Stack {
       })
     );
 
+    // a2) Per-type sync Lambda — Google Docs
+    const connectorSyncDocsFn = new lambda.Function(
+      this,
+      "ConnectorSyncDocsFn",
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset("lambda/connector-sync-docs"),
+        functionName: `${namePrefix}-connector-sync-docs`,
+        timeout: cdk.Duration.minutes(5),
+        memorySize: 1024,
+        environment: {
+          CONNECTORS_TABLE: connectorsTable.tableName,
+          DOCS_BUCKET: docsBucket.bucketName,
+          GOOGLE_OAUTH_CLIENT_SECRET_ID:
+            googleOAuthClientSecret.secretName,
+        },
+      }
+    );
+    connectorsTable.grantReadWriteData(connectorSyncDocsFn);
+    docsBucket.grantReadWrite(connectorSyncDocsFn);
+    googleOAuthClientSecret.grantRead(connectorSyncDocsFn);
+    connectorSyncDocsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ReadConnectorTokenSecrets",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-connector-*`,
+        ],
+      })
+    );
+
+    // a3) Per-type sync Lambda — Google Slides
+    const connectorSyncSlidesFn = new lambda.Function(
+      this,
+      "ConnectorSyncSlidesFn",
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset("lambda/connector-sync-slides"),
+        functionName: `${namePrefix}-connector-sync-slides`,
+        timeout: cdk.Duration.minutes(5),
+        memorySize: 1024,
+        environment: {
+          CONNECTORS_TABLE: connectorsTable.tableName,
+          DOCS_BUCKET: docsBucket.bucketName,
+          GOOGLE_OAUTH_CLIENT_SECRET_ID:
+            googleOAuthClientSecret.secretName,
+        },
+      }
+    );
+    connectorsTable.grantReadWriteData(connectorSyncSlidesFn);
+    docsBucket.grantReadWrite(connectorSyncSlidesFn);
+    googleOAuthClientSecret.grantRead(connectorSyncSlidesFn);
+    connectorSyncSlidesFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ReadConnectorTokenSecrets",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-connector-*`,
+        ],
+      })
+    );
+
     // b) Dispatcher Lambda — enumerates active connectors, fans out
     //    fire-and-forget invokes to the per-type sync Lambda.
     const connectorDispatchFn = new lambda.Function(
@@ -436,11 +500,15 @@ export class Context101Stack extends cdk.Stack {
         environment: {
           CONNECTORS_TABLE: connectorsTable.tableName,
           SHEETS_SYNC_FN_NAME: connectorSyncSheetsFn.functionName,
+          DOCS_SYNC_FN_NAME: connectorSyncDocsFn.functionName,
+          SLIDES_SYNC_FN_NAME: connectorSyncSlidesFn.functionName,
         },
       }
     );
     connectorsTable.grantReadData(connectorDispatchFn);
     connectorSyncSheetsFn.grantInvoke(connectorDispatchFn);
+    connectorSyncDocsFn.grantInvoke(connectorDispatchFn);
+    connectorSyncSlidesFn.grantInvoke(connectorDispatchFn);
 
     // c) EventBridge — every 6 hours, invoke the dispatcher
     new events.Rule(this, "ConnectorSchedule", {
@@ -454,6 +522,12 @@ export class Context101Stack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "ConnectorSyncSheetsFnName", {
       value: connectorSyncSheetsFn.functionName,
+    });
+    new cdk.CfnOutput(this, "ConnectorSyncDocsFnName", {
+      value: connectorSyncDocsFn.functionName,
+    });
+    new cdk.CfnOutput(this, "ConnectorSyncSlidesFnName", {
+      value: connectorSyncSlidesFn.functionName,
     });
 
     // ── 8. Optional: App Runner service hosting the MCP server ────────
@@ -610,6 +684,8 @@ export class Context101Stack extends cdk.Stack {
           // Data source connectors
           { name: "CONNECTORS_TABLE", value: connectorsTable.tableName },
           { name: "CONNECTOR_SYNC_SHEETS_FN_NAME", value: connectorSyncSheetsFn.functionName },
+          { name: "CONNECTOR_SYNC_DOCS_FN_NAME", value: connectorSyncDocsFn.functionName },
+          { name: "CONNECTOR_SYNC_SLIDES_FN_NAME", value: connectorSyncSlidesFn.functionName },
           { name: "GOOGLE_OAUTH_CLIENT_SECRET_ID", value: googleOAuthClientSecret.secretName },
           { name: "CONNECTOR_TOKEN_SECRET_PREFIX", value: `${namePrefix}-connector-` },
         ],
@@ -749,6 +825,8 @@ export class Context101Stack extends cdk.Stack {
         })
       );
       connectorSyncSheetsFn.grantInvoke(ssrComputeRole);
+      connectorSyncDocsFn.grantInvoke(ssrComputeRole);
+      connectorSyncSlidesFn.grantInvoke(ssrComputeRole);
       // S3 delete under sources/sheets/ so DELETE /api/connectors/:id can
       // clean up. The role already has s3:GetObject/PutObject/List via
       // earlier grants; DeleteObject is the only gap.

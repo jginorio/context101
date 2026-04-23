@@ -91,9 +91,21 @@ async function fetchSpreadsheet(accessToken, spreadsheetId) {
     { headers: { Authorization: `Bearer ${accessToken}` } }
   );
   if (!r.ok) {
-    throw new Error(
-      `spreadsheets.get failed ${r.status}: ${await r.text().catch(() => "")}`
-    );
+    const body = await r.text().catch(() => "");
+    // The Sheets API rejects non-native files (uploaded .xlsx/.xlsm/.ods
+    // stored in Drive but never converted to a Google Sheet) with
+    // 400 FAILED_PRECONDITION "This operation is not supported for this
+    // document". Translate to something actionable.
+    if (
+      r.status === 400 &&
+      /not supported for this document/i.test(body)
+    ) {
+      throw new Error(
+        "This looks like an uploaded Excel file (.xlsx/.xlsm/.ods), not a native Google Sheet. " +
+          "In the Sheet, go File → Save as Google Sheets, then retry with the new URL."
+      );
+    }
+    throw new Error(`spreadsheets.get failed ${r.status}: ${body}`);
   }
   return r.json();
 }

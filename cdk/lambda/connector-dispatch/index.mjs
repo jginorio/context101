@@ -23,10 +23,11 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const lambdaClient = new LambdaClient({});
 
 const CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
-const SHEETS_SYNC_FN_NAME = process.env.SHEETS_SYNC_FN_NAME;
 
 const FN_BY_TYPE = {
-  sheets: SHEETS_SYNC_FN_NAME,
+  sheets: process.env.SHEETS_SYNC_FN_NAME,
+  docs: process.env.DOCS_SYNC_FN_NAME,
+  slides: process.env.SLIDES_SYNC_FN_NAME,
   // notion: process.env.NOTION_SYNC_FN_NAME  (v2)
 };
 
