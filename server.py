@@ -72,25 +72,34 @@ mcp = FastMCP(
     "Context101",
     instructions="""You are the librarian for Context101, a shared team knowledge base.
 
-The knowledge base is built on Amazon Bedrock — queries use semantic similarity
-over the team's markdown documents, so natural-language questions like
-"how do I query listings in Amplia" will find relevant chunks even if those
-exact words aren't in the docs.
+Retrieval is two-tier:
+
+  • search_knowledge returns chunks from the *canonical wiki* — synthesized,
+    deduplicated pages generated from the team's raw sources. This is the
+    default path. Wiki chunks cite their provenance via inline `Sources: [file]()`
+    footnotes and via the `source_files` metadata on each page.
+
+  • read_knowledge can fetch any document by its S3 key — including the raw
+    source docs the wiki was synthesized from. Use it when a canonical chunk
+    cites a raw file and you need the ground-truth content (e.g. to verify the
+    synthesized claim or pull a detail that didn't make it into the wiki).
 
 Workflow:
-  1. Use search_knowledge for a semantic query. It returns ranked text chunks
-     with their source S3 key and a relevance score.
-  2. If a chunk looks promising but you need more context, call read_knowledge
-     with the source S3 key to read the full document.
-  3. Use list_sources if you just want to see what documents exist.
-  4. If you discover something worth preserving (a missing fact, an inaccuracy,
-     a better explanation), call suggest_knowledge. The suggestion is queued
-     for human review in the admin UI — not written to the brain automatically.
+  1. Call search_knowledge with a natural-language question. You get ranked
+     canonical chunks with their wiki page's S3 key and a relevance score.
+  2. If the canonical chunk references a source file and you need the full
+     detail, call read_knowledge(s3_key) on the cited source.
+  3. Use list_sources if you just want to enumerate what's in the bucket.
+  4. If you discover something worth preserving (a missing fact, an
+     inaccuracy, a better explanation), call suggest_knowledge. The
+     suggestion goes to a human-review queue — never written to the brain
+     automatically. Approved suggestions flow to the raw docs and surface
+     in the canonical wiki on the next regeneration.
 
 Available tools:
-- search_knowledge(query, limit=5): semantic search, returns ranked chunks
-- read_knowledge(s3_key): full content of a source document
-- list_sources(): list all documents in the knowledge base
+- search_knowledge(query, limit=5): semantic search over canonical wiki chunks
+- read_knowledge(s3_key): full content of any document (raw or wiki)
+- list_sources(): list all documents in the S3 bucket
 - suggest_knowledge(title, content, target_path?, rationale?, trigger?):
     propose a new doc or update an existing one; goes to the review queue
 """,
@@ -117,10 +126,12 @@ def _source_key_from_retrieval(result: dict[str, Any]) -> str:
 
 @mcp.tool()
 def search_knowledge(query: str, limit: int = 5) -> str:
-    """Semantic search against the team knowledge base.
+    """Semantic search against the canonical wiki.
 
-    Wraps the Bedrock `Retrieve` API. Returns ranked text chunks from the
-    most relevant documents, each with its source S3 key and a relevance score.
+    Retrieval is scoped to wiki chunks — synthesized pages the generator
+    produces from the raw corpus, tagged `source=wiki` via .metadata.json
+    sidecars. Raw source docs are excluded here; reach them via
+    read_knowledge when a wiki chunk cites a specific file.
 
     Args:
         query: Natural-language question, e.g. "how do I find active listings in Amplia"
@@ -135,7 +146,10 @@ def search_knowledge(query: str, limit: int = 5) -> str:
         knowledgeBaseId=KB_ID,
         retrievalQuery={"text": query},
         retrievalConfiguration={
-            "vectorSearchConfiguration": {"numberOfResults": limit}
+            "vectorSearchConfiguration": {
+                "numberOfResults": limit,
+                "filter": {"equals": {"key": "source", "value": "wiki"}},
+            }
         },
     )
 
@@ -156,10 +170,16 @@ def search_knowledge(query: str, limit: int = 5) -> str:
 
 @mcp.tool()
 def read_knowledge(s3_key: str) -> str:
-    """Read the full content of a source document by its S3 key.
+    """Read the full content of any document in the docs bucket by S3 key.
 
-    Use after search_knowledge when a chunk looks promising but you want the
-    full context of the source document.
+    This is the escape hatch to ground-truth content. search_knowledge only
+    returns canonical wiki chunks, which are synthesized and may compress or
+    omit detail. When a wiki chunk cites a raw source (either inline via
+    `Sources: [file]()` or in the page's `source_files` metadata), use this
+    to pull the full unedited source.
+
+    Works on both raw docs (e.g. "domain-knowledge/amplia.md") and wiki pages
+    (e.g. "wiki/overview.md") — whatever key you pass.
 
     Args:
         s3_key: Object key inside the docs bucket, e.g. "domain-knowledge/amplia.md"

@@ -9,6 +9,9 @@ Flow:
        a. Read the full content of each relevant_file from S3.
        b. Call Opus with the per-page prompt → markdown.
        c. Write s3://DOCS_BUCKET/WIKI_PREFIX/<slug>.md.
+       d. Write a .metadata.json sidecar tagging the page source=wiki so
+          search_knowledge's source=wiki filter picks it up. Raw docs have
+          no sidecar, so they're excluded from canonical retrieval.
   5. Write WIKI_PREFIX/_index.json (nav) and WIKI_PREFIX/_meta.json (timestamp).
 
 Runs to completion and exits — designed for Fargate tasks or local invocation.
@@ -270,6 +273,28 @@ def put_object(key: str, body: str, content_type: str) -> None:
     )
 
 
+# Filterable metadata on S3 Vectors is capped at 2 KB/vector (summed across
+# all attributes). `source`, `generated_at`, `page_slug` are tiny; only
+# `source_files` can grow. Truncate it to leave headroom for the others.
+_SOURCE_FILES_MAX_CHARS = 1500
+
+
+def build_wiki_sidecar(
+    slug: str, relevant_files: list[str], started_at: str
+) -> dict:
+    source_files = ",".join(relevant_files)
+    if len(source_files) > _SOURCE_FILES_MAX_CHARS:
+        source_files = source_files[: _SOURCE_FILES_MAX_CHARS - 3] + "..."
+    return {
+        "metadataAttributes": {
+            "source": "wiki",
+            "generated_at": started_at,
+            "page_slug": slug,
+            "source_files": source_files,
+        }
+    }
+
+
 def write_wiki_outputs(
     title: str,
     description: str,
@@ -278,10 +303,18 @@ def write_wiki_outputs(
     source_doc_count: int,
     started_at: str,
 ) -> None:
-    # Pages
+    # Pages + sidecars. Write the sidecar first so the next auto-ingest
+    # run sees both files together and attaches metadata on first pass.
     for spec in specs:
         body = page_bodies[spec.id]
-        put_object(f"{WIKI_PREFIX}{spec.slug}.md", body, "text/markdown; charset=utf-8")
+        md_key = f"{WIKI_PREFIX}{spec.slug}.md"
+        sidecar = build_wiki_sidecar(spec.slug, spec.relevant_files, started_at)
+        put_object(
+            f"{md_key}.metadata.json",
+            json.dumps(sidecar, indent=2),
+            "application/json",
+        )
+        put_object(md_key, body, "text/markdown; charset=utf-8")
 
     # Nav index — maps page id → slug/title, preserves order + related links.
     index = {
