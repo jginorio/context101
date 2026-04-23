@@ -62,14 +62,14 @@ AWS_PROFILE=plateapr.com npx cdk bootstrap aws://<ACCOUNT_ID>/us-east-1
 AWS_PROFILE=plateapr.com npx cdk deploy -c token=<your-shared-bearer-token>
 ```
 
-`cdk deploy` provisions the infra **and** syncs the local `knowledge/` folder into the S3 docs bucket in one step. The auto-ingest Lambda then kicks off a Bedrock ingestion job. Wait ~1-3 min for indexing (check the KB status in the AWS console).
+`cdk deploy` provisions the infra **and** seeds the S3 docs bucket with whatever is in the local `knowledge/` folder — useful so a fresh stack isn't empty, but not the ongoing authoring path (see [Daily Workflow](#daily-workflow)). The auto-ingest Lambda kicks off a Bedrock ingestion job on the initial sync; wait ~1-3 min for indexing (check the KB status in the AWS console).
 
 Outputs:
 - `DocsBucketName` — the S3 bucket holding your markdown
 - `KnowledgeBaseId` — set as `KB_ID` env var
 - `McpUrl` — the App Runner URL (only shown if `-c token=...` was passed)
 
-> **Source of truth:** The local `knowledge/` folder drives the S3 bucket contents on every `cdk deploy`. Files deleted locally are removed from S3. Don't edit files directly in the S3 console — they'll be overwritten on the next deploy. Edit markdown locally, commit to Git, run `cdk deploy`.
+> **Source of truth:** At runtime, the **S3 docs bucket** is the source of truth. Content is managed through the web admin UI, agent `suggest_knowledge` proposals (reviewed in the Suggestions tab), and — soon — data connectors pulling from GitHub / Notion / Sheets / chat. The local `knowledge/` folder is just a **bootstrap seed** synced on the initial `cdk deploy` so a fresh stack isn't empty; it is *not* the ongoing authoring path. Avoid editing files in the S3 console directly — use the web UI so writes go through the app's auth, approval, and audit surfaces.
 
 ### 2a. Run locally for dev
 
@@ -169,14 +169,15 @@ Note: the Cognito accounts control access to the **web admin UI**. The **MCP end
 
 ## Daily Workflow
 
-1. Edit a markdown file in `knowledge/` locally.
-2. `AWS_PROFILE=plateapr.com npx cdk deploy -c token=<your-token>` from the `cdk/` dir.
-3. Wait ~1 min for ingestion.
-4. Everyone on the team sees the new knowledge immediately.
+The docs bucket is the source of truth at runtime. Content flows in through three paths — none of them require a deploy:
 
-On re-deploys, CDK's `BucketDeployment` only uploads files that changed and `prune: true` removes files you deleted locally. No infra changes → quick deploy (~20s).
+1. **Web admin UI** — the primary surface for humans. Create, edit, rename, move, or delete markdown files; use **Improve with AI** for Opus-assisted rewrites; review and approve incoming agent proposals from the Suggestions tab.
+2. **`suggest_knowledge` MCP tool** — agents (Cursor, Claude Desktop, Claude Code, Devin) propose new docs or updates as they work. Proposals land in the review queue; nothing reaches the brain until a human approves. See [Knowledge suggestions](#knowledge-suggestions-web-app).
+3. **Data connectors** *(in progress)* — the direction of travel is pulling content automatically from where teams already write it: GitHub repos, Notion, Google Sheets, chat. Each connector writes markdown + sidecars into the bucket on the same auto-ingest pipeline as the other two paths. The wiki then reconciles across sources.
 
-The synthesized wiki regenerates automatically every 10h, so it'll catch up to your changes on the next schedule tick. If you want it immediately, open the **Wiki** tab in the admin UI and hit **Refresh now**.
+Every S3 write — whichever path it came from — triggers the auto-ingest Lambda, which kicks a Bedrock ingestion job. New content is retrievable via `search_knowledge` within ~1 min once the canonical wiki catches up (next 10h regen, or hit **Refresh now** in the Wiki tab for an immediate re-synthesis).
+
+`cdk deploy` is reserved for **infra changes** (new tools, IAM tweaks, data-source reconfig) and the **initial seed** of the `knowledge/` folder on a fresh stack. It's not part of the content workflow anymore.
 
 ## Tools
 
