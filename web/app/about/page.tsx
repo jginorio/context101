@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 import "@/utils/amplify-client-config";
 
 const SNIPPET_HTTP = `"context101": {
-  "url": "https://nqdr4qhnun.us-east-1.awsapprunner.com/mcp",
+  "url": "https://wd3y3hnp7s.us-east-1.awsapprunner.com/mcp",
   "headers": {
     "Authorization": "Bearer context101-platea-2026-bearer"
   }
@@ -24,7 +24,7 @@ const SNIPPET_STDIO = `"context101": {
   "args": [
     "-y",
     "mcp-remote",
-    "https://nqdr4qhnun.us-east-1.awsapprunner.com/mcp",
+    "https://wd3y3hnp7s.us-east-1.awsapprunner.com/mcp",
     "--header",
     "Authorization: Bearer context101-platea-2026-bearer"
   ]
@@ -292,7 +292,9 @@ export default function AboutPage() {
               FastMCP container on AWS App Runner exposing{" "}
               <code className="font-mono text-xs">search_knowledge</code>,{" "}
               <code className="font-mono text-xs">read_knowledge</code>,{" "}
-              <code className="font-mono text-xs">list_sources</code>. Team
+              <code className="font-mono text-xs">list_sources</code>,{" "}
+              <code className="font-mono text-xs">suggest_knowledge</code>.
+              Team
               points their MCP clients at one URL with a shared bearer
               token.
             </Item>
@@ -302,10 +304,21 @@ export default function AboutPage() {
               rename with right-click. Backed by the same S3 bucket the MCP
               reads from.
             </Item>
-            <Item title="Notion sync" status="later">
-              First iteration: teammates manually export Notion pages to
-              markdown and drop them in. Automate later if it becomes painful
-              (script or Zapier / cron Lambda).
+            <Item title="Google Workspace connectors (OAuth)" status="done">
+              Connect a <strong>Google Sheet, Doc, or Slides deck</strong>{" "}
+              from the <Link href="/sources" className="underline">Sources</Link>{" "}
+              tab. After OAuth consent, the connector pulls the content,
+              renders it to markdown, writes to{" "}
+              <code className="font-mono text-xs">sources/&lt;type&gt;/…</code>,
+              and re-syncs every 6 hours. Files are read-only in the UI
+              (edits would be clobbered by the next sync). Per-connection
+              refresh tokens live in Secrets Manager.
+            </Item>
+            <Item title="Notion connector" status="in-progress">
+              Infra scaffold is shared with the Google connectors (dispatcher,
+              per-type sync Lambda, token secrets). Remaining: a Notion OAuth
+              app + a <code className="font-mono text-xs">connector-sync-notion</code>{" "}
+              Lambda that walks pages and databases.
             </Item>
             <Item title="Metadata sidecars for filtered retrieval" status="later">
               <code className="font-mono text-xs">.metadata.json</code>{" "}

@@ -37,7 +37,12 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 ├── cdk/                          # TypeScript CDK — all AWS infra
 │   ├── bin/context101.ts
 │   ├── lib/context101-stack.ts
-│   └── lambda/auto-ingest/       # S3 event → StartIngestionJob
+│   └── lambda/
+│       ├── auto-ingest/          # S3 event → StartIngestionJob
+│       ├── connector-dispatch/   # 6h fan-out to per-type sync Lambdas
+│       ├── connector-sync-sheets/
+│       ├── connector-sync-docs/
+│       └── connector-sync-slides/
 ├── server.py                     # Python MCP server (FastMCP + boto3)
 ├── Dockerfile                    # Used by App Runner
 ├── knowledge/                    # Your markdown — source of truth
@@ -130,13 +135,13 @@ Restart Claude Desktop and Context101 should appear in the tools list. The `-y` 
 
 The web admin UI is gated by Cognito. Self-signup is off by design — you invite people explicitly. Each invite sends an email with a one-time temp password; on first login they set a real one.
 
-Share this URL with teammates: **https://main.dxnsray95mqcv.amplifyapp.com**
+Share this URL with teammates: **https://main.dolgu9byu4ct1.amplifyapp.com**
 
 ### Invite a teammate (copy-paste)
 
 ```bash
 aws cognito-idp admin-create-user \
-  --user-pool-id us-east-1_QsP1U4XHv \
+  --user-pool-id us-east-1_wO836JEnQ \
   --username TEAMMATE_EMAIL \
   --user-attributes Name=email,Value=TEAMMATE_EMAIL Name=email_verified,Value=true \
   --profile plateapr.com --region us-east-1
@@ -148,7 +153,7 @@ Replace `TEAMMATE_EMAIL` (both places) with their actual email. They'll get an e
 
 ```bash
 aws cognito-idp admin-delete-user \
-  --user-pool-id us-east-1_QsP1U4XHv \
+  --user-pool-id us-east-1_wO836JEnQ \
   --username TEAMMATE_EMAIL \
   --profile plateapr.com --region us-east-1
 ```
@@ -173,7 +178,7 @@ The docs bucket is the source of truth at runtime. Content flows in through thre
 
 1. **Web admin UI** — the primary surface for humans. Create, edit, rename, move, or delete markdown files; use **Improve with AI** for Opus-assisted rewrites; review and approve incoming agent proposals from the Suggestions tab.
 2. **`suggest_knowledge` MCP tool** — agents (Cursor, Claude Desktop, Claude Code, Devin) propose new docs or updates as they work. Proposals land in the review queue; nothing reaches the brain until a human approves. See [Knowledge suggestions](#knowledge-suggestions-web-app).
-3. **Data connectors** *(in progress)* — the direction of travel is pulling content automatically from where teams already write it: GitHub repos, Notion, Google Sheets, chat. Each connector writes markdown + sidecars into the bucket on the same auto-ingest pipeline as the other two paths. The wiki then reconciles across sources.
+3. **Data connectors** — pull content automatically from where teams already write it. **Google Sheets, Google Docs, and Google Slides are live** (OAuth-based, managed from the [Sources tab](#data-source-connectors-google-workspace)); GitHub, Notion, and chat are still on the roadmap. Each connector writes markdown + sidecars into the bucket on the same auto-ingest pipeline as the other two paths. The wiki then reconciles across sources.
 
 Every S3 write — whichever path it came from — triggers the auto-ingest Lambda, which kicks a Bedrock ingestion job. New content is retrievable via `search_knowledge` within ~1 min once the canonical wiki catches up (next 10h regen, or hit **Refresh now** in the Wiki tab for an immediate re-synthesis).
 
@@ -259,6 +264,109 @@ Web admin UI → /suggestions tab
 - Rejecting doesn't delete the row; it sits in DynamoDB with `status=rejected` for audit
 - The DynamoDB table has a GSI on `(status, created_at)` so listing any status bucket stays fast as the queue grows
 - Approval triggers the standard S3 → auto-ingest Lambda → Bedrock ingestion pipeline, so approved suggestions are retrievable via `search_knowledge` within ~1 min
+
+## Data source connectors (Google Workspace)
+
+Connect a Google Sheet, Doc, or Slides deck from the **Sources** tab. Each connection OAuths once (the refresh token lives in its own Secrets Manager secret), then re-syncs every 6 hours. Content lands as markdown under `sources/<type>/<slug>/…` in the docs bucket — same auto-ingest pipeline as everything else, so new/changed content is retrievable via `search_knowledge` within ~1 min of each sync.
+
+### User flow
+
+1. Sign in to the web app, click **Sources** in the header.
+2. Click **Add new source** → pick **Google Sheets**, **Google Docs**, or **Google Slides**.
+3. Paste the URL + a friendly label, click **Connect Google account**.
+4. Google consent screen → approve (read-only scopes).
+5. You land back on `/sources`. The connector shows `syncing`; the card polls every 5s and flips to `connected` once the first sync finishes.
+6. **Added by** shows the Cognito email that created it; **Google account** shows which Google identity authenticated. **Sync now** and **Remove** live on each card.
+
+### What each connector does
+
+| Type | API | Rendering | S3 layout |
+|------|-----|-----------|-----------|
+| **Sheets** | `spreadsheets.get` + `values.get` per tab | One markdown table per tab | `sources/sheets/<spreadsheet-slug>/<tab-slug>.md` |
+| **Docs** | `documents.get` | Walks `body.content` → headings, lists, tables | `sources/docs/<doc-slug>/content.md` |
+| **Slides** | `presentations.get` | `## Slide N — <title>` + bullets + speaker notes | `sources/slides/<deck-slug>/content.md` |
+
+Every file gets a `.metadata.json` sidecar tagged `source=<type>`, `connector_id=<uuid>`, and resource IDs — so the wiki generator and any future per-source filters can trace back to the exact connector.
+
+### Non-native files (uploaded .xlsx/.docx/.pptx)
+
+Files uploaded to Drive but never converted to native Google formats are rejected by the corresponding Google API (the Sheets API won't read an uploaded `.xlsm`, for example). The connector surfaces this as a clear error on the card:
+
+> This looks like an uploaded Excel file (.xlsx/.xlsm/.ods), not a native Google Sheet. In the Sheet, go **File → Save as Google Sheets**, then retry with the new URL.
+
+Same pattern for Docs (Word) and Slides (PowerPoint).
+
+### Under the hood
+
+```
+                                ┌──────────────────────────────┐
+EventBridge (6h) ──────────────▶│  connector-dispatch Lambda   │
+    OR  /api/connectors/sync    │  queries status=connected    │
+    (web UI "Sync now")         │  fan-out Invoke per-type     │
+                                └──────────────┬───────────────┘
+                                               │
+       ┌───────────────────────────────────────┼───────────────────────────────────┐
+       ▼                                       ▼                                   ▼
+┌────────────────────┐              ┌────────────────────┐              ┌────────────────────┐
+│ connector-sync-    │              │ connector-sync-    │              │ connector-sync-    │
+│   sheets           │              │   docs             │              │   slides           │
+│                    │              │                    │              │                    │
+│ 1. GetItem from    │              │ 1. GetItem …       │              │ 1. GetItem …       │
+│    connectors tbl  │              │ 2. Refresh token   │              │ 2. Refresh token   │
+│ 2. Refresh access  │              │ 3. documents.get   │              │ 3. presentations   │
+│    token (OAuth)   │              │ 4. Render body →   │              │    .get            │
+│ 3. spreadsheets.get│              │    markdown        │              │ 4. Render slides → │
+│ 4. values.get per  │              │ 5. PutObject +     │              │    markdown        │
+│    tab             │              │    sidecar         │              │ 5. PutObject +     │
+│ 5. Render + Put    │              │ 6. Update row:     │              │    sidecar         │
+│ 6. Prune stale tabs│              │    status/last-sync│              │ 6. Update row      │
+│ 7. Update row      │              └────────────────────┘              └────────────────────┘
+└─────────┬──────────┘                        │                                   │
+          ▼                                   ▼                                   ▼
+                    ┌────────────────────────────────────────────┐
+                    │  S3 docs bucket (sources/<type>/…)         │
+                    └──────────────────┬─────────────────────────┘
+                                       │  S3 PutObject
+                                       ▼
+                            auto-ingest Lambda → Bedrock KB
+```
+
+### OAuth setup (one-time)
+
+Before any connector will work, register a Google OAuth client and drop its credentials in Secrets Manager:
+
+1. **GCP Console → APIs & Services → Credentials** → Create OAuth client ID (Web application).
+2. **Authorized JavaScript origins:** `https://main.<amplify-app-id>.amplifyapp.com`.
+3. **Authorized redirect URIs:** `https://main.<amplify-app-id>.amplifyapp.com/api/connectors/oauth/callback`.
+4. Enable the APIs you need: Google Sheets API, Google Docs API, Google Slides API, Google Drive API.
+5. Store the client creds:
+   ```bash
+   aws secretsmanager create-secret \
+     --name context101-google-oauth-client \
+     --secret-string '{"client_id":"…","client_secret":"…"}' \
+     --profile plateapr.com --region us-east-1
+   ```
+   CDK references this by name (`secretsmanager.Secret.fromSecretNameV2`), so you don't need to redeploy after rotating the secret value.
+
+### Connector states
+
+| Status | Meaning |
+|---|---|
+| `pending_auth` | Row created, user hasn't completed Google consent yet |
+| `syncing` | Sync Lambda is running |
+| `connected` | Last sync succeeded. `last_synced_at`, `item_count`, `resource_title` are populated |
+| `error` | Last sync failed. `last_error` shows the message inline on the card |
+
+Connectors in both `connected` and `error` states are retried on every 6h tick — the dispatcher doesn't give up after a single failure.
+
+### Remove a connector
+
+Click the trash icon on the card → confirm. This:
+1. Deletes the refresh-token secret (force delete, no recovery window).
+2. Deletes every S3 object under `sources/<type>/<slug>/` in the docs bucket.
+3. Deletes the connector row from DynamoDB.
+
+Bedrock auto-reindexes on the S3 delete events, so within a minute the content is gone from `search_knowledge` too.
 
 ## Improve with AI (web app)
 
@@ -462,7 +570,7 @@ The S3 docs bucket and S3 Vectors bucket have `RETAIN` policies — you won't lo
 ## Notes
 
 - `removalPolicy: RETAIN` on docs and vector buckets — accidental `cdk destroy` won't wipe your data.
-- The MCP server doesn't write to the KB — documents are managed via the `knowledge/` folder + `cdk deploy`.
+- The MCP server doesn't write to the KB directly — agents propose via `suggest_knowledge`, which lands in the review queue (see [Knowledge suggestions](#knowledge-suggestions-web-app)). Content flows into S3 through the web UI, approved suggestions, or the Google Workspace connectors.
 - Each S3 upload triggers a full ingestion job. Bedrock handles dedup/delta indexing internally.
 - To rotate the bearer token: re-run `cdk deploy -c token=<new-value>`. Redeploys the App Runner service with the new secret.
 - The wiki generator writes one file per page on each run, so a full regen kicks N ingestion jobs in rapid succession. Bedrock dedups internally — it's safe, just noisy in the console.
@@ -513,6 +621,8 @@ search_knowledge(
 
 ### Other ideas
 
+- **Notion connector** — share the same infra as the Google Workspace connectors (dispatcher, OAuth-per-row, per-type sync Lambda). Remaining: register a Notion OAuth integration + write `connector-sync-notion` that walks pages + databases and renders to markdown. The dispatcher already has a commented-out `notion: process.env.NOTION_SYNC_FN_NAME` branch ready.
+- **GitHub connector** — clone or list-tree a repo, filter to `README.md` + `docs/**`, render to `sources/github/<repo>/…`. Same shape as the Google ones but the auth is a personal access token (simpler than OAuth).
 - **Per-folder descriptions** — drop a `_about.md` in each folder that explains what the folder is for ("use knowledge in here when solving anything database-related"). Bedrock indexes it like any other markdown so semantic search picks it up naturally. The web UI would filter `_about.md` out of the normal list and show its content under the folder name, Devin-style. Stronger variant: wire `customTransformationConfiguration` on `CfnDataSource` to a Lambda that prepends the folder context to every file at ingestion time, so every chunk's vector carries the folder context.
 - **Hierarchical or semantic chunking** — better retrieval on long, structured docs. Higher ingestion cost. Swap the `chunkingConfiguration` on `CfnDataSource`.
 - **Per-user auth via Cognito + JWT** — graduate from the shared bearer token when you need per-person audit trails. Swap `StaticTokenVerifier` for FastMCP's `JWTVerifier` pointing at a Cognito user pool.
