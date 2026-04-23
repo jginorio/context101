@@ -65,6 +65,27 @@ export class Context101Stack extends cdk.Stack {
       ],
     });
 
+    // ── 1b. Connectors table ─────────────────────────────────────────
+    //      Per-connection metadata + pointer to the Secrets Manager
+    //      secret that holds the OAuth refresh_token. No secrets live in
+    //      Dynamo directly.
+    const connectorsTable = new dynamodb.TableV2(this, "ConnectorsTable", {
+      tableName: `${namePrefix}-connectors`,
+      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
+      billing: dynamodb.Billing.onDemand(),
+      pointInTimeRecovery: true,
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      globalSecondaryIndexes: [
+        {
+          // Quick list of "broken" connections without scanning, and for
+          // the dispatcher Lambda to enumerate active ones on each tick.
+          indexName: "status-created_at-index",
+          partitionKey: { name: "status", type: dynamodb.AttributeType.STRING },
+          sortKey: { name: "created_at", type: dynamodb.AttributeType.STRING },
+        },
+      ],
+    });
+
     // ── 2. S3 Vectors bucket + index ─────────────────────────────────
     // Version suffix — bump this whenever a change to the Index config
     // requires replacement (S3 Vectors doesn't support in-place metadata
@@ -355,6 +376,86 @@ export class Context101Stack extends cdk.Stack {
       value: wikiSg.securityGroupId,
     });
 
+    // ── Data source connectors (Google Sheets, …) ─────────────────────
+    // OAuth client creds are stored by the admin in Secrets Manager as
+    // `context101-google-oauth-client` with { client_id, client_secret }.
+    // We reference by name so CDK doesn't try to manage the secret value.
+    const googleOAuthClientSecret =
+      secretsmanager.Secret.fromSecretNameV2(
+        this,
+        "GoogleOauthClientSecret",
+        `${namePrefix}-google-oauth-client`
+      );
+
+    // a) Per-type sync Lambda — Sheets
+    const connectorSyncSheetsFn = new lambda.Function(
+      this,
+      "ConnectorSyncSheetsFn",
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset("lambda/connector-sync-sheets"),
+        functionName: `${namePrefix}-connector-sync-sheets`,
+        timeout: cdk.Duration.minutes(5),
+        memorySize: 1024,
+        environment: {
+          CONNECTORS_TABLE: connectorsTable.tableName,
+          DOCS_BUCKET: docsBucket.bucketName,
+          GOOGLE_OAUTH_CLIENT_SECRET_ID:
+            googleOAuthClientSecret.secretName,
+        },
+      }
+    );
+    connectorsTable.grantReadWriteData(connectorSyncSheetsFn);
+    docsBucket.grantReadWrite(connectorSyncSheetsFn);
+    googleOAuthClientSecret.grantRead(connectorSyncSheetsFn);
+    // Per-connection refresh-token secrets are named
+    // `context101-connector-<uuid>` — give Lambda read on anything under
+    // that pattern.
+    connectorSyncSheetsFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ReadConnectorTokenSecrets",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-connector-*`,
+        ],
+      })
+    );
+
+    // b) Dispatcher Lambda — enumerates active connectors, fans out
+    //    fire-and-forget invokes to the per-type sync Lambda.
+    const connectorDispatchFn = new lambda.Function(
+      this,
+      "ConnectorDispatchFn",
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset("lambda/connector-dispatch"),
+        functionName: `${namePrefix}-connector-dispatch`,
+        timeout: cdk.Duration.seconds(60),
+        environment: {
+          CONNECTORS_TABLE: connectorsTable.tableName,
+          SHEETS_SYNC_FN_NAME: connectorSyncSheetsFn.functionName,
+        },
+      }
+    );
+    connectorsTable.grantReadData(connectorDispatchFn);
+    connectorSyncSheetsFn.grantInvoke(connectorDispatchFn);
+
+    // c) EventBridge — every 6 hours, invoke the dispatcher
+    new events.Rule(this, "ConnectorSchedule", {
+      ruleName: `${namePrefix}-connector-schedule`,
+      schedule: events.Schedule.rate(cdk.Duration.hours(6)),
+      targets: [new events_targets.LambdaFunction(connectorDispatchFn)],
+    });
+
+    new cdk.CfnOutput(this, "ConnectorsTableName", {
+      value: connectorsTable.tableName,
+    });
+    new cdk.CfnOutput(this, "ConnectorSyncSheetsFnName", {
+      value: connectorSyncSheetsFn.functionName,
+    });
+
     // ── 8. Optional: App Runner service hosting the MCP server ────────
     //      Only provisioned if -c token=<value> is passed at deploy time.
     const teamToken = this.node.tryGetContext("token") as string | undefined;
@@ -506,6 +607,11 @@ export class Context101Stack extends cdk.Stack {
           // below (can't use a CfnRef — it would create a cycle since
           // the Lambda is declared after the App).
           { name: "START_WIKI_GEN_FN_NAME", value: `${namePrefix}-start-wiki-gen` },
+          // Data source connectors
+          { name: "CONNECTORS_TABLE", value: connectorsTable.tableName },
+          { name: "CONNECTOR_SYNC_SHEETS_FN_NAME", value: connectorSyncSheetsFn.functionName },
+          { name: "GOOGLE_OAUTH_CLIENT_SECRET_ID", value: googleOAuthClientSecret.secretName },
+          { name: "CONNECTOR_TOKEN_SECRET_PREFIX", value: `${namePrefix}-connector-` },
         ],
       });
 
@@ -603,6 +709,50 @@ export class Context101Stack extends cdk.Stack {
       // Suggestions table — SSR lists (GSI query), reads for diff, and
       // updates status on approve/reject.
       suggestionsTable.grantReadWriteData(ssrComputeRole);
+
+      // Data source connectors:
+      //   - R/W the connectors table
+      //   - Read the OAuth client secret (to start/complete OAuth flows)
+      //   - Create + delete per-connection token secrets (named
+      //     `context101-connector-<uuid>`)
+      //   - Invoke the per-type sync Lambda for "Sync now"
+      connectorsTable.grantReadWriteData(ssrComputeRole);
+      googleOAuthClientSecret.grantRead(ssrComputeRole);
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "ManageConnectorTokenSecrets",
+          actions: [
+            "secretsmanager:CreateSecret",
+            "secretsmanager:PutSecretValue",
+            "secretsmanager:UpdateSecret",
+            "secretsmanager:DeleteSecret",
+            "secretsmanager:GetSecretValue",
+            "secretsmanager:TagResource",
+          ],
+          resources: [
+            `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-connector-*`,
+          ],
+        })
+      );
+      // CreateSecret also requires the resource-less action to pass a
+      // wildcard name check — AWS requires this for the Create call.
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "CreateConnectorTokenSecrets",
+          actions: ["secretsmanager:CreateSecret"],
+          resources: ["*"],
+          conditions: {
+            StringLike: {
+              "secretsmanager:Name": `${namePrefix}-connector-*`,
+            },
+          },
+        })
+      );
+      connectorSyncSheetsFn.grantInvoke(ssrComputeRole);
+      // S3 delete under sources/sheets/ so DELETE /api/connectors/:id can
+      // clean up. The role already has s3:GetObject/PutObject/List via
+      // earlier grants; DeleteObject is the only gap.
+      docsBucket.grantDelete(ssrComputeRole);
       // "Refresh now" button on /wiki — SSR invokes a dispatcher Lambda
       // that does the ecs:RunTask. Amplify Hosting's SSR compute role
       // gets a platform session policy applied that explicitly denies

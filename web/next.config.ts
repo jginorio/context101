@@ -12,6 +12,10 @@ const nextConfig: NextConfig = {
     WIKI_SUBNET_IDS: process.env.WIKI_SUBNET_IDS,
     WIKI_SECURITY_GROUP_ID: process.env.WIKI_SECURITY_GROUP_ID,
     START_WIKI_GEN_FN_NAME: process.env.START_WIKI_GEN_FN_NAME,
+    CONNECTORS_TABLE: process.env.CONNECTORS_TABLE,
+    CONNECTOR_SYNC_SHEETS_FN_NAME: process.env.CONNECTOR_SYNC_SHEETS_FN_NAME,
+    GOOGLE_OAUTH_CLIENT_SECRET_ID: process.env.GOOGLE_OAUTH_CLIENT_SECRET_ID,
+    CONNECTOR_TOKEN_SECRET_PREFIX: process.env.CONNECTOR_TOKEN_SECRET_PREFIX,
   },
   // Force Turbopack to BUNDLE @aws-sdk instead of externalizing it.
   // Next 16's Turbopack auto-externalizes @aws-sdk/* by default, but it

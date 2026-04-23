@@ -1,0 +1,367 @@
+"use client";
+
+import * as React from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {
+  ArrowLeft,
+  Check,
+  ExternalLink,
+  Loader2,
+  Plug,
+  Plus,
+  RefreshCw,
+  Sheet,
+  Trash2,
+} from "lucide-react";
+import { toast } from "sonner";
+
+import { ThemeToggle } from "@/components/theme-toggle";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { AddSourceDialog } from "@/components/add-source-dialog";
+import { cn } from "@/lib/utils";
+
+import "@/utils/amplify-client-config";
+
+type Status =
+  | "pending_auth"
+  | "connecting"
+  | "syncing"
+  | "connected"
+  | "error";
+
+type Connector = {
+  id: string;
+  type: "sheets" | "notion";
+  status: Status;
+  label: string;
+  resource_url: string;
+  resource_title?: string;
+  google_account_email?: string;
+  item_count?: number;
+  last_synced_at?: string;
+  last_error?: string;
+  last_error_at?: string;
+  created_at: string;
+  created_by?: string;
+};
+
+function StatusPill({ s }: { s: Status }) {
+  const cls = cn(
+    "inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium uppercase tracking-wide",
+    s === "connected" &&
+      "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400",
+    s === "syncing" &&
+      "bg-sky-500/15 text-sky-600 dark:text-sky-400",
+    (s === "pending_auth" || s === "connecting") &&
+      "bg-amber-500/15 text-amber-600 dark:text-amber-400",
+    s === "error" && "bg-destructive/15 text-destructive"
+  );
+  return (
+    <span className={cls}>
+      {s === "syncing" && <Loader2 className="h-3 w-3 animate-spin" />}
+      {s.replace("_", " ")}
+    </span>
+  );
+}
+
+function TypeIcon({ type }: { type: Connector["type"] }) {
+  if (type === "sheets") return <Sheet className="h-4 w-4 opacity-80" />;
+  return <Plug className="h-4 w-4 opacity-80" />;
+}
+
+export default function SourcesPage() {
+  return (
+    <React.Suspense fallback={null}>
+      <SourcesContent />
+    </React.Suspense>
+  );
+}
+
+function SourcesContent() {
+  const search = useSearchParams();
+
+  const [items, setItems] = React.useState<Connector[] | null>(null);
+  const [loading, setLoading] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
+  const [addOpen, setAddOpen] = React.useState(false);
+  const [confirmRemove, setConfirmRemove] = React.useState<Connector | null>(
+    null
+  );
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const r = await fetch("/api/connectors/list");
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      setItems(j.items ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    load();
+  }, [load]);
+
+  // Surface OAuth success/error toasts from the callback redirect
+  React.useEffect(() => {
+    const connected = search.get("connected");
+    const oauthError = search.get("oauth_error");
+    if (connected) toast.success("Connected — first sync is running");
+    if (oauthError) toast.error(`OAuth: ${oauthError}`);
+  }, [search]);
+
+  // Poll while anything is syncing
+  React.useEffect(() => {
+    if (!items?.some((i) => i.status === "syncing")) return;
+    const t = setInterval(load, 5000);
+    return () => clearInterval(t);
+  }, [items, load]);
+
+  async function syncNow(id: string) {
+    try {
+      const r = await fetch("/api/connectors/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      toast.success("Sync started");
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function removeConnector(id: string) {
+    try {
+      const r = await fetch("/api/connectors/delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      toast.success("Removed");
+      setConfirmRemove(null);
+      load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  return (
+    <main className="flex min-h-screen flex-col">
+      <header className="border-b px-6 py-3 flex items-center justify-between shrink-0">
+        <div className="flex items-center gap-3">
+          <Link href="/">
+            <Button variant="ghost" size="sm">
+              <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-lg font-semibold tracking-tight">
+              Data sources
+            </h1>
+            <p className="text-xs text-muted-foreground">
+              Connected systems — synced into the brain every 6 hours
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+          >
+            <RefreshCw
+              className={cn("mr-1 h-3.5 w-3.5", loading && "animate-spin")}
+            />
+            Refresh
+          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger>
+              <span className="inline-flex items-center gap-1 h-9 px-3 text-sm rounded-md bg-primary text-primary-foreground hover:opacity-90">
+                <Plus className="h-3.5 w-3.5" /> Add new source
+              </span>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => setAddOpen(true)}>
+                <Sheet className="mr-2 h-3.5 w-3.5" /> Google Sheets
+              </DropdownMenuItem>
+              <DropdownMenuItem disabled>
+                <Plug className="mr-2 h-3.5 w-3.5" /> Notion{" "}
+                <span className="ml-auto text-[10px] text-muted-foreground">
+                  soon
+                </span>
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+          <ThemeToggle />
+        </div>
+      </header>
+
+      <article className="mx-auto w-full max-w-4xl px-6 py-6 space-y-4">
+        {error && (
+          <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+            {error}
+          </div>
+        )}
+
+        {items === null && loading && (
+          <Card>
+            <CardContent className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
+            </CardContent>
+          </Card>
+        )}
+
+        {items && items.length === 0 && (
+          <Card>
+            <CardContent className="p-6 text-center text-sm text-muted-foreground">
+              No data sources yet. Click{" "}
+              <strong>Add new source</strong> to connect a Google Sheet.
+            </CardContent>
+          </Card>
+        )}
+
+        {items?.map((c) => (
+          <Card key={c.id}>
+            <CardContent className="p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex items-start gap-3 min-w-0">
+                  <div className="mt-0.5">
+                    <TypeIcon type={c.type} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-medium text-sm truncate">{c.label}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {c.resource_title ?? c.resource_url}
+                    </p>
+                  </div>
+                </div>
+                <StatusPill s={c.status} />
+              </div>
+
+              <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <dt className="text-muted-foreground">Added by</dt>
+                <dd>{c.created_by ?? "unknown"}</dd>
+                <dt className="text-muted-foreground">Google account</dt>
+                <dd className="truncate">
+                  {c.google_account_email ?? "—"}
+                </dd>
+                <dt className="text-muted-foreground">Last synced</dt>
+                <dd>
+                  {c.last_synced_at
+                    ? new Date(c.last_synced_at).toLocaleString()
+                    : "—"}
+                </dd>
+                <dt className="text-muted-foreground">Items</dt>
+                <dd>
+                  {typeof c.item_count === "number" ? c.item_count : "—"}
+                </dd>
+              </dl>
+
+              {c.status === "error" && c.last_error && (
+                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                  {c.last_error}
+                </div>
+              )}
+
+              <div className="flex items-center gap-2 justify-end pt-1 border-t">
+                <a
+                  href={c.resource_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                >
+                  Open source <ExternalLink className="h-3 w-3" />
+                </a>
+                <div className="flex-1" />
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => syncNow(c.id)}
+                  disabled={c.status === "syncing"}
+                >
+                  {c.status === "syncing" ? (
+                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                  ) : (
+                    <Check className="mr-1 h-3.5 w-3.5" />
+                  )}
+                  Sync now
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-destructive hover:text-destructive"
+                  onClick={() => setConfirmRemove(c)}
+                >
+                  <Trash2 className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </article>
+
+      <AddSourceDialog open={addOpen} onOpenChange={setAddOpen} />
+
+      <AlertDialog
+        open={!!confirmRemove}
+        onOpenChange={(v) => !v && setConfirmRemove(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Remove source?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This revokes the saved access token, deletes all synced files
+              under{" "}
+              <code className="font-mono">
+                sources/{confirmRemove?.type}/…
+              </code>{" "}
+              in S3, and removes the connection. Bedrock will re-index on
+              the next PutObject/Delete event.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault();
+                if (confirmRemove) removeConnector(confirmRemove.id);
+              }}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              Remove
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </main>
+  );
+}

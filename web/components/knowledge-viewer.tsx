@@ -154,6 +154,10 @@ export function KnowledgeViewer({
 
   const ext = extOf(fileKey);
   const text = content ?? "";
+  // Connector-managed files live under sources/<type>/ and are read-only
+  // — the sync owns them; hand-edits would get overwritten on the next
+  // scheduled sync.
+  const isConnectorManaged = fileKey.startsWith("sources/");
 
   return (
     <>
@@ -178,6 +182,10 @@ export function KnowledgeViewer({
                 {saving ? "Saving…" : "Save"}
               </Button>
             </div>
+          ) : isConnectorManaged ? (
+            <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium px-2 py-0.5 rounded border bg-muted/30">
+              Managed by connector · read-only
+            </span>
           ) : (
             <div className="flex items-center gap-2">
               {ext === "md" && (
