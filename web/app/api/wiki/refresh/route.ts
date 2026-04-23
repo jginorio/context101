@@ -1,65 +1,69 @@
 import {
   ECSClient,
-  RunTaskCommand,
   DescribeTasksCommand,
 } from "@aws-sdk/client-ecs";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 const ecs = new ECSClient({ region: process.env.AWS_REGION ?? "us-east-1" });
+const lambdaClient = new LambdaClient({
+  region: process.env.AWS_REGION ?? "us-east-1",
+});
 
 const CLUSTER = process.env.WIKI_CLUSTER_ARN;
-const TASK_DEF = process.env.WIKI_TASK_DEF_ARN;
-const SUBNET_IDS = (process.env.WIKI_SUBNET_IDS ?? "")
-  .split(",")
-  .filter(Boolean);
-const SECURITY_GROUP = process.env.WIKI_SECURITY_GROUP_ID;
+const START_FN = process.env.START_WIKI_GEN_FN_NAME;
 
 /**
  * POST /api/wiki/refresh
  *
- * Triggers a one-off run of the wiki-generator Fargate task. Returns the
- * task ARN so the UI can poll /api/wiki/status until it finishes.
+ * Invokes a dispatcher Lambda (start-wiki-gen) that does the ECS RunTask.
  *
- * The cluster/task-def/subnet/SG IDs are baked into the Amplify app's
- * environment variables by CDK.
+ * Why not call RunTask directly from here? Amplify Hosting's SSR compute
+ * role gets a platform session policy that explicitly denies iam:PassRole,
+ * and RunTask needs PassRole on the task + execution roles. The dispatcher
+ * Lambda has its own role without that deny.
  */
 export async function POST() {
-  if (!CLUSTER || !TASK_DEF || SUBNET_IDS.length === 0 || !SECURITY_GROUP) {
+  if (!START_FN) {
     return NextResponse.json(
-      { error: "Wiki generator env vars not configured — run cdk deploy" },
+      { error: "START_WIKI_GEN_FN_NAME env var not set — run cdk deploy" },
       { status: 500 }
     );
   }
 
   try {
-    const res = await ecs.send(
-      new RunTaskCommand({
-        cluster: CLUSTER,
-        taskDefinition: TASK_DEF,
-        launchType: "FARGATE",
-        count: 1,
-        networkConfiguration: {
-          awsvpcConfiguration: {
-            subnets: SUBNET_IDS,
-            securityGroups: [SECURITY_GROUP],
-            assignPublicIp: "ENABLED",
-          },
-        },
-        startedBy: "context101-web-refresh",
+    const res = await lambdaClient.send(
+      new InvokeCommand({
+        FunctionName: START_FN,
+        InvocationType: "RequestResponse",
+        Payload: new Uint8Array(), // no args needed
       })
     );
 
-    const taskArn = res.tasks?.[0]?.taskArn;
-    const failure = res.failures?.[0];
-    if (!taskArn) {
+    if (res.FunctionError) {
+      const payload = res.Payload
+        ? new TextDecoder().decode(res.Payload)
+        : "";
       return NextResponse.json(
-        { error: failure?.reason ?? "RunTask returned no task" },
+        { error: `Lambda error: ${payload}` },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ taskArn });
+    const text = res.Payload ? new TextDecoder().decode(res.Payload) : "{}";
+    const parsed = JSON.parse(text) as {
+      taskArn?: string;
+      lastStatus?: string;
+    };
+    if (!parsed.taskArn) {
+      return NextResponse.json(
+        { error: "dispatcher returned no taskArn", detail: text },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ taskArn: parsed.taskArn });
   } catch (err) {
     console.error("wiki refresh failed:", err);
     return NextResponse.json(

@@ -502,6 +502,10 @@ export class Context101Stack extends cdk.Stack {
             ),
           },
           { name: "WIKI_SECURITY_GROUP_ID", value: wikiSg.securityGroupId },
+          // Name must match the functionName we set on StartWikiGenFn
+          // below (can't use a CfnRef — it would create a cycle since
+          // the Lambda is declared after the App).
+          { name: "START_WIKI_GEN_FN_NAME", value: `${namePrefix}-start-wiki-gen` },
         ],
       });
 
@@ -599,16 +603,32 @@ export class Context101Stack extends cdk.Stack {
       // Suggestions table — SSR lists (GSI query), reads for diff, and
       // updates status on approve/reject.
       suggestionsTable.grantReadWriteData(ssrComputeRole);
-      // "Refresh now" button on /wiki — lets SSR trigger one-off runs of
-      // the wiki generator and poll task status for UI feedback.
-      ssrComputeRole.addToPolicy(
+      // "Refresh now" button on /wiki — SSR invokes a dispatcher Lambda
+      // that does the ecs:RunTask. Amplify Hosting's SSR compute role
+      // gets a platform session policy applied that explicitly denies
+      // iam:PassRole, so calling RunTask directly from SSR fails. The
+      // dispatcher Lambda has its own role without that deny.
+      const startWikiGenFn = new lambda.Function(this, "StartWikiGenFn", {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset("lambda/start-wiki-gen"),
+        functionName: `${namePrefix}-start-wiki-gen`,
+        timeout: cdk.Duration.seconds(20),
+        environment: {
+          WIKI_CLUSTER_ARN: wikiCluster.clusterArn,
+          WIKI_TASK_DEF_ARN: wikiTaskDef.taskDefinitionArn,
+          WIKI_SUBNET_IDS: wikiVpc.publicSubnets.map((s) => s.subnetId).join(","),
+          WIKI_SECURITY_GROUP_ID: wikiSg.securityGroupId,
+        },
+      });
+      startWikiGenFn.addToRolePolicy(
         new iam.PolicyStatement({
           sid: "RunWikiGenerator",
           actions: ["ecs:RunTask"],
           resources: [wikiTaskDef.taskDefinitionArn],
         })
       );
-      ssrComputeRole.addToPolicy(
+      startWikiGenFn.addToRolePolicy(
         new iam.PolicyStatement({
           sid: "PassWikiGenRoles",
           actions: ["iam:PassRole"],
@@ -618,6 +638,9 @@ export class Context101Stack extends cdk.Stack {
           ],
         })
       );
+
+      // SSR can invoke the dispatcher + describe tasks for polling
+      startWikiGenFn.grantInvoke(ssrComputeRole);
       ssrComputeRole.addToPolicy(
         new iam.PolicyStatement({
           sid: "DescribeWikiTasks",
@@ -627,6 +650,10 @@ export class Context101Stack extends cdk.Stack {
           ],
         })
       );
+
+      new cdk.CfnOutput(this, "StartWikiGenFnName", {
+        value: startWikiGenFn.functionName,
+      });
 
       // Attach the compute role to the Amplify App
       webApp.addPropertyOverride("ComputeRoleArn", ssrComputeRole.roleArn);

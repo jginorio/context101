@@ -11,6 +11,7 @@ const nextConfig: NextConfig = {
     WIKI_TASK_DEF_ARN: process.env.WIKI_TASK_DEF_ARN,
     WIKI_SUBNET_IDS: process.env.WIKI_SUBNET_IDS,
     WIKI_SECURITY_GROUP_ID: process.env.WIKI_SECURITY_GROUP_ID,
+    START_WIKI_GEN_FN_NAME: process.env.START_WIKI_GEN_FN_NAME,
   },
   // Force Turbopack to BUNDLE @aws-sdk instead of externalizing it.
   // Next 16's Turbopack auto-externalizes @aws-sdk/* by default, but it
