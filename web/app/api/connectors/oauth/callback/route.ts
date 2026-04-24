@@ -15,7 +15,9 @@ import {
   CONNECTORS_TABLE,
   ddbConnectors,
   GOOGLE_OAUTH_CLIENT_SECRET_ID,
+  isGoogleType,
   lambdaClient,
+  NOTION_OAUTH_CLIENT_SECRET_ID,
   sm,
   syncFnNameFor,
   type Connector,
@@ -25,9 +27,10 @@ import { getPublicOrigin } from "@/utils/public-origin";
 /**
  * GET /api/connectors/oauth/callback?code=...&state=<connectorId>
  *
- * Exchanges the OAuth code for an {access_token, refresh_token}. Stores
- * the refresh_token in a new Secrets Manager secret. Flips the connector
- * row to `syncing` and fires the sync Lambda.
+ * Exchanges the OAuth code with the correct provider (Google or Notion),
+ * stores the long-lived token (refresh_token for Google, access_token for
+ * Notion) in a new Secrets Manager secret, flips the connector row to
+ * `syncing`, and fires the first sync Lambda.
  */
 export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get("state");
@@ -46,7 +49,7 @@ export async function GET(request: NextRequest) {
     baseRedirect.searchParams.set("oauth_error", "missing_state_or_code");
     return NextResponse.redirect(baseRedirect);
   }
-  if (!CONNECTORS_TABLE || !GOOGLE_OAUTH_CLIENT_SECRET_ID) {
+  if (!CONNECTORS_TABLE) {
     baseRedirect.searchParams.set("oauth_error", "server_misconfigured");
     return NextResponse.redirect(baseRedirect);
   }
@@ -58,86 +61,140 @@ export async function GET(request: NextRequest) {
     );
     const row = got.Item as Connector | undefined;
     if (!row) throw new Error("connector row not found");
-    if (!["sheets", "docs", "slides"].includes(row.type))
+    if (!["sheets", "docs", "slides", "notion"].includes(row.type))
       throw new Error(`unexpected type: ${row.type}`);
 
-    // Load OAuth client creds
+    const redirectUri = `${origin}/api/connectors/oauth/callback`;
+    const isGoogle = isGoogleType(row.type);
+
+    // Load provider OAuth client creds
+    const oauthClientSecretId = isGoogle
+      ? GOOGLE_OAUTH_CLIENT_SECRET_ID
+      : NOTION_OAUTH_CLIENT_SECRET_ID;
+    if (!oauthClientSecretId)
+      throw new Error(
+        `${isGoogle ? "Google" : "Notion"} OAuth client secret id not configured`
+      );
+
     const client = await sm.send(
-      new GetSecretValueCommand({ SecretId: GOOGLE_OAUTH_CLIENT_SECRET_ID })
+      new GetSecretValueCommand({ SecretId: oauthClientSecretId })
     );
     const { client_id, client_secret } = JSON.parse(
       client.SecretString ?? "{}"
     );
-    if (!client_id || !client_secret) throw new Error("OAuth client creds missing");
+    if (!client_id || !client_secret)
+      throw new Error("OAuth client creds missing");
 
-    // Exchange code for tokens. Must match the redirect_uri used at
-    // /create (same request origin).
-    const redirectUri = `${origin}/api/connectors/oauth/callback`;
-    const exchange = await fetch("https://oauth2.googleapis.com/token", {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      body: new URLSearchParams({
-        code,
-        client_id,
-        client_secret,
-        redirect_uri: redirectUri,
-        grant_type: "authorization_code",
-      }),
-    });
-    if (!exchange.ok) {
-      const text = await exchange.text().catch(() => "");
-      throw new Error(`token exchange ${exchange.status}: ${text}`);
-    }
-    const tokens: {
-      access_token?: string;
-      refresh_token?: string;
-      id_token?: string;
-    } = await exchange.json();
-
-    if (!tokens.refresh_token) {
-      // If the user previously consented without revoking, Google may
-      // not return a refresh_token. We ask for access_type=offline and
-      // prompt=consent to avoid this, but surface it if it still happens.
-      throw new Error(
-        "Google didn't return a refresh_token — revoke the app at myaccount.google.com/permissions and reconnect"
-      );
-    }
-
-    // Fetch Google profile (email, account)
+    // ── Branch: exchange code with the right provider ─────────────────
+    let secretPayload: Record<string, unknown>;
     let googleEmail: string | undefined;
-    if (tokens.access_token) {
-      const u = await fetch(
-        "https://openidconnect.googleapis.com/v1/userinfo",
-        { headers: { Authorization: `Bearer ${tokens.access_token}` } }
-      );
-      if (u.ok) {
-        const info = (await u.json()) as { email?: string };
-        googleEmail = info.email;
+    let workspaceName: string | undefined;
+
+    if (isGoogle) {
+      const exchange = await fetch("https://oauth2.googleapis.com/token", {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+        body: new URLSearchParams({
+          code,
+          client_id,
+          client_secret,
+          redirect_uri: redirectUri,
+          grant_type: "authorization_code",
+        }),
+      });
+      if (!exchange.ok) {
+        const text = await exchange.text().catch(() => "");
+        throw new Error(`google token exchange ${exchange.status}: ${text}`);
       }
+      const tokens: {
+        access_token?: string;
+        refresh_token?: string;
+      } = await exchange.json();
+
+      if (!tokens.refresh_token) {
+        throw new Error(
+          "Google didn't return a refresh_token — revoke the app at myaccount.google.com/permissions and reconnect"
+        );
+      }
+
+      // Pull email via userinfo
+      if (tokens.access_token) {
+        const u = await fetch(
+          "https://openidconnect.googleapis.com/v1/userinfo",
+          { headers: { Authorization: `Bearer ${tokens.access_token}` } }
+        );
+        if (u.ok) {
+          const info = (await u.json()) as { email?: string };
+          googleEmail = info.email;
+        }
+      }
+
+      secretPayload = { refresh_token: tokens.refresh_token };
+    } else {
+      // Notion — POST /v1/oauth/token with HTTP Basic (client_id:client_secret)
+      const basic = Buffer.from(`${client_id}:${client_secret}`).toString(
+        "base64"
+      );
+      const exchange = await fetch("https://api.notion.com/v1/oauth/token", {
+        method: "POST",
+        headers: {
+          Authorization: `Basic ${basic}`,
+          "Content-Type": "application/json",
+          "Notion-Version": "2022-06-28",
+        },
+        body: JSON.stringify({
+          grant_type: "authorization_code",
+          code,
+          redirect_uri: redirectUri,
+        }),
+      });
+      if (!exchange.ok) {
+        const text = await exchange.text().catch(() => "");
+        throw new Error(`notion token exchange ${exchange.status}: ${text}`);
+      }
+      const tokens: {
+        access_token?: string;
+        workspace_id?: string;
+        workspace_name?: string;
+        workspace_icon?: string;
+        bot_id?: string;
+        owner?: unknown;
+      } = await exchange.json();
+
+      if (!tokens.access_token) throw new Error("Notion didn't return an access_token");
+
+      workspaceName = tokens.workspace_name;
+      secretPayload = {
+        access_token: tokens.access_token,
+        workspace_id: tokens.workspace_id,
+        workspace_name: tokens.workspace_name,
+        bot_id: tokens.bot_id,
+      };
     }
 
-    // Store refresh token in a new secret
+    // Store the token(s) in a new per-connector secret
     const tokenSecretName = `${CONNECTOR_TOKEN_SECRET_PREFIX}${row.id}`;
     const created = await sm.send(
       new CreateSecretCommand({
         Name: tokenSecretName,
-        Description: `Refresh token for connector ${row.id} (${row.type})`,
-        SecretString: JSON.stringify({ refresh_token: tokens.refresh_token }),
+        Description: `OAuth token for connector ${row.id} (${row.type})`,
+        SecretString: JSON.stringify(secretPayload),
       })
     );
 
-    // Flip the row to syncing + record token ARN + Google email
+    // Flip the row to syncing + record token ARN + provider identity
     await ddbConnectors.send(
       new UpdateCommand({
         TableName: CONNECTORS_TABLE,
         Key: { id: row.id },
         UpdateExpression:
-          "SET #s = :s, token_secret_arn = :arn, google_account_email = :ge",
+          "SET #s = :s, token_secret_arn = :arn, google_account_email = :ge, notion_workspace_name = :nw",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
           ":s": "syncing",
           ":arn": created.ARN,
           ":ge": googleEmail ?? null,
+          ":nw": workspaceName ?? null,
         },
       })
     );
@@ -163,10 +220,7 @@ export async function GET(request: NextRequest) {
   } catch (err) {
     console.error("oauth callback failed:", err);
     const msg = err instanceof Error ? err.message : String(err);
-    baseRedirect.searchParams.set(
-      "oauth_error",
-      msg.slice(0, 300)
-    );
+    baseRedirect.searchParams.set("oauth_error", msg.slice(0, 300));
     return NextResponse.redirect(baseRedirect);
   }
 }

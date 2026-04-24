@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import {
+  BookOpen,
   FileText,
   Loader2,
   Presentation,
@@ -21,7 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-type SourceType = "sheets" | "docs" | "slides";
+type SourceType = "sheets" | "docs" | "slides" | "notion";
 
 type Copy = {
   icon: LucideIcon;
@@ -59,6 +60,15 @@ const COPY: Record<SourceType, Copy> = {
     urlLabel: "Presentation URL",
     urlPlaceholder: "https://docs.google.com/presentation/d/…",
     labelPlaceholder: "All-hands kickoff deck",
+  },
+  notion: {
+    icon: BookOpen,
+    title: "Add a Notion page or database",
+    description:
+      "Paste a page or database URL and give it a friendly label. After you approve Notion read access (pick which pages the integration can see), we walk the block tree and render to markdown, re-syncing every 6 hours. Database URLs pull every page as a separate markdown file.",
+    urlLabel: "Notion URL",
+    urlPlaceholder: "https://www.notion.so/workspace/Page-Title-abc123…",
+    labelPlaceholder: "Engineering handbook",
   },
 };
 
@@ -163,6 +173,8 @@ export function AddSourceDialog({
                 <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
                 Redirecting…
               </>
+            ) : type === "notion" ? (
+              "Connect Notion workspace"
             ) : (
               "Connect Google account"
             )}

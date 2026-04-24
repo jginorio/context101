@@ -8,8 +8,10 @@ import {
   CONNECTORS_TABLE,
   ddbConnectors,
   GOOGLE_OAUTH_CLIENT_SECRET_ID,
+  isGoogleType,
+  NOTION_OAUTH_CLIENT_SECRET_ID,
   oauthScopesFor,
-  parseGoogleResourceId,
+  parseResourceId,
   sm,
   type Connector,
   type ConnectorType,
@@ -17,7 +19,7 @@ import {
 import { getCurrentUserEmail } from "@/utils/amplify-server-utils";
 import { getPublicOrigin } from "@/utils/public-origin";
 
-const SUPPORTED_TYPES: ConnectorType[] = ["sheets", "docs", "slides"];
+const SUPPORTED_TYPES: ConnectorType[] = ["sheets", "docs", "slides", "notion"];
 
 function defaultLabelFor(type: ConnectorType): string {
   switch (type) {
@@ -27,32 +29,49 @@ function defaultLabelFor(type: ConnectorType): string {
       return "Untitled Docs source";
     case "slides":
       return "Untitled Slides source";
+    case "notion":
+      return "Untitled Notion source";
     default:
       return "Untitled source";
   }
 }
 
+function resourceHint(type: ConnectorType): string {
+  switch (type) {
+    case "sheets":
+      return "docs.google.com spreadsheet";
+    case "docs":
+      return "docs.google.com document";
+    case "slides":
+      return "docs.google.com presentation";
+    case "notion":
+      return "notion.so page or database";
+    default:
+      return "resource";
+  }
+}
+
 /**
  * POST /api/connectors/create
- * Body: { type: "sheets", label: string, resource_url: string }
+ * Body: { type: ConnectorType, label: string, resource_url: string }
  *
- * Creates a row in `pending_auth` and returns a Google OAuth URL.
+ * Creates a row in `pending_auth` and returns the provider OAuth URL.
  * The callback (/api/connectors/oauth/callback) completes the connection.
  */
 export async function POST(request: NextRequest) {
   const response = NextResponse.next();
 
-  if (!CONNECTORS_TABLE || !GOOGLE_OAUTH_CLIENT_SECRET_ID) {
+  if (!CONNECTORS_TABLE) {
     return NextResponse.json(
-      { error: "required env vars not set — run cdk deploy" },
+      { error: "CONNECTORS_TABLE not set — run cdk deploy" },
       { status: 500 }
     );
   }
 
-  // The OAuth redirect URI must be whatever is registered in the GCP
-  // OAuth client. On Amplify SSR, request.nextUrl.origin returns
-  // "https://localhost:3000" because the Lambda runtime doesn't see
-  // the public hostname. Read forwarded headers instead.
+  // The OAuth redirect URI must be whatever is registered in the provider
+  // console. On Amplify SSR, request.nextUrl.origin returns
+  // "https://localhost:3000" because the Lambda runtime doesn't see the
+  // public hostname — read forwarded headers instead.
   const origin = getPublicOrigin(request);
   const redirectUri = `${origin}/api/connectors/oauth/callback`;
 
@@ -72,18 +91,24 @@ export async function POST(request: NextRequest) {
   }
   const type = body.type as ConnectorType;
 
-  const resourceId = parseGoogleResourceId(type, body.resource_url);
+  // Provider-specific env gating
+  if (isGoogleType(type) && !GOOGLE_OAUTH_CLIENT_SECRET_ID) {
+    return NextResponse.json(
+      { error: "GOOGLE_OAUTH_CLIENT_SECRET_ID not set — run cdk deploy" },
+      { status: 500 }
+    );
+  }
+  if (type === "notion" && !NOTION_OAUTH_CLIENT_SECRET_ID) {
+    return NextResponse.json(
+      { error: "NOTION_OAUTH_CLIENT_SECRET_ID not set — run cdk deploy" },
+      { status: 500 }
+    );
+  }
+
+  const resourceId = parseResourceId(type, body.resource_url);
   if (!resourceId) {
     return NextResponse.json(
-      {
-        error: `Couldn't parse ${type} id from URL — expected a docs.google.com ${
-          type === "sheets"
-            ? "spreadsheet"
-            : type === "docs"
-              ? "document"
-              : "presentation"
-        } link`,
-      },
+      { error: `Couldn't parse ${type} id from URL — expected a ${resourceHint(type)} link` },
       { status: 400 }
     );
   }
@@ -108,24 +133,38 @@ export async function POST(request: NextRequest) {
       new PutCommand({ TableName: CONNECTORS_TABLE, Item: row })
     );
 
+    // Build the provider-specific authorize URL
+    const oauthClientSecretId = isGoogleType(type)
+      ? GOOGLE_OAUTH_CLIENT_SECRET_ID
+      : NOTION_OAUTH_CLIENT_SECRET_ID;
     const client = await sm.send(
-      new GetSecretValueCommand({ SecretId: GOOGLE_OAUTH_CLIENT_SECRET_ID })
+      new GetSecretValueCommand({ SecretId: oauthClientSecretId })
     );
     const { client_id } = JSON.parse(client.SecretString ?? "{}");
     if (!client_id) throw new Error("OAuth client_id missing from secret");
 
-    const oauthUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-    oauthUrl.searchParams.set("client_id", client_id);
-    oauthUrl.searchParams.set("redirect_uri", redirectUri);
-    oauthUrl.searchParams.set("response_type", "code");
-    oauthUrl.searchParams.set("scope", oauthScopesFor(type).join(" "));
-    // access_type=offline + prompt=consent is how Google issues a
-    // refresh_token on every consent (otherwise you only get one the
-    // first time a user ever approves this client).
-    oauthUrl.searchParams.set("access_type", "offline");
-    oauthUrl.searchParams.set("prompt", "consent");
-    oauthUrl.searchParams.set("include_granted_scopes", "true");
-    oauthUrl.searchParams.set("state", id);
+    let oauthUrl: URL;
+    if (isGoogleType(type)) {
+      oauthUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+      oauthUrl.searchParams.set("client_id", client_id);
+      oauthUrl.searchParams.set("redirect_uri", redirectUri);
+      oauthUrl.searchParams.set("response_type", "code");
+      oauthUrl.searchParams.set("scope", oauthScopesFor(type).join(" "));
+      // access_type=offline + prompt=consent gets a refresh_token every time
+      oauthUrl.searchParams.set("access_type", "offline");
+      oauthUrl.searchParams.set("prompt", "consent");
+      oauthUrl.searchParams.set("include_granted_scopes", "true");
+      oauthUrl.searchParams.set("state", id);
+    } else {
+      // Notion — public integration OAuth
+      oauthUrl = new URL("https://api.notion.com/v1/oauth/authorize");
+      oauthUrl.searchParams.set("client_id", client_id);
+      oauthUrl.searchParams.set("redirect_uri", redirectUri);
+      oauthUrl.searchParams.set("response_type", "code");
+      // "user" lets the user pick which pages/databases to grant access to
+      oauthUrl.searchParams.set("owner", "user");
+      oauthUrl.searchParams.set("state", id);
+    }
 
     return NextResponse.json({ id, oauthUrl: oauthUrl.toString() });
   } catch (err) {

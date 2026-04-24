@@ -1,0 +1,1 @@
+The Context101 was created with the purpose of CRUD knowledge as easy as posible and have this knowledge shared across any MCP Client (Cursor, Devin, Claude, etc).

@@ -28,7 +28,7 @@ const FN_BY_TYPE = {
   sheets: process.env.SHEETS_SYNC_FN_NAME,
   docs: process.env.DOCS_SYNC_FN_NAME,
   slides: process.env.SLIDES_SYNC_FN_NAME,
-  // notion: process.env.NOTION_SYNC_FN_NAME  (v2)
+  notion: process.env.NOTION_SYNC_FN_NAME,
 };
 
 export const handler = async () => {

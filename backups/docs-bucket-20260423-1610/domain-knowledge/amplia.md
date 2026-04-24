@@ -1,0 +1,3 @@
+Amplia MLS (ampliamls.com) is Puerto Rico's first independent Multiple Listing Service (MLS). This independence gave Amplia the ability to create its own rules — one of which is that a Realtor membership is not required for agents to use the system. They also took it a step further by making it completely free.
+
+Given that there is no centralized source for real estate data in Puerto Rico, we plan to capture as much data as possible to feed Findit and make it the number one real estate marketplace on the island, while also building our own real estate tools for other use cases. For example, Platea sometimes publishes guides about buying a home, and with Amplia we can leverage that data to enrich that type of content.

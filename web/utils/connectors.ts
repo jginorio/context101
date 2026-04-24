@@ -21,8 +21,12 @@ export const CONNECTOR_SYNC_DOCS_FN_NAME =
   process.env.CONNECTOR_SYNC_DOCS_FN_NAME ?? "";
 export const CONNECTOR_SYNC_SLIDES_FN_NAME =
   process.env.CONNECTOR_SYNC_SLIDES_FN_NAME ?? "";
+export const CONNECTOR_SYNC_NOTION_FN_NAME =
+  process.env.CONNECTOR_SYNC_NOTION_FN_NAME ?? "";
 export const GOOGLE_OAUTH_CLIENT_SECRET_ID =
   process.env.GOOGLE_OAUTH_CLIENT_SECRET_ID ?? "";
+export const NOTION_OAUTH_CLIENT_SECRET_ID =
+  process.env.NOTION_OAUTH_CLIENT_SECRET_ID ?? "";
 export const CONNECTOR_TOKEN_SECRET_PREFIX =
   process.env.CONNECTOR_TOKEN_SECRET_PREFIX ?? "context101-connector-";
 
@@ -45,6 +49,7 @@ export type Connector = {
   resource_title?: string;
   token_secret_arn?: string;
   google_account_email?: string;
+  notion_workspace_name?: string;
   item_count?: number;
   last_synced_at?: string;
   last_error?: string;
@@ -73,7 +78,20 @@ export function parseSlidesId(url: string): string | null {
   return m ? m[1] : null;
 }
 
-export function parseGoogleResourceId(
+export function parseNotionId(url: string): string | null {
+  // Notion page/database URLs end with a 32-char hex id (optionally dashed):
+  //   https://www.notion.so/workspace/Page-Title-abc123…def
+  //   https://www.notion.so/abc123def?v=…   (database)
+  //   https://www.notion.so/workspace/abc12345-6789-…-…-…
+  const dashed = url.match(
+    /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/i
+  );
+  if (dashed) return dashed[1].replace(/-/g, "");
+  const packed = url.match(/([0-9a-f]{32})(?:[?#/]|$)/i);
+  return packed ? packed[1] : null;
+}
+
+export function parseResourceId(
   type: ConnectorType,
   url: string
 ): string | null {
@@ -84,10 +102,15 @@ export function parseGoogleResourceId(
       return parseDocId(url);
     case "slides":
       return parseSlidesId(url);
+    case "notion":
+      return parseNotionId(url);
     default:
       return null;
   }
 }
+
+// Keep the old name as an alias for callers that haven't migrated.
+export const parseGoogleResourceId = parseResourceId;
 
 // ── OAuth scopes per connector type ──────────────────────────────────
 
@@ -127,7 +150,14 @@ export function syncFnNameFor(type: ConnectorType): string {
       return CONNECTOR_SYNC_DOCS_FN_NAME;
     case "slides":
       return CONNECTOR_SYNC_SLIDES_FN_NAME;
+    case "notion":
+      return CONNECTOR_SYNC_NOTION_FN_NAME;
     default:
       return "";
   }
+}
+
+// Is this type authenticated via Google OAuth (vs Notion OAuth vs other)?
+export function isGoogleType(type: ConnectorType): boolean {
+  return type === "sheets" || type === "docs" || type === "slides";
 }
