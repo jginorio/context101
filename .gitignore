@@ -17,3 +17,4 @@ cdk/cdk.out/
 cdk/*.js
 cdk/*.d.ts
 cdk/lambda/**/node_modules/
+backups/

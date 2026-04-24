@@ -1,8 +1,0 @@
-{
-  "metadataAttributes": {
-    "source": "wiki",
-    "generated_at": "2026-04-23T18:17:39.183130+00:00",
-    "page_slug": "mcp-servers-tooling",
-    "source_files": "mcp/metabase-mcp.md,mcp/google-analytics-mcp.md,mcp/aws-docs-mcp.md,mcp/uvx.md,sentry-mcp-setup-and-usage-for-findit-pr.md"
-  }
-}
