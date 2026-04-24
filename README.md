@@ -38,11 +38,13 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 │   ├── bin/context101.ts
 │   ├── lib/context101-stack.ts
 │   └── lambda/
-│       ├── auto-ingest/          # S3 event → StartIngestionJob
-│       ├── connector-dispatch/   # 6h fan-out to per-type sync Lambdas
+│       ├── auto-ingest/          # S3 event → Bedrock StartIngestionJob
+│       ├── start-wiki-gen/       # SSR → ecs:RunTask shim (bypasses the Amplify PassRole deny)
+│       ├── connector-dispatch/   # EventBridge 6h → fan-out to per-type sync Lambdas
 │       ├── connector-sync-sheets/
 │       ├── connector-sync-docs/
-│       └── connector-sync-slides/
+│       ├── connector-sync-slides/
+│       └── connector-sync-notion/
 ├── server.py                     # Python MCP server (FastMCP + boto3)
 ├── Dockerfile                    # Used by App Runner
 ├── knowledge/                    # Your markdown — source of truth
@@ -51,32 +53,128 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 └── requirements.txt
 ```
 
+## Prerequisites
+
+Before your first deploy, make sure you have:
+
+**Local tooling**
+- **AWS CLI v2** authenticated for the target account (`aws sts get-caller-identity` should work). The examples use `AWS_PROFILE=plateapr.com`; replace with your own profile/region.
+- **Node 20+** and **npm** — for the CDK app and the Next.js web build.
+- **Docker** — CDK asset bundling for the wiki-generator image uses it. `colima start` on macOS if you use Colima.
+- **GitHub CLI (`gh`)** or a manually-created Personal Access Token — Amplify Hosting needs a GitHub token with `repo` scope to watch your fork. `gh auth token` returns one if you're already logged in.
+- **Python 3.11+** — only if you want to run the MCP server or the wiki generator locally.
+
+**AWS account setup**
+- **Region** — everything is wired up for `us-east-1`. It can be changed, but S3 Vectors and the Opus 4.7 cross-region inference profile (`us.anthropic.claude-opus-4-7`) have region caveats; staying in `us-east-1` for the first deploy is the smooth path.
+- **CDK bootstrap** — run once per account+region:
+  ```bash
+  AWS_PROFILE=plateapr.com npx cdk bootstrap aws://<ACCOUNT_ID>/us-east-1
+  ```
+- **Bedrock model access** — enable the models we use in the Bedrock console → *Model access*:
+  - `amazon.titan-embed-text-v2:0` (embeddings for the KB)
+  - `us.anthropic.claude-opus-4-7` (the *Improve with AI* button and the wiki generator — requires a Marketplace subscription, done once via the "Request access" flow)
+
+  Without these, `cdk deploy` will still succeed, but writes to `/improve` and wiki regen will 403.
+
+**GitHub**
+- Fork this repo to your own account. CDK references the repo by owner/name inside `lib/context101-stack.ts` — update the `repository` URL there if your fork lives elsewhere.
+
+**(Optional) Provider OAuth clients** — only needed if you plan to use the data connectors. See [Data source connectors](#data-source-connectors) for Google + Notion setup; they're no-ops until you provision their secrets.
+
 ## Setup
 
-### 1. Deploy everything
+### 1. First deploy (minimal — just KB + docs bucket)
 
 ```bash
 cd cdk
 npm install
-
-# First time only: bootstrap CDK in your account/region
-AWS_PROFILE=plateapr.com npx cdk bootstrap aws://<ACCOUNT_ID>/us-east-1
-
-# Deploy — pass -c token=<value> to also provision the App Runner MCP service.
-# Omit it during initial development to just stand up the KB/S3 infra.
-AWS_PROFILE=plateapr.com npx cdk deploy -c token=<your-shared-bearer-token>
+AWS_PROFILE=plateapr.com npx cdk deploy
 ```
 
-`cdk deploy` provisions the infra **and** seeds the S3 docs bucket with whatever is in the local `knowledge/` folder — useful so a fresh stack isn't empty, but not the ongoing authoring path (see [Daily Workflow](#daily-workflow)). The auto-ingest Lambda kicks off a Bedrock ingestion job on the initial sync; wait ~1-3 min for indexing (check the KB status in the AWS console).
+This provisions the baseline infra — S3 docs bucket, Bedrock Knowledge Base, S3 Vectors, DynamoDB tables, all Lambdas — and seeds the docs bucket from the local `knowledge/` folder. The auto-ingest Lambda kicks off a Bedrock ingestion job; wait ~1-3 min (watch the KB in the AWS console).
 
-Outputs:
+> **Source of truth:** At runtime, the **S3 docs bucket** is the source of truth. Content is managed through the web admin UI, agent `suggest_knowledge` proposals (reviewed in the Suggestions tab), and data connectors. The local `knowledge/` folder is just a **bootstrap seed** synced on the *initial* `cdk deploy` so a fresh stack isn't empty. Avoid editing files in the S3 console directly — use the web UI so writes go through the app's auth, approval, and audit surfaces.
+
+**Key outputs** (you'll want to save these):
 - `DocsBucketName` — the S3 bucket holding your markdown
-- `KnowledgeBaseId` — set as `KB_ID` env var
-- `McpUrl` — the App Runner URL (only shown if `-c token=...` was passed)
+- `KnowledgeBaseId` — set as `KB_ID` when running the MCP server locally
+- `ConnectorsTableName`, `Connector*FnName` — referenced by the web app at runtime
 
-> **Source of truth:** At runtime, the **S3 docs bucket** is the source of truth. Content is managed through the web admin UI, agent `suggest_knowledge` proposals (reviewed in the Suggestions tab), and — soon — data connectors pulling from GitHub / Notion / Sheets / chat. The local `knowledge/` folder is just a **bootstrap seed** synced on the initial `cdk deploy` so a fresh stack isn't empty; it is *not* the ongoing authoring path. Avoid editing files in the S3 console directly — use the web UI so writes go through the app's auth, approval, and audit surfaces.
+The web admin UI and App Runner MCP service are **gated on two CDK context flags** (they only deploy if you pass them). See the next two sections.
 
-### 2a. Run locally for dev
+### 2. Deploy the MCP service (App Runner)
+
+Pass a shared bearer token — this is what MCP clients will use to authenticate:
+
+```bash
+AWS_PROFILE=plateapr.com npx cdk deploy -c token=<pick-any-long-random-string>
+```
+
+`McpUrl` appears in the outputs. Rotating the token later = re-deploy with a new `-c token=` and redistribute the new value to teammates' MCP client configs.
+
+### 3. Deploy the web admin UI (Amplify Hosting)
+
+Amplify needs a GitHub PAT with `repo` scope to clone your fork + subscribe to push events:
+
+```bash
+# Using the GitHub CLI (recommended)
+GH_PAT=$(gh auth token)
+
+# …or paste one you generated at github.com/settings/tokens
+
+AWS_PROFILE=plateapr.com npx cdk deploy \
+  -c token=<your-bearer-token> \
+  -c githubToken="$GH_PAT"
+```
+
+`WebAppDefaultDomain` in the outputs is the URL to share with teammates (e.g. `https://main.abc123xyz.amplifyapp.com`). The first Amplify build takes ~4 min.
+
+> ⚠️ **Amplify build timing gotcha:** if CDK added new Amplify env vars during *this* deploy, the build that was auto-triggered from the deploy doesn't see them — you need to kick one more build after the deploy finishes:
+> ```bash
+> aws amplify start-job --app-id <WebAppId> --branch-name main --job-type RELEASE
+> ```
+
+### 4. Create your first Cognito user
+
+Cognito is provisioned by Amplify Gen 2 auth on the first web build. Self-signup is off — you invite yourself manually:
+
+```bash
+# Find the user pool (fresh deploys get a new one every time the Amplify app is recreated)
+POOL_ID=$(aws cognito-idp list-user-pools --max-results 30 \
+  --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)] | sort_by(@, &CreationDate)[-1].Id' \
+  --output text --profile plateapr.com --region us-east-1)
+
+aws cognito-idp admin-create-user \
+  --user-pool-id "$POOL_ID" \
+  --username YOUR_EMAIL \
+  --user-attributes Name=email,Value=YOUR_EMAIL Name=email_verified,Value=true \
+  --desired-delivery-mediums EMAIL \
+  --profile plateapr.com --region us-east-1
+```
+
+Check your inbox for a temp password (from `no-reply@verificationemail.com`). First login at `WebAppDefaultDomain` forces a password reset.
+
+### 5. (Optional) Set up data-source connectors
+
+OAuth client creds live in Secrets Manager. See [Data source connectors](#data-source-connectors) for full per-provider setup. The short version:
+
+```bash
+# Google (needed for Sheets/Docs/Slides)
+aws secretsmanager create-secret \
+  --name context101-google-oauth-client \
+  --secret-string '{"client_id":"…","client_secret":"…"}' \
+  --region us-east-1
+
+# Notion (needed for Notion connector)
+aws secretsmanager create-secret \
+  --name context101-notion-oauth-client \
+  --secret-string '{"client_id":"…","client_secret":"…"}' \
+  --region us-east-1
+```
+
+CDK references both secrets by *name*, not value — so rotating the creds doesn't require a redeploy. If a secret doesn't exist yet, that connector's "Add new source" flow returns a clear 500 until it does.
+
+### 6a. Run locally for dev
 
 Without a bearer token — no auth, anyone on your machine can hit it:
 
@@ -91,7 +189,7 @@ export DOCS_BUCKET=<DocsBucketName>
 fastmcp run server.py:mcp --transport streamable-http --port 8787
 ```
 
-### 2b. Use the deployed App Runner service (team)
+### 6b. Use the deployed App Runner service (team)
 
 Once deployed with `-c token=<value>`, teammates point their MCP client at `McpUrl` and add the `Authorization: Bearer <token>` header.
 
@@ -135,15 +233,27 @@ Restart Claude Desktop and Context101 should appear in the tools list. The `-y` 
 
 The web admin UI is gated by Cognito. Self-signup is off by design — you invite people explicitly. Each invite sends an email with a one-time temp password; on first login they set a real one.
 
-Share this URL with teammates: **https://main.dolgu9byu4ct1.amplifyapp.com**
+Share the `WebAppDefaultDomain` output from `cdk deploy` with your teammates (e.g. `https://main.dolgu9byu4ct1.amplifyapp.com`).
 
-### Invite a teammate (copy-paste)
+### Find the current user pool ID
+
+The pool ID changes every time the Amplify app is recreated (e.g. if you destroy the `if (githubToken)` branch and redeploy). Find the latest one:
+
+```bash
+POOL_ID=$(aws cognito-idp list-user-pools --max-results 30 \
+  --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)] | sort_by(@, &CreationDate)[-1].Id' \
+  --output text --profile plateapr.com --region us-east-1)
+echo "$POOL_ID"
+```
+
+### Invite a teammate
 
 ```bash
 aws cognito-idp admin-create-user \
-  --user-pool-id us-east-1_wO836JEnQ \
+  --user-pool-id "$POOL_ID" \
   --username TEAMMATE_EMAIL \
   --user-attributes Name=email,Value=TEAMMATE_EMAIL Name=email_verified,Value=true \
+  --desired-delivery-mediums EMAIL \
   --profile plateapr.com --region us-east-1
 ```
 
@@ -153,19 +263,9 @@ Replace `TEAMMATE_EMAIL` (both places) with their actual email. They'll get an e
 
 ```bash
 aws cognito-idp admin-delete-user \
-  --user-pool-id us-east-1_wO836JEnQ \
+  --user-pool-id "$POOL_ID" \
   --username TEAMMATE_EMAIL \
   --profile plateapr.com --region us-east-1
-```
-
-### If you ever redeploy the stack from scratch
-
-The pool ID above is for this specific deployment. On a fresh deploy, find the new pool with:
-
-```bash
-aws cognito-idp list-user-pools --max-results 20 --profile plateapr.com --region us-east-1 \
-  --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)].[Id,Name,CreationDate]' \
-  --output table
 ```
 
 ### Separate from the MCP bearer token
@@ -178,7 +278,7 @@ The docs bucket is the source of truth at runtime. Content flows in through thre
 
 1. **Web admin UI** — the primary surface for humans. Create, edit, rename, move, or delete markdown files; use **Improve with AI** for Opus-assisted rewrites; review and approve incoming agent proposals from the Suggestions tab.
 2. **`suggest_knowledge` MCP tool** — agents (Cursor, Claude Desktop, Claude Code, Devin) propose new docs or updates as they work. Proposals land in the review queue; nothing reaches the brain until a human approves. See [Knowledge suggestions](#knowledge-suggestions-web-app).
-3. **Data connectors** — pull content automatically from where teams already write it. **Google Sheets, Google Docs, and Google Slides are live** (OAuth-based, managed from the [Sources tab](#data-source-connectors-google-workspace)); GitHub, Notion, and chat are still on the roadmap. Each connector writes markdown + sidecars into the bucket on the same auto-ingest pipeline as the other two paths. The wiki then reconciles across sources.
+3. **Data connectors** — pull content automatically from where teams already write it. **Google Sheets, Google Docs, Google Slides, and Notion are live** (OAuth-based, managed from the [Sources tab](#data-source-connectors)); GitHub and chat are still on the roadmap. Each connector writes markdown + sidecars into the bucket on the same auto-ingest pipeline as the other two paths. The wiki then reconciles across sources.
 
 Every S3 write — whichever path it came from — triggers the auto-ingest Lambda, which kicks a Bedrock ingestion job. New content is retrievable via `search_knowledge` within ~1 min once the canonical wiki catches up (next 10h regen, or hit **Refresh now** in the Wiki tab for an immediate re-synthesis).
 
@@ -265,18 +365,18 @@ Web admin UI → /suggestions tab
 - The DynamoDB table has a GSI on `(status, created_at)` so listing any status bucket stays fast as the queue grows
 - Approval triggers the standard S3 → auto-ingest Lambda → Bedrock ingestion pipeline, so approved suggestions are retrievable via `search_knowledge` within ~1 min
 
-## Data source connectors (Google Workspace)
+## Data source connectors
 
-Connect a Google Sheet, Doc, or Slides deck from the **Sources** tab. Each connection OAuths once (the refresh token lives in its own Secrets Manager secret), then re-syncs every 6 hours. Content lands as markdown under `sources/<type>/<slug>/…` in the docs bucket — same auto-ingest pipeline as everything else, so new/changed content is retrievable via `search_knowledge` within ~1 min of each sync.
+Connect a **Google Sheet, Doc, Slides deck, or Notion page/database** from the **Sources** tab. Each connection OAuths once (provider token lives in its own Secrets Manager secret), then re-syncs every 6 hours. Content lands as markdown under `sources/<type>/<slug>/…` in the docs bucket — same auto-ingest pipeline as everything else, so new/changed content is retrievable via `search_knowledge` within ~1 min of each sync.
 
 ### User flow
 
 1. Sign in to the web app, click **Sources** in the header.
-2. Click **Add new source** → pick **Google Sheets**, **Google Docs**, or **Google Slides**.
-3. Paste the URL + a friendly label, click **Connect Google account**.
-4. Google consent screen → approve (read-only scopes).
+2. Click **Add new source** → pick **Google Sheets**, **Google Docs**, **Google Slides**, or **Notion**.
+3. Paste the URL + a friendly label, click **Connect …**.
+4. Provider consent screen → approve (read-only scopes for Google; Notion lets you pick which specific pages the integration can see).
 5. You land back on `/sources`. The connector shows `syncing`; the card polls every 5s and flips to `connected` once the first sync finishes.
-6. **Added by** shows the Cognito email that created it; **Google account** shows which Google identity authenticated. **Sync now** and **Remove** live on each card.
+6. **Added by** shows the Cognito email that created it; **Google account** or **Notion workspace** shows which provider identity authenticated. **Sync now** and **Remove** live on each card.
 
 ### What each connector does
 
@@ -285,6 +385,7 @@ Connect a Google Sheet, Doc, or Slides deck from the **Sources** tab. Each conne
 | **Sheets** | `spreadsheets.get` + `values.get` per tab | One markdown table per tab | `sources/sheets/<spreadsheet-slug>/<tab-slug>.md` |
 | **Docs** | `documents.get` | Walks `body.content` → headings, lists, tables | `sources/docs/<doc-slug>/content.md` |
 | **Slides** | `presentations.get` | `## Slide N — <title>` + bullets + speaker notes | `sources/slides/<deck-slug>/content.md` |
+| **Notion** | `pages.retrieve` or `databases.query` + recursive `blocks.children.list` | Block tree → paragraphs, headings, lists, tables, code, to-dos, callouts | `sources/notion/<workspace-slug>/<page-slug>.md` (one file per page; databases unfold to one file per row) |
 
 Every file gets a `.metadata.json` sidecar tagged `source=<type>`, `connector_id=<uuid>`, and resource IDs — so the wiki generator and any future per-source filters can trace back to the exact connector.
 
@@ -305,48 +406,96 @@ EventBridge (6h) ──────────────▶│  connector-dis
     (web UI "Sync now")         │  fan-out Invoke per-type     │
                                 └──────────────┬───────────────┘
                                                │
-       ┌───────────────────────────────────────┼───────────────────────────────────┐
-       ▼                                       ▼                                   ▼
-┌────────────────────┐              ┌────────────────────┐              ┌────────────────────┐
-│ connector-sync-    │              │ connector-sync-    │              │ connector-sync-    │
-│   sheets           │              │   docs             │              │   slides           │
-│                    │              │                    │              │                    │
-│ 1. GetItem from    │              │ 1. GetItem …       │              │ 1. GetItem …       │
-│    connectors tbl  │              │ 2. Refresh token   │              │ 2. Refresh token   │
-│ 2. Refresh access  │              │ 3. documents.get   │              │ 3. presentations   │
-│    token (OAuth)   │              │ 4. Render body →   │              │    .get            │
-│ 3. spreadsheets.get│              │    markdown        │              │ 4. Render slides → │
-│ 4. values.get per  │              │ 5. PutObject +     │              │    markdown        │
-│    tab             │              │    sidecar         │              │ 5. PutObject +     │
-│ 5. Render + Put    │              │ 6. Update row:     │              │    sidecar         │
-│ 6. Prune stale tabs│              │    status/last-sync│              │ 6. Update row      │
-│ 7. Update row      │              └────────────────────┘              └────────────────────┘
-└─────────┬──────────┘                        │                                   │
-          ▼                                   ▼                                   ▼
-                    ┌────────────────────────────────────────────┐
-                    │  S3 docs bucket (sources/<type>/…)         │
-                    └──────────────────┬─────────────────────────┘
-                                       │  S3 PutObject
-                                       ▼
-                            auto-ingest Lambda → Bedrock KB
+       ┌───────────────────────────────────────┬───────────────────────────────────┬─────────────────────┐
+       ▼                                       ▼                                   ▼                     ▼
+┌────────────────────┐              ┌────────────────────┐              ┌────────────────────┐   ┌────────────────────┐
+│ connector-sync-    │              │ connector-sync-    │              │ connector-sync-    │   │ connector-sync-    │
+│   sheets           │              │   docs             │              │   slides           │   │   notion           │
+│                    │              │                    │              │                    │   │                    │
+│ Google OAuth       │              │ Google OAuth       │              │ Google OAuth       │   │ Notion OAuth       │
+│ (refresh token)    │              │ (refresh token)    │              │ (refresh token)    │   │ (access token)     │
+│                    │              │                    │              │                    │   │                    │
+│ spreadsheets.get   │              │ documents.get      │              │ presentations.get  │   │ pages / databases  │
+│ values.get × tabs  │              │ body.content walk  │              │ slides walk        │   │ .query +           │
+│ → markdown tables  │              │ → md (tables,      │              │ → md (title,       │   │ blocks.children    │
+│                    │              │   lists, headings) │              │   bullets, notes)  │   │ .list (recursive)  │
+└─────────┬──────────┘              └─────────┬──────────┘              └─────────┬──────────┘   └─────────┬──────────┘
+          │                                   │                                   │                        │
+          └───────────────────────────────────┴───────────────────────────────────┴────────────────────────┘
+                                                           │
+                                                           ▼
+                                    ┌────────────────────────────────────────────┐
+                                    │  S3 docs bucket (sources/<type>/…)         │
+                                    └──────────────────┬─────────────────────────┘
+                                                       │  S3 PutObject
+                                                       ▼
+                                            auto-ingest Lambda → Bedrock KB
 ```
 
-### OAuth setup (one-time)
+### OAuth setup (one-time per provider)
 
-Before any connector will work, register a Google OAuth client and drop its credentials in Secrets Manager:
+Both providers use the same redirect URI pattern:
+```
+https://<WebAppDefaultDomain>/api/connectors/oauth/callback
+```
+…where `<WebAppDefaultDomain>` is the Amplify URL from your stack outputs (e.g. `main.abc123.amplifyapp.com`). The callback route derives the public origin from `x-forwarded-host` — so it works on prod without any `APP_BASE_URL` env var, but the exact URL above has to be **registered in each provider's console** before consent will succeed.
 
-1. **GCP Console → APIs & Services → Credentials** → Create OAuth client ID (Web application).
-2. **Authorized JavaScript origins:** `https://main.<amplify-app-id>.amplifyapp.com`.
-3. **Authorized redirect URIs:** `https://main.<amplify-app-id>.amplifyapp.com/api/connectors/oauth/callback`.
-4. Enable the APIs you need: Google Sheets API, Google Docs API, Google Slides API, Google Drive API.
-5. Store the client creds:
+#### Google (Sheets / Docs / Slides)
+
+1. **GCP Console → APIs & Services → Credentials** → **+ Create credentials** → **OAuth client ID** → **Web application**.
+2. **Authorized JavaScript origins:** `https://main.<amplify-app-id>.amplifyapp.com`
+3. **Authorized redirect URIs:** `https://main.<amplify-app-id>.amplifyapp.com/api/connectors/oauth/callback`
+4. **APIs & Services → Library** → enable each API you want to use:
+   - **Google Sheets API**
+   - **Google Docs API**
+   - **Google Slides API**
+   - **Google Drive API** (used for `drive.metadata.readonly` so we can show titles)
+5. **OAuth consent screen** — configure as *Internal* (G Workspace domain) or *External*. For external apps you'll need to submit for verification before going past ~100 users; internal is fine for a single-workspace team.
+6. Store the client creds:
    ```bash
    aws secretsmanager create-secret \
      --name context101-google-oauth-client \
-     --secret-string '{"client_id":"…","client_secret":"…"}' \
-     --profile plateapr.com --region us-east-1
+     --secret-string '{"client_id":"…apps.googleusercontent.com","client_secret":"GOCSPX-…"}' \
+     --region us-east-1
    ```
-   CDK references this by name (`secretsmanager.Secret.fromSecretNameV2`), so you don't need to redeploy after rotating the secret value.
+
+#### Notion
+
+1. Go to https://www.notion.so/profile/integrations → **Build** (left sidebar) → **Public connections** → **+ New public connection**.
+   - **Must be *Public*, not *Internal***. Internal integrations use a static workspace token; only public integrations expose an OAuth client ID / secret.
+2. **Basic information** — name it `Context101`, set installation scope. Add an icon if you want.
+3. **Capabilities** → check **Read content** only. Uncheck Update / Insert / Comment.
+4. **OAuth Domain & URIs** → add:
+   - **Redirect URI:** `https://main.<amplify-app-id>.amplifyapp.com/api/connectors/oauth/callback`
+5. Grab the **OAuth client ID** (UUID, e.g. `34cd872b-594c-81eb-…`) and **OAuth client secret** (starts with `secret_…` or `ntn_…`) from the same page.
+6. Store the creds:
+   ```bash
+   aws secretsmanager create-secret \
+     --name context101-notion-oauth-client \
+     --secret-string '{"client_id":"<UUID>","client_secret":"secret_…"}' \
+     --region us-east-1
+   ```
+
+CDK references both secrets by *name* (`secretsmanager.Secret.fromSecretNameV2`), so you can rotate values without re-running `cdk deploy`. Add a new JSON version and the next sync picks it up.
+
+### Notion auth model vs Google
+
+A practical quirk: **Google returns a refresh token** (access tokens expire every hour, we refresh on each sync), while **Notion returns a long-lived access token** (no expiry, no refresh flow). Both land in the same per-connector secret (`context101-connector-<uuid>`) but with different shapes:
+
+```jsonc
+// Google connector secret
+{ "refresh_token": "1//0g…" }
+
+// Notion connector secret
+{
+  "access_token":   "ntn_…",
+  "workspace_id":   "…",
+  "workspace_name": "FinditPR",
+  "bot_id":         "…"
+}
+```
+
+Each sync Lambda knows what to expect — `connector-sync-sheets/docs/slides` refresh the Google token via `oauth2.googleapis.com/token`, `connector-sync-notion` uses the access_token directly as `Authorization: Bearer …` with `Notion-Version: 2022-06-28`.
 
 ### Connector states
 
@@ -621,8 +770,8 @@ search_knowledge(
 
 ### Other ideas
 
-- **Notion connector** — share the same infra as the Google Workspace connectors (dispatcher, OAuth-per-row, per-type sync Lambda). Remaining: register a Notion OAuth integration + write `connector-sync-notion` that walks pages + databases and renders to markdown. The dispatcher already has a commented-out `notion: process.env.NOTION_SYNC_FN_NAME` branch ready.
-- **GitHub connector** — clone or list-tree a repo, filter to `README.md` + `docs/**`, render to `sources/github/<repo>/…`. Same shape as the Google ones but the auth is a personal access token (simpler than OAuth).
+- **GitHub connector** — clone or list-tree a repo, filter to `README.md` + `docs/**`, render to `sources/github/<repo>/…`. Same shape as the existing connectors but the auth is a PAT (simpler than OAuth). Uses the same `connector-dispatch` fan-out path; just needs a `connector-sync-github` Lambda.
+- **Chat connector (Slack / Discord)** — ingest pinned messages + specific channel transcripts into `sources/chat/<channel>/<day>.md`. More interesting for "what did we decide last week" retrieval than for structured knowledge.
 - **Per-folder descriptions** — drop a `_about.md` in each folder that explains what the folder is for ("use knowledge in here when solving anything database-related"). Bedrock indexes it like any other markdown so semantic search picks it up naturally. The web UI would filter `_about.md` out of the normal list and show its content under the folder name, Devin-style. Stronger variant: wire `customTransformationConfiguration` on `CfnDataSource` to a Lambda that prepends the folder context to every file at ingestion time, so every chunk's vector carries the folder context.
 - **Hierarchical or semantic chunking** — better retrieval on long, structured docs. Higher ingestion cost. Swap the `chunkingConfiguration` on `CfnDataSource`.
 - **Per-user auth via Cognito + JWT** — graduate from the shared bearer token when you need per-person audit trails. Swap `StaticTokenVerifier` for FastMCP's `JWTVerifier` pointing at a Cognito user pool.
