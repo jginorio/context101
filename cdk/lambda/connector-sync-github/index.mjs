@@ -187,11 +187,20 @@ async function getTree(token, owner, repo, ref) {
   // recursive=1 returns the full tree in one shot. If `truncated: true` on
   // the response, the repo is huge (>100k files / >7MB) and we miss some.
   // For v1, we surface a warning in the row but proceed with what we got.
+  //
+  // The `sha` on the response is the tree object's SHA — deterministic
+  // from the file structure + blob contents. Two syncs with the same
+  // tree SHA are definitionally identical, so we use it to skip the
+  // expensive code-wiki Opus regen when nothing changed.
   const j = await gh(
     token,
     `/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`
   );
-  return { entries: j.tree ?? [], truncated: !!j.truncated };
+  return {
+    entries: j.tree ?? [],
+    truncated: !!j.truncated,
+    treeSha: j.sha ?? null,
+  };
 }
 
 async function getBlobText(token, owner, repo, sha) {
@@ -393,7 +402,19 @@ export const handler = async (event) => {
     const repoFullName = meta.full_name; // "owner/repo"
     const repoHtmlUrl = meta.html_url;
 
-    const { entries, truncated } = await getTree(pat, owner, repo, branch);
+    const { entries, truncated, treeSha } = await getTree(
+      pat,
+      owner,
+      repo,
+      branch
+    );
+
+    // Cost guard: skip the code-wiki Fargate dispatch when the tree
+    // hasn't moved since last sync. We still re-PUT the source files
+    // (idempotent, microseconds, restores anything deleted out of band)
+    // — only the expensive Opus regen is gated.
+    const lastTreeSha = row.last_synced_tree_sha ?? null;
+    const treeChanged = !lastTreeSha || lastTreeSha !== treeSha;
 
     // Filter to "blob" entries (files), apply include/exclude.
     const files = entries
@@ -477,12 +498,31 @@ export const handler = async (event) => {
 
     await markSuccess(connectorId, written, repoFullName);
 
+    // Persist the tree SHA so the next sync can compare. Done after
+    // markSuccess so the row only carries an SHA we actually finished
+    // processing — a crash mid-write doesn't poison the next run.
+    if (treeSha) {
+      await ddb.send(
+        new UpdateCommand({
+          TableName: CONNECTORS_TABLE,
+          Key: { id: connectorId },
+          UpdateExpression: "SET last_synced_tree_sha = :sha",
+          ExpressionAttributeValues: { ":sha": treeSha },
+        })
+      );
+    }
+
     // Layer 2: kick off the per-repo code-wiki Fargate task. The
     // start-wiki-gen Lambda accepts { mode, repo } overrides and runs
     // the same Fargate task with code-mode env vars. Fire-and-forget —
     // a code-wiki failure shouldn't fail the connector sync.
+    //
+    // Gated on treeChanged: when the tree SHA matches the previous
+    // sync, the corpus is byte-identical and Opus would regenerate the
+    // same wiki. ~$0.30-0.80 saved per repo per 6h tick.
     const startWikiGenFn = process.env.START_WIKI_GEN_FN_NAME;
-    if (startWikiGenFn && written > 0) {
+    let codeWikiFired = false;
+    if (startWikiGenFn && written > 0 && treeChanged) {
       await lambdaClient
         .send(
           new InvokeCommand({
@@ -493,7 +533,14 @@ export const handler = async (event) => {
             ),
           })
         )
+        .then(() => {
+          codeWikiFired = true;
+        })
         .catch((e) => console.error("code-wiki dispatch failed:", e));
+    } else if (!treeChanged) {
+      console.log(
+        `tree SHA unchanged (${treeSha}) — skipping code-wiki regen for ${repoFullName}`
+      );
     }
 
     return {
@@ -503,6 +550,9 @@ export const handler = async (event) => {
       files_written: written,
       files_pruned: stale.length,
       tree_truncated: truncated,
+      tree_sha: treeSha,
+      tree_changed: treeChanged,
+      code_wiki_fired: codeWikiFired,
     };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
