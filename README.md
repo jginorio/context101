@@ -636,12 +636,30 @@ Connecting a GitHub repo gets you two layers of automatic synthesis:
 
 The same `start-wiki-gen` Lambda starts both. SSR `/api/wiki/refresh` invokes it with `{}` for main mode; `connector-sync-github` invokes it with `{ mode: "code", repo: "owner/repo" }` after a sync. `containerOverrides.environment` carries the per-task env diffs.
 
-### Costs
+### Costs + delta-detection guard
 
-Per code-wiki regen: ~$0.30-0.80 in Opus calls (one structure call + one per page) + ~3-5 min of Fargate at ~$0.04/hr. The 6h dispatch tick re-runs everything by default — so a connected repo costs roughly $1.20-3.20/day in Opus today. Ways to bring this down on the roadmap:
+Per code-wiki regen: ~$0.30-0.80 in Opus calls (one structure call + one per page) + ~3-5 min of Fargate at ~$0.04/hr.
 
-- Compare current HEAD SHA against the previous sync's stored SHA; only fire code-wiki gen when something actually changed.
-- Cache page-level outputs by `relevant_files` content hash and only regenerate pages whose inputs changed.
+Without a guard, the 6h dispatch tick would re-run everything regardless of whether anything changed — for an idle repo that'd be ~$1.20-3.20/day in Opus calls for nothing. Cost guard:
+
+- Each successful github sync records the GitHub **tree SHA** (`row.last_synced_tree_sha` on the connector row) — that's the SHA of the repo's tree object at HEAD, deterministic from file structure + blob contents.
+- The next sync compares against the stored value. **Same SHA → skip the code-wiki dispatch entirely.** Files are still re-PUT to S3 (idempotent, microseconds, restores anything deleted out of band); only the expensive Opus regen is gated.
+- The sync's return value includes `tree_changed` and `code_wiki_fired` so you can see what happened in CloudWatch.
+
+Trigger an immediate code-wiki rebuild even when the SHA hasn't moved by hitting **Sync now** with a force flag (today only via the manual `start-wiki-gen` invoke command below).
+
+Further-down-the-roadmap optimization: cache page-level outputs by `relevant_files` content hash and only regenerate pages whose inputs changed.
+
+### Browsing code wikis in the UI
+
+The `/wiki` page sidebar has two groups:
+
+- **Team wiki** — top-level synthesis under `wiki/<slug>.md` (what `search_knowledge` returns).
+- **Code wikis** — one collapsible section per connected GitHub repo. Pages come from `wiki/code/<repo-slug>/_index.json`. Click a repo's name to expand its pages.
+
+Selecting a code-wiki page swaps the right-side meta panel to show that repo's `last_indexed` + page count instead of the team wiki's. The **Refresh now** button is hidden for code wikis because they regenerate automatically on the next connector sync (or when you hit *Sync now* on the connector card on `/sources`).
+
+Selection state in the URL is **not** persisted today — refreshing the page resets to the first team-wiki page. That's a deliberate v1 simplification, easy follow-up to add deep links later (e.g. `/wiki?repo=foo-bar&slug=architecture`).
 
 ### Manually invoking a code-wiki regen
 
@@ -859,7 +877,8 @@ search_knowledge(
 
 - **GitHub OAuth flow** — today the GitHub connector takes a PAT (simple, but tied to the user who generated it). A GitHub App / OAuth flow would scope per-user, support per-repo install consent, and avoid the rotation footgun with `gho_` tokens issued via `gh auth token`.
 - **Chat connector (Slack / Discord)** — ingest pinned messages + specific channel transcripts into `sources/chat/<channel>/<day>.md`. More interesting for "what did we decide last week" retrieval than for structured knowledge.
-- **Don't regenerate code-wiki when nothing changed** — today every github sync fires a code-wiki Fargate task (~$0.30-0.80 in Opus calls). Simple win: compare the current repo HEAD SHA against the previous sync's stored SHA on the connector row; only fire the code-wiki gen when it actually changed.
+- **Per-page code-wiki cache** — today the cost guard skips the *entire* code-wiki regen when the repo's tree SHA hasn't moved. A finer-grained version would cache each generated page by the hash of its `relevant_files` content so changes in one module don't re-Opus the whole repo's pages.
+- **Deep links to wiki pages** — `/wiki?repo=foo-bar&slug=architecture` to URL-restore selection across reloads + make pages shareable. Today selection is in component state only.
 - **Per-folder descriptions** — drop a `_about.md` in each folder that explains what the folder is for ("use knowledge in here when solving anything database-related"). Bedrock indexes it like any other markdown so semantic search picks it up naturally. The web UI would filter `_about.md` out of the normal list and show its content under the folder name, Devin-style. Stronger variant: wire `customTransformationConfiguration` on `CfnDataSource` to a Lambda that prepends the folder context to every file at ingestion time, so every chunk's vector carries the folder context.
 - **Hierarchical or semantic chunking** — better retrieval on long, structured docs. Higher ingestion cost. Swap the `chunkingConfiguration` on `CfnDataSource`.
 - **Per-user auth via Cognito + JWT** — graduate from the shared bearer token when you need per-person audit trails. Swap `StaticTokenVerifier` for FastMCP's `JWTVerifier` pointing at a Cognito user pool.

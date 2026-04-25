@@ -328,17 +328,28 @@ export default function AboutPage() {
               wiki page can explain strategy + metrics + implementation in
               one place.
             </Item>
+            <Item title="Code wikis browsable in /wiki" status="done">
+              The wiki sidebar has a <strong>Code wikis</strong> group below
+              the team wiki, with one collapsible section per connected
+              GitHub repo. Pages come from{" "}
+              <code className="font-mono text-xs">wiki/code/&lt;repo&gt;/_index.json</code>.
+              Selecting a code-wiki page swaps the right-side panel to that
+              repo&apos;s last-indexed timestamp and page count.
+            </Item>
+            <Item title="Cost guard on code-wiki regen" status="done">
+              Each github sync records the repo&apos;s tree SHA on the
+              connector row. The next sync skips the code-wiki Fargate task
+              when the SHA hasn&apos;t moved — saves ~$0.30-0.80/repo on
+              every 6h tick where nothing actually changed in the repo.
+              Files are still re-PUT to S3 (idempotent), only the Opus
+              regen is gated.
+            </Item>
             <Item title="GitHub OAuth (replace PAT)" status="later">
               Today GitHub auth is a PAT pasted into the dialog — simple but
               tied to whoever generated it, with no per-user audit. A
               GitHub App / OAuth flow would scope per-user and avoid the
               token-rotation footgun with{" "}
               <code className="font-mono text-xs">gho_</code> tokens.
-            </Item>
-            <Item title="Code-wiki delta detection" status="later">
-              Today every github sync re-fires the code-wiki Fargate task
-              (~$0.30-0.80/run in Opus). Compare current HEAD SHA against
-              the previous sync's stored SHA and skip when nothing changed.
             </Item>
             <Item title="Metadata sidecars for filtered retrieval" status="later">
               <code className="font-mono text-xs">.metadata.json</code>{" "}
