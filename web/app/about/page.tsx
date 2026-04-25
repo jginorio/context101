@@ -304,21 +304,41 @@ export default function AboutPage() {
               rename with right-click. Backed by the same S3 bucket the MCP
               reads from.
             </Item>
-            <Item title="Google Workspace connectors (OAuth)" status="done">
-              Connect a <strong>Google Sheet, Doc, or Slides deck</strong>{" "}
+            <Item title="Google Workspace + Notion connectors (OAuth)" status="done">
+              Connect a <strong>Google Sheet, Doc, Slides deck, or Notion page/database</strong>{" "}
               from the <Link href="/sources" className="underline">Sources</Link>{" "}
-              tab. After OAuth consent, the connector pulls the content,
+              tab. After provider consent, the connector pulls the content,
               renders it to markdown, writes to{" "}
               <code className="font-mono text-xs">sources/&lt;type&gt;/…</code>,
               and re-syncs every 6 hours. Files are read-only in the UI
               (edits would be clobbered by the next sync). Per-connection
-              refresh tokens live in Secrets Manager.
+              refresh / access tokens live in Secrets Manager.
             </Item>
-            <Item title="Notion connector" status="in-progress">
-              Infra scaffold is shared with the Google connectors (dispatcher,
-              per-type sync Lambda, token secrets). Remaining: a Notion OAuth
-              app + a <code className="font-mono text-xs">connector-sync-notion</code>{" "}
-              Lambda that walks pages and databases.
+            <Item title="GitHub connector + per-repo code wiki" status="done">
+              Connect a repo with a Personal Access Token; every code +
+              markdown file lands at{" "}
+              <code className="font-mono text-xs">sources/github/&lt;repo&gt;/…</code>{" "}
+              wrapped in fenced markdown. After each sync, a dedicated
+              Fargate task generates a deepwiki-style{" "}
+              <strong>per-repo code wiki</strong> at{" "}
+              <code className="font-mono text-xs">wiki/code/&lt;repo&gt;/</code>
+              {" "}— architecture, data flow, module diagrams, configuration.
+              The team-level wiki then cites those pre-synthesized code
+              pages alongside Notion / Sheets / Docs sources, so a single
+              wiki page can explain strategy + metrics + implementation in
+              one place.
+            </Item>
+            <Item title="GitHub OAuth (replace PAT)" status="later">
+              Today GitHub auth is a PAT pasted into the dialog — simple but
+              tied to whoever generated it, with no per-user audit. A
+              GitHub App / OAuth flow would scope per-user and avoid the
+              token-rotation footgun with{" "}
+              <code className="font-mono text-xs">gho_</code> tokens.
+            </Item>
+            <Item title="Code-wiki delta detection" status="later">
+              Today every github sync re-fires the code-wiki Fargate task
+              (~$0.30-0.80/run in Opus). Compare current HEAD SHA against
+              the previous sync's stored SHA and skip when nothing changed.
             </Item>
             <Item title="Metadata sidecars for filtered retrieval" status="later">
               <code className="font-mono text-xs">.metadata.json</code>{" "}

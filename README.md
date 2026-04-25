@@ -49,7 +49,9 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 ├── Dockerfile                    # Used by App Runner
 ├── knowledge/                    # Your markdown — source of truth
 ├── web/                          # Next.js admin UI (Amplify Hosting)
-├── wiki-generator/               # Fargate task that synthesizes the wiki
+├── wiki-generator/               # Fargate task — synthesizes both the
+│                                 # team wiki (WIKI_MODE=main) and the
+│                                 # per-repo code wiki (WIKI_MODE=code)
 └── requirements.txt
 ```
 
@@ -367,16 +369,16 @@ Web admin UI → /suggestions tab
 
 ## Data source connectors
 
-Connect a **Google Sheet, Doc, Slides deck, or Notion page/database** from the **Sources** tab. Each connection OAuths once (provider token lives in its own Secrets Manager secret), then re-syncs every 6 hours. Content lands as markdown under `sources/<type>/<slug>/…` in the docs bucket — same auto-ingest pipeline as everything else, so new/changed content is retrievable via `search_knowledge` within ~1 min of each sync.
+Connect a **Google Sheet, Doc, Slides deck, Notion page/database, or GitHub repo** from the **Sources** tab. Each connection authenticates once (OAuth for Google/Notion, a Personal Access Token for GitHub) and the credential lives in its own Secrets Manager secret. Sources re-sync every 6 hours. Content lands as markdown under `sources/<type>/<slug>/…` in the docs bucket — same auto-ingest pipeline as everything else, so new/changed content is retrievable via `search_knowledge` within ~1 min of each sync.
 
 ### User flow
 
 1. Sign in to the web app, click **Sources** in the header.
-2. Click **Add new source** → pick **Google Sheets**, **Google Docs**, **Google Slides**, or **Notion**.
-3. Paste the URL + a friendly label, click **Connect …**.
-4. Provider consent screen → approve (read-only scopes for Google; Notion lets you pick which specific pages the integration can see).
+2. Click **Add new source** → pick a provider.
+3. Paste the URL + a friendly label. For **GitHub**, also paste a Personal Access Token (no OAuth dance — it's stored directly in Secrets Manager). For OAuth providers, click **Connect …**.
+4. **OAuth providers:** consent screen → approve (read-only scopes for Google; Notion lets you pick which specific pages the integration can see).
 5. You land back on `/sources`. The connector shows `syncing`; the card polls every 5s and flips to `connected` once the first sync finishes.
-6. **Added by** shows the Cognito email that created it; **Google account** or **Notion workspace** shows which provider identity authenticated. **Sync now** and **Remove** live on each card.
+6. **Added by** shows the Cognito email that created it. **Google account** / **Notion workspace** / **GitHub user** shows which provider identity authenticated. **Sync now** and **Remove** live on each card.
 
 ### What each connector does
 
@@ -386,6 +388,7 @@ Connect a **Google Sheet, Doc, Slides deck, or Notion page/database** from the *
 | **Docs** | `documents.get` | Walks `body.content` → headings, lists, tables | `sources/docs/<doc-slug>/content.md` |
 | **Slides** | `presentations.get` | `## Slide N — <title>` + bullets + speaker notes | `sources/slides/<deck-slug>/content.md` |
 | **Notion** | `pages.retrieve` or `databases.query` + recursive `blocks.children.list` | Block tree → paragraphs, headings, lists, tables, code, to-dos, callouts | `sources/notion/<workspace-slug>/<page-slug>.md` (one file per page; databases unfold to one file per row) |
+| **GitHub** | `git/trees/{branch}?recursive=1` + `git/blobs/{sha}` per file | Markdown passthrough; code wrapped in fenced ```\<lang> blocks. Filters: extension allowlist, path-segment denylist (node_modules/, dist/, .git/, …), 200KB max | `sources/github/<owner-repo-slug>/<path>.md` (one file per repo file, original tree preserved) |
 
 Every file gets a `.metadata.json` sidecar tagged `source=<type>`, `connector_id=<uuid>`, and resource IDs — so the wiki generator and any future per-source filters can trace back to the exact connector.
 
@@ -406,30 +409,35 @@ EventBridge (6h) ──────────────▶│  connector-dis
     (web UI "Sync now")         │  fan-out Invoke per-type     │
                                 └──────────────┬───────────────┘
                                                │
-       ┌───────────────────────────────────────┬───────────────────────────────────┬─────────────────────┐
-       ▼                                       ▼                                   ▼                     ▼
-┌────────────────────┐              ┌────────────────────┐              ┌────────────────────┐   ┌────────────────────┐
-│ connector-sync-    │              │ connector-sync-    │              │ connector-sync-    │   │ connector-sync-    │
-│   sheets           │              │   docs             │              │   slides           │   │   notion           │
-│                    │              │                    │              │                    │   │                    │
-│ Google OAuth       │              │ Google OAuth       │              │ Google OAuth       │   │ Notion OAuth       │
-│ (refresh token)    │              │ (refresh token)    │              │ (refresh token)    │   │ (access token)     │
-│                    │              │                    │              │                    │   │                    │
-│ spreadsheets.get   │              │ documents.get      │              │ presentations.get  │   │ pages / databases  │
-│ values.get × tabs  │              │ body.content walk  │              │ slides walk        │   │ .query +           │
-│ → markdown tables  │              │ → md (tables,      │              │ → md (title,       │   │ blocks.children    │
-│                    │              │   lists, headings) │              │   bullets, notes)  │   │ .list (recursive)  │
-└─────────┬──────────┘              └─────────┬──────────┘              └─────────┬──────────┘   └─────────┬──────────┘
-          │                                   │                                   │                        │
-          └───────────────────────────────────┴───────────────────────────────────┴────────────────────────┘
-                                                           │
-                                                           ▼
-                                    ┌────────────────────────────────────────────┐
-                                    │  S3 docs bucket (sources/<type>/…)         │
-                                    └──────────────────┬─────────────────────────┘
-                                                       │  S3 PutObject
-                                                       ▼
-                                            auto-ingest Lambda → Bedrock KB
+       ┌──────────────────┬──────────────────┬──────────────────┬──────────────────┬──────────────────┐
+       ▼                  ▼                  ▼                  ▼                  ▼                  │
+┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐         │
+│  sync-sheets │   │  sync-docs   │   │  sync-slides │   │  sync-notion │   │  sync-github │         │
+│              │   │              │   │              │   │              │   │              │         │
+│ Google OAuth │   │ Google OAuth │   │ Google OAuth │   │ Notion OAuth │   │  PAT (stored │         │
+│  (refresh)   │   │  (refresh)   │   │  (refresh)   │   │  (long-lived │   │   directly,  │         │
+│              │   │              │   │              │   │   access tok)│   │   no OAuth)  │         │
+│ spreadsheets │   │ documents.get│   │ presentations│   │ pages /      │   │ git/trees +  │         │
+│ + values × N │   │ → md (tables,│   │ .get → md    │   │ databases +  │   │ git/blobs    │         │
+│ → md tables  │   │   lists,     │   │ (title,      │   │ blocks tree  │   │ → md (.md    │         │
+│              │   │   headings)  │   │  notes)      │   │ → md         │   │  passthru,   │         │
+│              │   │              │   │              │   │              │   │  code fenced)│         │
+└──────┬───────┘   └──────┬───────┘   └──────┬───────┘   └──────┬───────┘   └──────┬───────┘         │
+       │                  │                  │                  │                  │                  │
+       └──────────────────┴──────────────────┴──────────────────┴──────────────────┘                  │
+                                              │                                                        │
+                                              ▼                                                        │
+                       ┌────────────────────────────────────────────┐                                  │
+                       │  S3 docs bucket (sources/<type>/…)         │                                  │
+                       └──────────────────┬─────────────────────────┘                                  │
+                                          │  S3 PutObject                                              │
+                                          ▼                                                            │
+                                auto-ingest Lambda → Bedrock KB                                        │
+                                                                                                       │
+                       After a github sync succeeds, sync-github also fires ─────────────────────────┘
+                       start-wiki-gen Lambda → ECS RunTask in code mode →
+                       per-repo deepwiki under wiki/code/<repo-slug>/.
+                       See "Per-repo code wikis" below.
 ```
 
 ### OAuth setup (one-time per provider)
@@ -477,6 +485,17 @@ https://<WebAppDefaultDomain>/api/connectors/oauth/callback
    ```
 
 CDK references both secrets by *name* (`secretsmanager.Secret.fromSecretNameV2`), so you can rotate values without re-running `cdk deploy`. Add a new JSON version and the next sync picks it up.
+
+#### GitHub (no OAuth — Personal Access Token)
+
+The GitHub connector skips the OAuth dance entirely. When you click **Add new source → GitHub**, the dialog asks for a PAT directly; it's stored in the per-connector secret (`context101-connector-<uuid>`) like every other token, just shaped as `{ "github_pat": "…" }` instead of `{ "refresh_token": "…" }` or `{ "access_token": "…" }`.
+
+Generate the token at https://github.com/settings/tokens. Two flavors work:
+
+- **Fine-grained** (recommended) — pick *Only select repositories*, choose the repos you want to sync, and grant **Repository → Contents: Read-only**. Tied to specific repos, expires on a schedule you set.
+- **Classic** — `repo` scope (private repos) or `public_repo` (public only). Broader access; lasts until manually revoked.
+
+Avoid pasting `gho_…` tokens emitted by `gh auth token` — those are the gh CLI's OAuth tokens and rotate when gh refreshes them, breaking the connector with 401s the next time it tries to sync.
 
 ### Notion auth model vs Google
 
@@ -569,6 +588,74 @@ python generate.py
 Env knobs (all optional): `WIKI_PREFIX` (default `wiki/`), `MODEL_ID` (default `us.anthropic.claude-opus-4-7`), `MIN_PAGES` / `MAX_PAGES` (default 4 / 8), `CORPUS_PREVIEW_CHARS` (default 600 — how much of each source doc feeds into the structure call), `MAX_TOKENS` (default 8192 per Opus call).
 
 Set `WIKI_PREFIX=wiki-preview/` to iterate on prompts without overwriting the live wiki.
+
+## Per-repo code wikis (deepwiki-style)
+
+Connecting a GitHub repo gets you two layers of automatic synthesis:
+
+1. **Layer 1 — code in the team wiki.** `connector-sync-github` writes every code file to `sources/github/<repo-slug>/<path>.md`. The next team-wiki regen reads them as part of the corpus, alongside Notion / Sheets / Docs / Slides — so a top-level page about *"/pricing optimization"* can mention which file the implementation lives in and synthesize across strategy, metrics, and code.
+2. **Layer 2 — a dedicated code wiki per repo** at `wiki/code/<repo-slug>/<page>.md`. After every successful sync, `connector-sync-github` fires the same Fargate task that generates the team wiki, but in **code mode** — code-specialized prompts that prioritize architecture, data flow, module diagrams, and configuration. Output is tagged `source=code-wiki` in the sidecar.
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│  Top-level reconciled wiki        wiki/<slug>.md                        │  ← what search_knowledge returns
+│  (cites everything below)                                               │
+└────────────────────────────────┬───────────────────────────────────────┘
+              cites both ▼                  ▼
+┌──────────────────────────────────┐  ┌────────────────────────────────┐
+│  Per-repo code wiki              │  │  Team raw sources              │
+│  wiki/code/<repo-slug>/<page>.md │  │  sources/sheets/…              │
+│  source=code-wiki                │  │  sources/docs/…                │
+│  (Layer 2 — deepwiki-style)      │  │  sources/slides/…              │
+└────────────────┬─────────────────┘  │  sources/notion/…              │
+                 │ reads from         └────────────────────────────────┘
+                 ▼                                   ▲
+┌──────────────────────────────────┐                │
+│  Raw GitHub sources              │ ◄──────────────┘  same KB,
+│  sources/github/<repo-slug>/…    │   same auto-ingest pipeline
+│  (Layer 1 — connector output)    │
+└──────────────────────────────────┘
+```
+
+### What gets retrieved when
+
+- `search_knowledge(query)` — only returns top-level wiki chunks (`source=wiki`). Code-wiki pages stay in the index but are filtered out so they don't dominate results.
+- The team wiki's structure prompt sees `wiki/code/<repo-slug>/<page>.md` files in its corpus, so it can pick them as `relevant_files` and cite them — that's how code understanding propagates up without re-feeding raw code to Opus.
+- `read_knowledge(s3_key)` — escape hatch to read a code-wiki page or a raw `sources/github/…` file directly when an agent needs to dive deeper than what the team wiki cited.
+
+### One Fargate task, two modes
+
+`wiki-generator/generate.py` switches behavior on `WIKI_MODE`:
+
+| Env | `main` (default) | `code` |
+|---|---|---|
+| Corpus | whole bucket, excludes top-level `wiki/<slug>.md` (keeps `wiki/code/…` in scope) | scoped to `CORPUS_PREFIX=sources/github/<repo-slug>/` |
+| Output | `wiki/<slug>.md` | `wiki/code/<repo-slug>/<slug>.md` |
+| Prompts | `STRUCTURE_PROMPT` + `PAGE_PROMPT` (team docs) | `CODE_STRUCTURE_PROMPT` + `CODE_PAGE_PROMPT` (architecture, data flow, module diagrams) |
+| Sidecar `source` | `wiki` | `code-wiki` |
+
+The same `start-wiki-gen` Lambda starts both. SSR `/api/wiki/refresh` invokes it with `{}` for main mode; `connector-sync-github` invokes it with `{ mode: "code", repo: "owner/repo" }` after a sync. `containerOverrides.environment` carries the per-task env diffs.
+
+### Costs
+
+Per code-wiki regen: ~$0.30-0.80 in Opus calls (one structure call + one per page) + ~3-5 min of Fargate at ~$0.04/hr. The 6h dispatch tick re-runs everything by default — so a connected repo costs roughly $1.20-3.20/day in Opus today. Ways to bring this down on the roadmap:
+
+- Compare current HEAD SHA against the previous sync's stored SHA; only fire code-wiki gen when something actually changed.
+- Cache page-level outputs by `relevant_files` content hash and only regenerate pages whose inputs changed.
+
+### Manually invoking a code-wiki regen
+
+You can trigger a one-off code-wiki run for any connected repo:
+
+```bash
+aws lambda invoke \
+  --function-name context101-start-wiki-gen \
+  --payload '{"mode":"code","repo":"owner/repo"}' \
+  --cli-binary-format raw-in-base64-out /dev/stdout \
+  --region us-east-1
+```
+
+Watch the Fargate task in the AWS console under ECS → `context101-wiki` cluster. It writes to `wiki/code/<owner-repo-slug>/`; pages are retrievable via `read_knowledge` immediately and surface in the next team-wiki regen.
 
 ## How it works under the hood
 
@@ -770,8 +857,9 @@ search_knowledge(
 
 ### Other ideas
 
-- **GitHub connector** — clone or list-tree a repo, filter to `README.md` + `docs/**`, render to `sources/github/<repo>/…`. Same shape as the existing connectors but the auth is a PAT (simpler than OAuth). Uses the same `connector-dispatch` fan-out path; just needs a `connector-sync-github` Lambda.
+- **GitHub OAuth flow** — today the GitHub connector takes a PAT (simple, but tied to the user who generated it). A GitHub App / OAuth flow would scope per-user, support per-repo install consent, and avoid the rotation footgun with `gho_` tokens issued via `gh auth token`.
 - **Chat connector (Slack / Discord)** — ingest pinned messages + specific channel transcripts into `sources/chat/<channel>/<day>.md`. More interesting for "what did we decide last week" retrieval than for structured knowledge.
+- **Don't regenerate code-wiki when nothing changed** — today every github sync fires a code-wiki Fargate task (~$0.30-0.80 in Opus calls). Simple win: compare the current repo HEAD SHA against the previous sync's stored SHA on the connector row; only fire the code-wiki gen when it actually changed.
 - **Per-folder descriptions** — drop a `_about.md` in each folder that explains what the folder is for ("use knowledge in here when solving anything database-related"). Bedrock indexes it like any other markdown so semantic search picks it up naturally. The web UI would filter `_about.md` out of the normal list and show its content under the folder name, Devin-style. Stronger variant: wire `customTransformationConfiguration` on `CfnDataSource` to a Lambda that prepends the folder context to every file at ingestion time, so every chunk's vector carries the folder context.
 - **Hierarchical or semantic chunking** — better retrieval on long, structured docs. Higher ingestion cost. Swap the `chunkingConfiguration` on `CfnDataSource`.
 - **Per-user auth via Cognito + JWT** — graduate from the shared bearer token when you need per-person audit trails. Swap `StaticTokenVerifier` for FastMCP's `JWTVerifier` pointing at a Cognito user pool.
