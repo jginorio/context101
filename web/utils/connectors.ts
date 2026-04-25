@@ -23,6 +23,8 @@ export const CONNECTOR_SYNC_SLIDES_FN_NAME =
   process.env.CONNECTOR_SYNC_SLIDES_FN_NAME ?? "";
 export const CONNECTOR_SYNC_NOTION_FN_NAME =
   process.env.CONNECTOR_SYNC_NOTION_FN_NAME ?? "";
+export const CONNECTOR_SYNC_GITHUB_FN_NAME =
+  process.env.CONNECTOR_SYNC_GITHUB_FN_NAME ?? "";
 export const GOOGLE_OAUTH_CLIENT_SECRET_ID =
   process.env.GOOGLE_OAUTH_CLIENT_SECRET_ID ?? "";
 export const NOTION_OAUTH_CLIENT_SECRET_ID =
@@ -37,7 +39,12 @@ export type ConnectorStatus =
   | "connected"
   | "error";
 
-export type ConnectorType = "sheets" | "docs" | "slides" | "notion";
+export type ConnectorType =
+  | "sheets"
+  | "docs"
+  | "slides"
+  | "notion"
+  | "github";
 
 export type Connector = {
   id: string;
@@ -50,6 +57,7 @@ export type Connector = {
   token_secret_arn?: string;
   google_account_email?: string;
   notion_workspace_name?: string;
+  github_account_login?: string;
   item_count?: number;
   last_synced_at?: string;
   last_error?: string;
@@ -78,6 +86,26 @@ export function parseSlidesId(url: string): string | null {
   return m ? m[1] : null;
 }
 
+/**
+ * Parse a GitHub URL into "owner/repo". Accepts:
+ *   https://github.com/owner/repo
+ *   https://github.com/owner/repo.git
+ *   https://github.com/owner/repo/tree/main/...
+ *   git@github.com:owner/repo.git
+ *   owner/repo  (raw)
+ */
+export function parseGithubRepo(url: string): string | null {
+  const trimmed = url.trim();
+  // raw owner/repo form
+  if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed)) return trimmed;
+  // https
+  let m = trimmed.match(
+    /github\.com[:/]([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#]|$)/
+  );
+  if (m) return `${m[1]}/${m[2]}`;
+  return null;
+}
+
 export function parseNotionId(url: string): string | null {
   // Notion page/database URLs end with a 32-char hex id (optionally dashed):
   //   https://www.notion.so/workspace/Page-Title-abc123…def
@@ -104,6 +132,8 @@ export function parseResourceId(
       return parseSlidesId(url);
     case "notion":
       return parseNotionId(url);
+    case "github":
+      return parseGithubRepo(url);
     default:
       return null;
   }
@@ -152,6 +182,8 @@ export function syncFnNameFor(type: ConnectorType): string {
       return CONNECTOR_SYNC_SLIDES_FN_NAME;
     case "notion":
       return CONNECTOR_SYNC_NOTION_FN_NAME;
+    case "github":
+      return CONNECTOR_SYNC_GITHUB_FN_NAME;
     default:
       return "";
   }

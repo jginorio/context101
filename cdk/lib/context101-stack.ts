@@ -495,6 +495,37 @@ export class Context101Stack extends cdk.Stack {
       })
     );
 
+    // a5) Per-type sync Lambda — GitHub (PAT-based, no OAuth provider secret)
+    const connectorSyncGithubFn = new lambda.Function(
+      this,
+      "ConnectorSyncGithubFn",
+      {
+        runtime: lambda.Runtime.NODEJS_20_X,
+        handler: "index.handler",
+        code: lambda.Code.fromAsset("lambda/connector-sync-github"),
+        functionName: `${namePrefix}-connector-sync-github`,
+        // Repos can have hundreds of files; concurrent blob fetches keep
+        // wall time bounded but give it room.
+        timeout: cdk.Duration.minutes(10),
+        memorySize: 1024,
+        environment: {
+          CONNECTORS_TABLE: connectorsTable.tableName,
+          DOCS_BUCKET: docsBucket.bucketName,
+        },
+      }
+    );
+    connectorsTable.grantReadWriteData(connectorSyncGithubFn);
+    docsBucket.grantReadWrite(connectorSyncGithubFn);
+    connectorSyncGithubFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ReadConnectorTokenSecrets",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-connector-*`,
+        ],
+      })
+    );
+
     // a4) Per-type sync Lambda — Notion
     const connectorSyncNotionFn = new lambda.Function(
       this,
@@ -542,6 +573,7 @@ export class Context101Stack extends cdk.Stack {
           DOCS_SYNC_FN_NAME: connectorSyncDocsFn.functionName,
           SLIDES_SYNC_FN_NAME: connectorSyncSlidesFn.functionName,
           NOTION_SYNC_FN_NAME: connectorSyncNotionFn.functionName,
+          GITHUB_SYNC_FN_NAME: connectorSyncGithubFn.functionName,
         },
       }
     );
@@ -550,6 +582,7 @@ export class Context101Stack extends cdk.Stack {
     connectorSyncDocsFn.grantInvoke(connectorDispatchFn);
     connectorSyncSlidesFn.grantInvoke(connectorDispatchFn);
     connectorSyncNotionFn.grantInvoke(connectorDispatchFn);
+    connectorSyncGithubFn.grantInvoke(connectorDispatchFn);
 
     // c) EventBridge — every 6 hours, invoke the dispatcher
     new events.Rule(this, "ConnectorSchedule", {
@@ -572,6 +605,9 @@ export class Context101Stack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "ConnectorSyncNotionFnName", {
       value: connectorSyncNotionFn.functionName,
+    });
+    new cdk.CfnOutput(this, "ConnectorSyncGithubFnName", {
+      value: connectorSyncGithubFn.functionName,
     });
 
     // ── 8. Optional: App Runner service hosting the MCP server ────────
@@ -731,6 +767,7 @@ export class Context101Stack extends cdk.Stack {
           { name: "CONNECTOR_SYNC_DOCS_FN_NAME", value: connectorSyncDocsFn.functionName },
           { name: "CONNECTOR_SYNC_SLIDES_FN_NAME", value: connectorSyncSlidesFn.functionName },
           { name: "CONNECTOR_SYNC_NOTION_FN_NAME", value: connectorSyncNotionFn.functionName },
+          { name: "CONNECTOR_SYNC_GITHUB_FN_NAME", value: connectorSyncGithubFn.functionName },
           { name: "GOOGLE_OAUTH_CLIENT_SECRET_ID", value: googleOAuthClientSecret.secretName },
           { name: "NOTION_OAUTH_CLIENT_SECRET_ID", value: notionOAuthClientSecret.secretName },
           { name: "CONNECTOR_TOKEN_SECRET_PREFIX", value: `${namePrefix}-connector-` },
@@ -875,6 +912,7 @@ export class Context101Stack extends cdk.Stack {
       connectorSyncDocsFn.grantInvoke(ssrComputeRole);
       connectorSyncSlidesFn.grantInvoke(ssrComputeRole);
       connectorSyncNotionFn.grantInvoke(ssrComputeRole);
+      connectorSyncGithubFn.grantInvoke(ssrComputeRole);
       // S3 delete under sources/sheets/ so DELETE /api/connectors/:id can
       // clean up. The role already has s3:GetObject/PutObject/List via
       // earlier grants; DeleteObject is the only gap.

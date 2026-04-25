@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   BookOpen,
   FileText,
+  GitBranch,
   Loader2,
   Presentation,
   Sheet,
@@ -22,7 +23,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-type SourceType = "sheets" | "docs" | "slides" | "notion";
+type SourceType = "sheets" | "docs" | "slides" | "notion" | "github";
 
 type Copy = {
   icon: LucideIcon;
@@ -70,6 +71,15 @@ const COPY: Record<SourceType, Copy> = {
     urlPlaceholder: "https://www.notion.so/workspace/Page-Title-abc123…",
     labelPlaceholder: "Engineering handbook",
   },
+  github: {
+    icon: GitBranch,
+    title: "Add a GitHub repo",
+    description:
+      "Paste a repo URL and a Personal Access Token with `repo` scope (or `public_repo` for public-only). We pull every markdown + code file (skipping lockfiles, node_modules, builds), wrap them in fenced markdown, and re-sync every 6 hours. The token is stored in Secrets Manager — never sent to the client again.",
+    urlLabel: "Repo URL",
+    urlPlaceholder: "https://github.com/owner/repo",
+    labelPlaceholder: "context101 platform repo",
+  },
 };
 
 export function AddSourceDialog({
@@ -83,21 +93,26 @@ export function AddSourceDialog({
 }) {
   const [label, setLabel] = React.useState("");
   const [url, setUrl] = React.useState("");
+  const [pat, setPat] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
     if (open) {
       setLabel("");
       setUrl("");
+      setPat("");
       setSubmitting(false);
     }
   }, [open]);
 
   const copy = COPY[type];
   const Icon = copy.icon;
+  const needsPat = type === "github";
+  const ready =
+    !!label.trim() && !!url.trim() && (!needsPat || !!pat.trim());
 
   async function connect() {
-    if (!label.trim() || !url.trim()) return;
+    if (!ready) return;
     setSubmitting(true);
     try {
       const r = await fetch("/api/connectors/create", {
@@ -107,12 +122,14 @@ export function AddSourceDialog({
           type,
           label: label.trim(),
           resource_url: url.trim(),
+          ...(needsPat ? { github_pat: pat.trim() } : {}),
         }),
       });
       const j = await r.json();
       if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
-      if (!j.oauthUrl) throw new Error("No OAuth URL returned");
-      // Full-page navigation → Google consent screen replaces the dialog.
+      if (!j.oauthUrl) throw new Error("No redirect URL returned");
+      // Full-page navigation. For OAuth providers this hits the consent
+      // screen; for GitHub it goes straight to /sources?connected=<id>.
       window.location.href = j.oauthUrl;
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
@@ -151,9 +168,40 @@ export function AddSourceDialog({
               className="font-mono text-xs"
             />
           </div>
-          <p className="text-xs text-muted-foreground">
-            You only need <strong>Viewer</strong> access — sync is read-only.
-          </p>
+          {needsPat && (
+            <div>
+              <p className="text-xs font-medium mb-1">
+                Personal Access Token
+              </p>
+              <Input
+                type="password"
+                value={pat}
+                onChange={(e) => setPat(e.target.value)}
+                placeholder="ghp_… or github_pat_…"
+                disabled={submitting}
+                className="font-mono text-xs"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                Create one at{" "}
+                <a
+                  href="https://github.com/settings/tokens"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline hover:text-foreground"
+                >
+                  github.com/settings/tokens
+                </a>{" "}
+                with <code className="font-mono">repo</code> scope (private)
+                or <code className="font-mono">public_repo</code> (public
+                only). Stored encrypted in Secrets Manager.
+              </p>
+            </div>
+          )}
+          {!needsPat && (
+            <p className="text-xs text-muted-foreground">
+              You only need <strong>Viewer</strong> access — sync is read-only.
+            </p>
+          )}
         </div>
 
         <DialogFooter>
@@ -164,17 +212,16 @@ export function AddSourceDialog({
           >
             Cancel
           </Button>
-          <Button
-            onClick={connect}
-            disabled={submitting || !label.trim() || !url.trim()}
-          >
+          <Button onClick={connect} disabled={submitting || !ready}>
             {submitting ? (
               <>
                 <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                Redirecting…
+                {type === "github" ? "Adding…" : "Redirecting…"}
               </>
             ) : type === "notion" ? (
               "Connect Notion workspace"
+            ) : type === "github" ? (
+              "Add repo"
             ) : (
               "Connect Google account"
             )}

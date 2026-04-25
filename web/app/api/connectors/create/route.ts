@@ -1,25 +1,38 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { randomUUID } from "node:crypto";
-import { PutCommand } from "@aws-sdk/lib-dynamodb";
-import { GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
+import { PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
+import {
+  CreateSecretCommand,
+  GetSecretValueCommand,
+} from "@aws-sdk/client-secrets-manager";
+import { InvokeCommand } from "@aws-sdk/client-lambda";
 
 import {
+  CONNECTOR_TOKEN_SECRET_PREFIX,
   CONNECTORS_TABLE,
   ddbConnectors,
   GOOGLE_OAUTH_CLIENT_SECRET_ID,
   isGoogleType,
+  lambdaClient,
   NOTION_OAUTH_CLIENT_SECRET_ID,
   oauthScopesFor,
   parseResourceId,
   sm,
+  syncFnNameFor,
   type Connector,
   type ConnectorType,
 } from "@/utils/connectors";
 import { getCurrentUserEmail } from "@/utils/amplify-server-utils";
 import { getPublicOrigin } from "@/utils/public-origin";
 
-const SUPPORTED_TYPES: ConnectorType[] = ["sheets", "docs", "slides", "notion"];
+const SUPPORTED_TYPES: ConnectorType[] = [
+  "sheets",
+  "docs",
+  "slides",
+  "notion",
+  "github",
+];
 
 function defaultLabelFor(type: ConnectorType): string {
   switch (type) {
@@ -31,6 +44,8 @@ function defaultLabelFor(type: ConnectorType): string {
       return "Untitled Slides source";
     case "notion":
       return "Untitled Notion source";
+    case "github":
+      return "Untitled GitHub repo";
     default:
       return "Untitled source";
   }
@@ -46,6 +61,8 @@ function resourceHint(type: ConnectorType): string {
       return "docs.google.com presentation";
     case "notion":
       return "notion.so page or database";
+    case "github":
+      return "github.com/owner/repo";
     default:
       return "resource";
   }
@@ -105,6 +122,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // GitHub uses a Personal Access Token, not OAuth. We expect the token
+  // in the body so we can short-circuit the OAuth dance.
+  if (
+    type === "github" &&
+    (typeof body.github_pat !== "string" || !body.github_pat.trim())
+  ) {
+    return NextResponse.json(
+      { error: "github_pat is required for type=github" },
+      { status: 400 }
+    );
+  }
+
   const resourceId = parseResourceId(type, body.resource_url);
   if (!resourceId) {
     return NextResponse.json(
@@ -132,6 +161,56 @@ export async function POST(request: NextRequest) {
     await ddbConnectors.send(
       new PutCommand({ TableName: CONNECTORS_TABLE, Item: row })
     );
+
+    // ── GitHub short-circuit (no OAuth dance) ─────────────────────────
+    // PAT is the auth — store it in a per-connector secret, flip the row
+    // to "syncing", fire the sync Lambda, and tell the client to redirect
+    // straight to /sources?connected=<id>.
+    if (type === "github") {
+      const tokenSecretName = `${CONNECTOR_TOKEN_SECRET_PREFIX}${id}`;
+      const created = await sm.send(
+        new CreateSecretCommand({
+          Name: tokenSecretName,
+          Description: `GitHub PAT for connector ${id}`,
+          SecretString: JSON.stringify({
+            github_pat: (body.github_pat as string).trim(),
+          }),
+        })
+      );
+      await ddbConnectors.send(
+        new UpdateCommand({
+          TableName: CONNECTORS_TABLE,
+          Key: { id },
+          UpdateExpression: "SET #s = :s, token_secret_arn = :arn",
+          ExpressionAttributeNames: { "#s": "status" },
+          ExpressionAttributeValues: {
+            ":s": "syncing",
+            ":arn": created.ARN,
+          },
+        })
+      );
+      const fn = syncFnNameFor("github");
+      if (fn) {
+        await lambdaClient
+          .send(
+            new InvokeCommand({
+              FunctionName: fn,
+              InvocationType: "Event",
+              Payload: new TextEncoder().encode(
+                JSON.stringify({ connectorId: id })
+              ),
+            })
+          )
+          .catch((e) => console.error("initial sync invoke failed:", e));
+      }
+      // Reuse the existing dialog flow: it does
+      //   window.location.href = j.oauthUrl
+      // so we hand back a relative URL that simply navigates back to /sources.
+      return NextResponse.json({
+        id,
+        oauthUrl: `/sources?connected=${id}`,
+      });
+    }
 
     // Build the provider-specific authorize URL
     const oauthClientSecretId = isGoogleType(type)

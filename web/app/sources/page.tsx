@@ -9,6 +9,7 @@ import {
   Check,
   ExternalLink,
   FileText,
+  GitBranch,
   Loader2,
   Plug,
   Plus,
@@ -52,13 +53,14 @@ type Status =
 
 type Connector = {
   id: string;
-  type: "sheets" | "docs" | "slides" | "notion";
+  type: "sheets" | "docs" | "slides" | "notion" | "github";
   status: Status;
   label: string;
   resource_url: string;
   resource_title?: string;
   google_account_email?: string;
   notion_workspace_name?: string;
+  github_account_login?: string;
   item_count?: number;
   last_synced_at?: string;
   last_error?: string;
@@ -92,6 +94,7 @@ function TypeIcon({ type }: { type: Connector["type"] }) {
   if (type === "slides")
     return <Presentation className="h-4 w-4 opacity-80" />;
   if (type === "notion") return <BookOpen className="h-4 w-4 opacity-80" />;
+  if (type === "github") return <GitBranch className="h-4 w-4 opacity-80" />;
   return <Plug className="h-4 w-4 opacity-80" />;
 }
 
@@ -110,7 +113,7 @@ function SourcesContent() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [addType, setAddType] = React.useState<
-    "sheets" | "docs" | "slides" | "notion" | null
+    "sheets" | "docs" | "slides" | "notion" | "github" | null
   >(null);
   const [confirmRemove, setConfirmRemove] = React.useState<Connector | null>(
     null
@@ -232,6 +235,9 @@ function SourcesContent() {
               <DropdownMenuItem onClick={() => setAddType("notion")}>
                 <BookOpen className="mr-2 h-3.5 w-3.5" /> Notion
               </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => setAddType("github")}>
+                <GitBranch className="mr-2 h-3.5 w-3.5" /> GitHub
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
           <ThemeToggle />
@@ -257,7 +263,8 @@ function SourcesContent() {
           <Card>
             <CardContent className="p-6 text-center text-sm text-muted-foreground">
               No data sources yet. Click <strong>Add new source</strong> to
-              connect a Google Sheet, Doc, Slides deck, or Notion workspace.
+              connect a Google Sheet, Doc, Slides deck, Notion workspace, or
+              GitHub repo.
             </CardContent>
           </Card>
         )}
@@ -284,12 +291,18 @@ function SourcesContent() {
                 <dt className="text-muted-foreground">Added by</dt>
                 <dd>{c.created_by ?? "unknown"}</dd>
                 <dt className="text-muted-foreground">
-                  {c.type === "notion" ? "Notion workspace" : "Google account"}
+                  {c.type === "notion"
+                    ? "Notion workspace"
+                    : c.type === "github"
+                      ? "GitHub user"
+                      : "Google account"}
                 </dt>
                 <dd className="truncate">
                   {c.type === "notion"
                     ? (c.notion_workspace_name ?? "—")
-                    : (c.google_account_email ?? "—")}
+                    : c.type === "github"
+                      ? (c.github_account_login ?? "—")
+                      : (c.google_account_email ?? "—")}
                 </dd>
                 <dt className="text-muted-foreground">Last synced</dt>
                 <dd>

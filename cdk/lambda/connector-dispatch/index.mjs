@@ -29,6 +29,7 @@ const FN_BY_TYPE = {
   docs: process.env.DOCS_SYNC_FN_NAME,
   slides: process.env.SLIDES_SYNC_FN_NAME,
   notion: process.env.NOTION_SYNC_FN_NAME,
+  github: process.env.GITHUB_SYNC_FN_NAME,
 };
 
 export const handler = async () => {
