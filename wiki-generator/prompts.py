@@ -68,6 +68,120 @@ IMPORTANT:
 """
 
 
+CODE_STRUCTURE_PROMPT = """\
+Analyze this codebase and create a wiki structure for it.
+
+This is a single repository: {repo_full_name}. Below is each source file
+with its S3 key and a preview of its content (code wrapped in fenced
+markdown blocks; .md files passed through as-is).
+
+<corpus>
+{corpus_summary}
+</corpus>
+
+I want a wiki that explains this codebase clearly enough that a new
+engineer could orient themselves and contribute. Plan pages around what's
+actually in the repo, not generic categories.
+
+When designing the structure, prioritize pages that benefit from visual
+diagrams:
+- Architecture / system overview (component diagram)
+- Request or data lifecycle (sequence or flowchart)
+- Data model + relationships (ER or class diagram)
+- Module dependency graph
+- Build / deploy / operate (infra, CI, env vars, runtime topology)
+
+Other useful page types when the repo supports them:
+- Key modules / packages and their responsibilities
+- External integrations (APIs, databases, third-party services)
+- Configuration + environment (env vars, feature flags, secrets)
+- Testing conventions (how things are tested, what's mocked)
+- Conventions worth documenting (anything non-obvious about the project's
+  style or assumptions)
+
+Return your analysis in the following XML format:
+
+<wiki_structure>
+  <title>[Overall title for this code wiki]</title>
+  <description>[Brief description of what the repo does]</description>
+  <pages>
+    <page id="page-1">
+      <title>[Page title]</title>
+      <description>[Brief description of what this page will cover]</description>
+      <importance>high|medium|low</importance>
+      <relevant_files>
+        <file_path>[S3 key of a source file from the corpus above]</file_path>
+      </relevant_files>
+      <related_pages>
+        <related>page-2</related>
+      </related_pages>
+    </page>
+  </pages>
+</wiki_structure>
+
+IMPORTANT FORMATTING INSTRUCTIONS:
+- Return ONLY the valid XML structure specified above
+- DO NOT wrap the XML in markdown code blocks (no ``` or ```xml)
+- DO NOT include any explanation text before or after the XML
+- Ensure the XML is properly formatted and valid
+- Start directly with <wiki_structure> and end with </wiki_structure>
+
+IMPORTANT:
+1. Create {min_pages}-{max_pages} pages.
+2. Every <file_path> MUST be an actual S3 key from the <corpus> above — do not invent file paths.
+3. A page should have at least 1 relevant file; 3-6 is ideal for code pages where the topic spans several modules.
+4. <related_pages> should cross-reference other page IDs from this same structure.
+5. Don't invent pages for things the repo doesn't actually do. If the repo is small, fewer focused pages beat padded ones.
+6. Return ONLY valid XML with the structure specified above, with no markdown code block delimiters.
+"""
+
+
+CODE_PAGE_PROMPT = """\
+You are an expert technical writer documenting a codebase.
+Your task is to generate a comprehensive wiki page in Markdown format about a specific aspect of {repo_full_name}.
+
+You will be given:
+1. The [WIKI_PAGE_TOPIC] for the page.
+2. [RELEVANT_SOURCE_CONTENT] — the full contents of source files from the repo that you MUST use as the sole basis for the page.
+
+Source files include both markdown docs and source code. Code files are wrapped in fenced markdown blocks; the actual file path is in the wrapper's S3 key.
+
+The first thing on the page MUST be an H1 heading: `# {page_title}`. No preamble, no acknowledgements — start directly with the heading.
+
+Based ONLY on the content of [RELEVANT_SOURCE_CONTENT]:
+
+1.  **Introduction:** 1-2 paragraphs explaining what "{page_title}" is in this codebase and why it matters. If another page in this code wiki would add context, link to it: `[Link Text](other-page-slug.md)`.
+
+2.  **Detailed Sections:** Break the topic into H2 (`##`) and H3 (`###`) sections. For code, this usually means: walking through what a module does, how its functions interact, what types it uses, how it's configured.
+
+3.  **Mermaid Diagrams:** For architecture, data flow, dependencies, or state machines, add Mermaid diagrams (`flowchart TD`, `sequenceDiagram`, `classDiagram`, `erDiagram`). Use top-down (`graph TD`), 3-4 word node labels. Only diagram what the source actually contains — don't invent structure.
+
+4.  **Code Snippets:** Include short, illustrative code blocks straight from the source files when they show a key concept. Fence with the correct language identifier. Don't paste hundreds of lines — pick the exemplary bits and discuss them.
+
+5.  **Tables:** Use tables to summarize config options, function signatures, types, or comparisons.
+
+6.  **Source Citations (IMPORTANT):** After every significant claim, section, diagram, or code excerpt, cite the source file(s). Use this exact format: `Sources: [path/to/file.ext.md]()` for one file or `Sources: [a.md](), [b.md]()` for multiple. Cite by the S3 key (which ends in `.md` because we wrap code files in markdown). You MUST cite every provided source file at least once somewhere on the page.
+
+7.  **Technical Accuracy:** All information must derive SOLELY from [RELEVANT_SOURCE_CONTENT]. Do NOT invent function names, types, env vars, file paths, or behaviors that aren't visible in the source. If the sources disagree, note it — don't silently pick one.
+
+8.  **Voice:** Concise, technical, professional. Don't editorialize.
+
+9.  **Conclusion (optional):** Brief summary if appropriate for "{page_title}".
+
+Remember:
+- Ground every claim in the provided source content.
+- Prefer accuracy over comprehensiveness — leave out what you can't substantiate.
+- Structure the page logically for a developer reading it to learn this part of the codebase.
+
+[WIKI_PAGE_TOPIC]
+Title: {page_title}
+Description: {page_description}
+
+[RELEVANT_SOURCE_CONTENT]
+{source_content}
+"""
+
+
 PAGE_PROMPT = """\
 You are an expert technical writer.
 Your task is to generate a comprehensive and accurate wiki page in Markdown format about a specific topic within a team's shared knowledge base.

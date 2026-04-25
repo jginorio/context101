@@ -31,10 +31,12 @@ import {
   SecretsManagerClient,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
+import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 
 const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
 const sm = new SecretsManagerClient({});
+const lambdaClient = new LambdaClient({});
 
 const CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
 const DOCS_BUCKET = process.env.DOCS_BUCKET;
@@ -403,7 +405,11 @@ export const handler = async (event) => {
       return { ok: true, repo: repoFullName, files: 0, note: "no matching files" };
     }
 
-    const prefix = `${SOURCES_PREFIX}${owner}/${repo}/`;
+    // Single-level slug under sources/github/ keeps the layout symmetric
+    // with the other connectors and matches the delete route's slug logic
+    // (which derives the prefix from row.resource_title).
+    const repoSlug = slugify(`${owner}-${repo}`);
+    const prefix = `${SOURCES_PREFIX}${repoSlug}/`;
     const now = new Date().toISOString();
     const freshKeys = new Set();
 
@@ -470,6 +476,26 @@ export const handler = async (event) => {
     }
 
     await markSuccess(connectorId, written, repoFullName);
+
+    // Layer 2: kick off the per-repo code-wiki Fargate task. The
+    // start-wiki-gen Lambda accepts { mode, repo } overrides and runs
+    // the same Fargate task with code-mode env vars. Fire-and-forget —
+    // a code-wiki failure shouldn't fail the connector sync.
+    const startWikiGenFn = process.env.START_WIKI_GEN_FN_NAME;
+    if (startWikiGenFn && written > 0) {
+      await lambdaClient
+        .send(
+          new InvokeCommand({
+            FunctionName: startWikiGenFn,
+            InvocationType: "Event",
+            Payload: new TextEncoder().encode(
+              JSON.stringify({ mode: "code", repo: repoFullName })
+            ),
+          })
+        )
+        .catch((e) => console.error("code-wiki dispatch failed:", e));
+    }
+
     return {
       ok: true,
       repo: repoFullName,

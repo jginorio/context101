@@ -511,6 +511,12 @@ export class Context101Stack extends cdk.Stack {
         environment: {
           CONNECTORS_TABLE: connectorsTable.tableName,
           DOCS_BUCKET: docsBucket.bucketName,
+          // Layer 2: after a successful sync, fire the per-repo code-wiki
+          // Fargate task. The dispatcher Lambda lives inside the
+          // if (githubToken) block; if the web stack isn't deployed,
+          // this name resolves to a non-existent fn and the sync just
+          // logs a warning (the github sync itself still succeeds).
+          START_WIKI_GEN_FN_NAME: `${namePrefix}-start-wiki-gen`,
         },
       }
     );
@@ -955,6 +961,9 @@ export class Context101Stack extends cdk.Stack {
 
       // SSR can invoke the dispatcher + describe tasks for polling
       startWikiGenFn.grantInvoke(ssrComputeRole);
+      // GitHub connector fires the per-repo code-wiki Fargate task after
+      // each successful sync.
+      startWikiGenFn.grantInvoke(connectorSyncGithubFn);
       ssrComputeRole.addToPolicy(
         new iam.PolicyStatement({
           sid: "DescribeWikiTasks",

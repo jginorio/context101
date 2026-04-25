@@ -29,7 +29,12 @@ from xml.etree import ElementTree as ET
 import boto3
 from botocore.config import Config
 
-from prompts import PAGE_PROMPT, STRUCTURE_PROMPT
+from prompts import (
+    CODE_PAGE_PROMPT,
+    CODE_STRUCTURE_PROMPT,
+    PAGE_PROMPT,
+    STRUCTURE_PROMPT,
+)
 
 # ── Config ────────────────────────────────────────────────────────────
 
@@ -37,6 +42,18 @@ AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 AWS_PROFILE = os.environ.get("AWS_PROFILE")
 DOCS_BUCKET = os.environ["DOCS_BUCKET"]
 WIKI_PREFIX = os.environ.get("WIKI_PREFIX", "wiki/")
+# WIKI_MODE: "main" (default) generates the cross-source team wiki at
+# wiki/<slug>.md. "code" generates a per-repo deepwiki-style wiki under
+# wiki/code/<repo-slug>/<slug>.md, with code-specialized prompts and
+# corpus scoped to a single repo.
+WIKI_MODE = os.environ.get("WIKI_MODE", "main")
+# CORPUS_PREFIX scopes the input corpus to a single S3 prefix. Empty =
+# whole bucket (main mode). Set to e.g. "sources/github/<repo-slug>/"
+# for code mode.
+CORPUS_PREFIX = os.environ.get("CORPUS_PREFIX", "")
+# REPO_FULL_NAME ("owner/repo") is interpolated into code-mode prompts so
+# Opus knows which repo it's documenting. Ignored in main mode.
+REPO_FULL_NAME = os.environ.get("REPO_FULL_NAME", "")
 MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-opus-4-7")
 MIN_PAGES = int(os.environ.get("MIN_PAGES", "4"))
 MAX_PAGES = int(os.environ.get("MAX_PAGES", "8"))
@@ -45,6 +62,8 @@ MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "8192"))
 
 if not WIKI_PREFIX.endswith("/"):
     WIKI_PREFIX += "/"
+if CORPUS_PREFIX and not CORPUS_PREFIX.endswith("/"):
+    CORPUS_PREFIX += "/"
 
 
 # ── AWS clients ───────────────────────────────────────────────────────
@@ -79,18 +98,45 @@ class PageSpec:
 # ── Corpus loading ────────────────────────────────────────────────────
 
 
+def _is_excluded(key: str) -> bool:
+    """Decide whether to skip a key from the corpus."""
+    # Always skip sidecars and "directory" keys.
+    if key.endswith(".metadata.json") or key.endswith("/"):
+        return True
+    if not key.endswith(".md"):
+        return True
+
+    # Code-mode: include only the configured corpus prefix.
+    if WIKI_MODE == "code":
+        if not key.startswith(CORPUS_PREFIX or "sources/github/"):
+            return True
+        # Don't ingest our own output if a previous run wrote there.
+        if key.startswith(WIKI_PREFIX):
+            return True
+        return False
+
+    # Main mode: skip top-level wiki/<slug>.md (avoid feeding our own
+    # output back in), but keep wiki/code/<repo>/<slug>.md so the team
+    # wiki can cite pre-synthesized code-wiki pages.
+    if key.startswith("wiki/code/"):
+        return False
+    if key.startswith("wiki/"):
+        return True
+    return False
+
+
 def list_source_docs() -> list[SourceDoc]:
-    """List all .md files in the docs bucket, skipping the wiki/ prefix and sidecar files."""
+    """List markdown files in the docs bucket, mode-aware."""
     keys: list[str] = []
     paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=DOCS_BUCKET):
+    list_prefix = CORPUS_PREFIX if WIKI_MODE == "code" else ""
+    paginate_kwargs: dict = {"Bucket": DOCS_BUCKET}
+    if list_prefix:
+        paginate_kwargs["Prefix"] = list_prefix
+    for page in paginator.paginate(**paginate_kwargs):
         for obj in page.get("Contents", []):
             key = obj["Key"]
-            if key.startswith(WIKI_PREFIX):
-                continue
-            if key.endswith(".metadata.json") or key.endswith("/"):
-                continue
-            if not key.endswith(".md"):
+            if _is_excluded(key):
                 continue
             keys.append(key)
 
@@ -253,10 +299,12 @@ def generate_page(spec: PageSpec, docs_by_key: dict[str, SourceDoc]) -> str:
         source_blocks.append(f'<file path="{doc.key}">\n{doc.body}\n</file>')
     source_content = "\n\n".join(source_blocks)
 
-    prompt = PAGE_PROMPT.format(
+    template = CODE_PAGE_PROMPT if WIKI_MODE == "code" else PAGE_PROMPT
+    prompt = template.format(
         page_title=spec.title,
         page_description=spec.description,
         source_content=source_content,
+        repo_full_name=REPO_FULL_NAME or "this repository",
     )
     return invoke_opus(prompt)
 
@@ -285,14 +333,20 @@ def build_wiki_sidecar(
     source_files = ",".join(relevant_files)
     if len(source_files) > _SOURCE_FILES_MAX_CHARS:
         source_files = source_files[: _SOURCE_FILES_MAX_CHARS - 3] + "..."
-    return {
-        "metadataAttributes": {
-            "source": "wiki",
-            "generated_at": started_at,
-            "page_slug": slug,
-            "source_files": source_files,
-        }
+    # `source` drives search_knowledge's filter — only "wiki" is canonical
+    # for top-level retrieval. "code-wiki" pages stay in the index but are
+    # not returned by search_knowledge unless the agent reads them via
+    # citations (the team wiki) or read_knowledge directly.
+    source_tag = "code-wiki" if WIKI_MODE == "code" else "wiki"
+    attrs: dict = {
+        "source": source_tag,
+        "generated_at": started_at,
+        "page_slug": slug,
+        "source_files": source_files,
     }
+    if WIKI_MODE == "code" and REPO_FULL_NAME:
+        attrs["repo"] = REPO_FULL_NAME
+    return {"metadataAttributes": attrs}
 
 
 def write_wiki_outputs(
@@ -353,7 +407,12 @@ def main() -> int:
     started_at = datetime.now(timezone.utc).isoformat()
     t0 = time.monotonic()
 
-    print(f"Listing source docs from s3://{DOCS_BUCKET}/ (skipping {WIKI_PREFIX})")
+    scope = (
+        f"prefix={CORPUS_PREFIX}"
+        if WIKI_MODE == "code"
+        else f"whole bucket (skipping top-level {WIKI_PREFIX})"
+    )
+    print(f"Listing source docs from s3://{DOCS_BUCKET}/  · {scope}")
     docs = list_source_docs()
     if not docs:
         print("No source markdown found — nothing to generate.", file=sys.stderr)
@@ -363,11 +422,15 @@ def main() -> int:
     docs_by_key = {d.key: d for d in docs}
     corpus_summary = build_corpus_summary(docs)
 
-    print("Requesting wiki structure from Opus…")
-    structure_prompt = STRUCTURE_PROMPT.format(
+    print(f"Requesting wiki structure from Opus (mode={WIKI_MODE})…")
+    structure_template = (
+        CODE_STRUCTURE_PROMPT if WIKI_MODE == "code" else STRUCTURE_PROMPT
+    )
+    structure_prompt = structure_template.format(
         corpus_summary=corpus_summary,
         min_pages=MIN_PAGES,
         max_pages=MAX_PAGES,
+        repo_full_name=REPO_FULL_NAME or "this repository",
     )
     structure_raw = invoke_opus(structure_prompt)
     structure_xml = extract_xml(structure_raw)
