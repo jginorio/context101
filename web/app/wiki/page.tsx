@@ -159,15 +159,32 @@ export default function WikiPage() {
       : `Refresh ${activeSelection.repo}`;
 
   // ── Initial load ────────────────────────────────────────────────
+  // Also asks the server "is a regen in flight?" so any user landing
+  // on /wiki — refresh, second tab, second teammate — converges on the
+  // same in-flight task and shows Regenerating… instead of triggering
+  // a duplicate. The server (start-wiki-gen Lambda) introspects ECS
+  // for the source of truth, so a crashed task self-heals — there's
+  // no zombie lock to worry about.
   React.useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
-        const { index, meta, codeWikis } = await fetchIndex();
+        const [{ index, meta, codeWikis }, checkRes] = await Promise.all([
+          fetchIndex(),
+          fetch("/api/wiki/refresh?check=1").then(
+            (r) =>
+              r.json() as Promise<{ running?: boolean; taskArn?: string | null }>
+          ),
+        ]);
         if (cancelled) return;
         setIndex(index);
         setMeta(meta);
         setCodeWikis(codeWikis);
+        if (checkRes.running && checkRes.taskArn) {
+          watchTask(checkRes.taskArn).catch(() => {
+            // pollTask already toasts; swallow to avoid double-reporting
+          });
+        }
       } catch (e) {
         if (!cancelled) toast.error(e instanceof Error ? e.message : String(e));
       } finally {
@@ -177,6 +194,7 @@ export default function WikiPage() {
     return () => {
       cancelled = true;
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // ── Fetch page content when selection changes ──────────────────
@@ -204,6 +222,15 @@ export default function WikiPage() {
   // Code-wiki regen happens automatically on the next github sync; users
   // who need an immediate code-wiki rebuild can hit "Sync now" on the
   // connector card or invoke start-wiki-gen directly.
+  //
+  // Single-flight: we never spin up a duplicate task. The server-side
+  // dispatcher Lambda inspects ECS before RunTask and returns the
+  // existing taskArn (with alreadyRunning=true) when a regen is in
+  // flight. The page-mount also asks the server "is one running?" so
+  // every viewer attaches to the same task — anyone refreshing the
+  // page or opening it from another browser sees Regenerating… too.
+  // The button is disabled while refreshing, which is option-1 hard
+  // lock: clicking again during a regen is impossible.
   async function pollTask(taskArn: string): Promise<void> {
     const deadline = Date.now() + POLL_TIMEOUT_MS;
     while (Date.now() < deadline) {
@@ -227,31 +254,30 @@ export default function WikiPage() {
     throw new Error("Generator still running after 5 minutes — check ECS logs");
   }
 
-  async function handleRefresh() {
-    if (refreshing) return;
+  // Shared between (a) the manual button click and (b) the mount-time
+  // detection of an already-running regen. Both paths poll the same
+  // task and reload the index/page on completion.
+  const refreshingRef = React.useRef(false);
+  async function watchTask(taskArn: string): Promise<void> {
+    if (refreshingRef.current) return;
+    refreshingRef.current = true;
     setRefreshing(true);
     try {
-      const res = await fetch("/api/wiki/refresh", { method: "POST" });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? "refresh failed");
-      toast.info("Wiki generation started — this usually takes 1-3 minutes");
-      await pollTask(j.taskArn);
+      await pollTask(taskArn);
       toast.success("Wiki regenerated");
 
-      // Reload everything
       const fresh = await fetchIndex();
       setIndex(fresh.index);
       setMeta(fresh.meta);
       setCodeWikis(fresh.codeWikis);
 
-      // Re-fetch whatever page is open
       if (activeSelection) {
         try {
           setContent(await fetchPage(activeSelection));
           setLoadedSelection(activeSelection);
         } catch {
-          // Page might've been renamed/removed — clear, default-selection
-          // logic picks a new first page.
+          // Page might've been renamed/removed during regen — clear,
+          // default-selection logic picks a new first page.
           setLoadedSelection(null);
           setUserSelection(null);
         }
@@ -259,7 +285,30 @@ export default function WikiPage() {
     } catch (e) {
       toast.error(e instanceof Error ? e.message : String(e));
     } finally {
+      refreshingRef.current = false;
       setRefreshing(false);
+    }
+  }
+
+  async function handleRefresh() {
+    if (refreshing) return;
+    try {
+      const res = await fetch("/api/wiki/refresh", { method: "POST" });
+      const j = (await res.json()) as {
+        taskArn?: string;
+        alreadyRunning?: boolean;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(j.error ?? "refresh failed");
+      if (!j.taskArn) throw new Error("no taskArn returned");
+      toast.info(
+        j.alreadyRunning
+          ? "Wiki generation already in progress — attaching."
+          : "Wiki generation started — this usually takes 1-3 minutes."
+      );
+      await watchTask(j.taskArn);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
     }
   }
 

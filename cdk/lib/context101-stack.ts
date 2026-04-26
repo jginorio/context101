@@ -958,6 +958,23 @@ export class Context101Stack extends cdk.Stack {
           ],
         })
       );
+      // Single-flight dedup: before RunTask, the Lambda lists tasks in
+      // the wiki cluster and inspects their WIKI_MODE / REPO_FULL_NAME
+      // overrides to detect an in-flight regen. Same path is used by
+      // the SSR /api/wiki/refresh GET ?check=1 to tell the frontend
+      // "regen already running, attach instead of trigger".
+      // ListTasks/DescribeTasks don't take resource ARNs; scope via the
+      // ecs:cluster condition key.
+      startWikiGenFn.addToRolePolicy(
+        new iam.PolicyStatement({
+          sid: "InspectWikiTasks",
+          actions: ["ecs:ListTasks", "ecs:DescribeTasks"],
+          resources: ["*"],
+          conditions: {
+            ArnEquals: { "ecs:cluster": wikiCluster.clusterArn },
+          },
+        })
+      );
 
       // SSR can invoke the dispatcher + describe tasks for polling
       startWikiGenFn.grantInvoke(ssrComputeRole);

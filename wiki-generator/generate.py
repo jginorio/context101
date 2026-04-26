@@ -17,6 +17,7 @@ Flow:
 Runs to completion and exits — designed for Fargate tasks or local invocation.
 """
 
+import hashlib
 import json
 import os
 import re
@@ -59,6 +60,11 @@ MIN_PAGES = int(os.environ.get("MIN_PAGES", "4"))
 MAX_PAGES = int(os.environ.get("MAX_PAGES", "8"))
 CORPUS_PREVIEW_CHARS = int(os.environ.get("CORPUS_PREVIEW_CHARS", "600"))
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "8192"))
+# WIKI_FORCE=1 bypasses the no-change corpus-hash guard. Set by the
+# /api/wiki/refresh POST path (manual button) but NOT by the EventBridge
+# scheduled tick — so the 10h schedule becomes a near-no-op when nothing
+# in the corpus has changed since the last successful regen.
+WIKI_FORCE = os.environ.get("WIKI_FORCE", "").lower() in ("1", "true", "yes")
 
 if not WIKI_PREFIX.endswith("/"):
     WIKI_PREFIX += "/"
@@ -125,9 +131,14 @@ def _is_excluded(key: str) -> bool:
     return False
 
 
-def list_source_docs() -> list[SourceDoc]:
-    """List markdown files in the docs bucket, mode-aware."""
-    keys: list[str] = []
+def list_corpus_entries() -> list[tuple[str, str]]:
+    """List (key, etag) pairs for every corpus doc, mode-aware.
+
+    Cheap: just paginates ListObjectsV2 (no GetObject). Used both as the
+    input to the no-change guard and as the work list for the body-loading
+    pass below. Sorted by key for deterministic hashing.
+    """
+    entries: list[tuple[str, str]] = []
     paginator = s3.get_paginator("list_objects_v2")
     list_prefix = CORPUS_PREFIX if WIKI_MODE == "code" else ""
     paginate_kwargs: dict = {"Bucket": DOCS_BUCKET}
@@ -138,10 +149,57 @@ def list_source_docs() -> list[SourceDoc]:
             key = obj["Key"]
             if _is_excluded(key):
                 continue
-            keys.append(key)
+            etag = (obj.get("ETag") or "").strip('"')
+            entries.append((key, etag))
+    entries.sort(key=lambda kv: kv[0])
+    return entries
 
+
+def compute_corpus_sha(entries: list[tuple[str, str]]) -> str:
+    """SHA-256 over sorted (key, etag) pairs.
+
+    ETags change iff content changes (multi-part uploaded ETags look like
+    "<md5>-<n>" but are still deterministic from content), so this is a
+    stable fingerprint of the corpus without downloading any bodies.
+    Includes the WIKI_MODE so a main-mode corpus hash can never collide
+    with a code-mode hash on the same key set.
+    """
+    h = hashlib.sha256()
+    h.update(WIKI_MODE.encode("utf-8"))
+    h.update(b"\0")
+    for key, etag in entries:
+        h.update(key.encode("utf-8"))
+        h.update(b"\t")
+        h.update(etag.encode("utf-8"))
+        h.update(b"\n")
+    return h.hexdigest()
+
+
+def read_prior_meta() -> dict:
+    """Read the existing wiki/_meta.json (or wiki/code/<repo>/_meta.json).
+
+    Returns an empty dict on first run / missing object — caller treats
+    a missing corpus_sha as "always regenerate".
+    """
+    key = f"{WIKI_PREFIX}_meta.json"
+    try:
+        obj = s3.get_object(Bucket=DOCS_BUCKET, Key=key)
+    except s3.exceptions.NoSuchKey:
+        return {}
+    except Exception as e:
+        print(f"  [warn] couldn't read prior {key}: {e}", file=sys.stderr)
+        return {}
+    try:
+        return json.loads(obj["Body"].read().decode("utf-8"))
+    except Exception as e:
+        print(f"  [warn] prior {key} unparseable: {e}", file=sys.stderr)
+        return {}
+
+
+def load_source_docs(keys: list[str]) -> list[SourceDoc]:
+    """Body-load pass — only run after the no-change guard decides to regen."""
     docs: list[SourceDoc] = []
-    for key in sorted(keys):
+    for key in keys:
         obj = s3.get_object(Bucket=DOCS_BUCKET, Key=key)
         body = obj["Body"].read().decode("utf-8", errors="replace")
         docs.append(SourceDoc(key=key, body=body))
@@ -356,6 +414,7 @@ def write_wiki_outputs(
     page_bodies: dict[str, str],
     source_doc_count: int,
     started_at: str,
+    corpus_sha: str,
 ) -> None:
     # Pages + sidecars. Write the sidecar first so the next auto-ingest
     # run sees both files together and attaches metadata on first pass.
@@ -389,13 +448,16 @@ def write_wiki_outputs(
     }
     put_object(f"{WIKI_PREFIX}_index.json", json.dumps(index, indent=2), "application/json")
 
-    # Metadata — drives the "Last indexed" badge in the UI.
+    # Metadata — drives the "Last indexed" badge in the UI. corpus_sha
+    # is the no-change-guard fingerprint: the next run reads it back and
+    # short-circuits if the corpus hash hasn't moved.
     meta = {
         "generated_at": started_at,
         "finished_at": datetime.now(timezone.utc).isoformat(),
         "source_doc_count": source_doc_count,
         "page_count": len(specs),
         "model_id": MODEL_ID,
+        "corpus_sha": corpus_sha,
     }
     put_object(f"{WIKI_PREFIX}_meta.json", json.dumps(meta, indent=2), "application/json")
 
@@ -413,12 +475,33 @@ def main() -> int:
         else f"whole bucket (skipping top-level {WIKI_PREFIX})"
     )
     print(f"Listing source docs from s3://{DOCS_BUCKET}/  · {scope}")
-    docs = list_source_docs()
-    if not docs:
+    entries = list_corpus_entries()
+    if not entries:
         print("No source markdown found — nothing to generate.", file=sys.stderr)
         return 1
-    print(f"  {len(docs)} source doc(s)")
+    print(f"  {len(entries)} source doc(s)")
 
+    # ── No-change guard ─────────────────────────────────────────────
+    # Hash the (key, etag) pairs and compare against corpus_sha persisted
+    # in the prior _meta.json. If they match and WIKI_FORCE isn't set, the
+    # corpus is byte-identical to what produced the existing wiki — no
+    # need to spend ~$0.30-0.80 on Opus regenerating identical content.
+    # The EventBridge tick sets no env, so it never forces; the manual
+    # "Refresh now" button forwards force=true via start-wiki-gen so
+    # users always get a real regen when they ask for one.
+    corpus_sha = compute_corpus_sha(entries)
+    prior_meta = read_prior_meta()
+    prior_sha = prior_meta.get("corpus_sha")
+    if prior_sha == corpus_sha and not WIKI_FORCE:
+        print(
+            f"Corpus unchanged since last regen ({prior_meta.get('finished_at', '?')}). "
+            f"Skipping (set WIKI_FORCE=1 to override). sha={corpus_sha[:12]}…"
+        )
+        return 0
+    if WIKI_FORCE and prior_sha == corpus_sha:
+        print("WIKI_FORCE=1 — regenerating despite unchanged corpus.")
+
+    docs = load_source_docs([k for k, _ in entries])
     docs_by_key = {d.key: d for d in docs}
     corpus_summary = build_corpus_summary(docs)
 
@@ -446,7 +529,9 @@ def main() -> int:
         page_bodies[spec.id] = body
 
     print(f"Writing {len(specs)} page(s) + _index.json + _meta.json to s3://{DOCS_BUCKET}/{WIKI_PREFIX}")
-    write_wiki_outputs(title, description, specs, page_bodies, len(docs), started_at)
+    write_wiki_outputs(
+        title, description, specs, page_bodies, len(docs), started_at, corpus_sha
+    )
 
     elapsed = time.monotonic() - t0
     print(f"Done in {elapsed:.1f}s")

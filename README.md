@@ -561,17 +561,38 @@ Raw contributions to `knowledge/` don't need to be structured — people drop in
 2. Left sidebar lists pages (e.g. "Overview", "System Architecture", "Data Flow"); main pane renders the selected page.
 3. Right-side card shows **Last indexed** timestamp and a **Refresh now** button — one click triggers a fresh regen and polls until it finishes (~1-3 min).
 
-The wiki auto-regenerates every 10 hours via an EventBridge schedule. The scheduled runs and the manual button hit the same Fargate task.
+The wiki auto-regenerates every 10 hours via an EventBridge schedule. The scheduled runs and the manual button hit the same Fargate task — but the scheduled tick short-circuits when the corpus hasn't moved, while the manual button always forces a fresh regen (see [Skip when nothing changed](#skip-when-nothing-changed) below).
 
 **What gets written to S3:**
 - `wiki/<slug>.md` — one page per topic, full markdown with Mermaid blocks and `Sources: [file.md]()` citations
 - `wiki/<slug>.md.metadata.json` — Bedrock KB sidecar tagging the page `source=wiki` (+ `generated_at`, `page_slug`, `source_files`). This is what `search_knowledge` filters on — see [Two-tier retrieval](#two-tier-retrieval-canonical-vs-raw)
 - `wiki/_index.json` — nav order, titles, descriptions, source mappings per page
-- `wiki/_meta.json` — timestamps + page/source counts (drives the "Last indexed" badge)
+- `wiki/_meta.json` — timestamps + page/source counts + `corpus_sha` (drives the "Last indexed" badge and the no-change guard described below)
 
 Generated pages land in the same bucket as raw docs and the auto-ingest Lambda picks them up the same way. At retrieval time the `source=wiki` sidecar filter is what separates canonical chunks from raw — **`search_knowledge` only returns wiki pages; raw docs are reachable via `read_knowledge`.**
 
 Cost: ~$0.30–0.80 per full regen (one Opus call for the structure + one per page). Fargate runtime is ~3-5 min at $0.04/hr-ish for a 0.5 vCPU / 1 GB task — negligible compared to the Opus spend.
+
+### Skip when nothing changed
+
+Without a guard, the 10h EventBridge tick would re-run Opus regardless of whether anything in the corpus actually changed — for an idle bucket that's ~$0.30-0.80 every 10h producing a byte-identical wiki. The generator gates itself, mirroring the pattern the GitHub connector already uses for code wikis (see [Costs + delta-detection guard](#costs--delta-detection-guard) for code mode):
+
+- Each successful regen records a **corpus fingerprint** in `wiki/_meta.json` — SHA-256 over sorted `(key, ETag)` pairs of every input file. Mode-aware: main mode hashes the whole bucket excluding top-level `wiki/<slug>.md`; code mode hashes `sources/github/<repo-slug>/`. ETags are MD5s S3 already computes server-side, so the hash needs **no body downloads** — one `ListObjectsV2` paginate is enough.
+- The next run lists the corpus, computes the new fingerprint, reads the old one from `_meta.json`. **Same hash → exit 0 without calling Opus.** A no-op tick costs ~3-5s of Fargate boot + 1-2 S3 calls; nothing is overwritten.
+- The manual **Refresh now** button passes `WIKI_FORCE=1` to the container (via `start-wiki-gen` Lambda → `containerOverrides.environment`), which bypasses the guard. So:
+  - **Scheduled tick** → guarded → no-op when nothing changed.
+  - **User click** → forced → always regenerates (e.g. when you've edited prompts in `wiki-generator/prompts.py` and want the existing corpus re-synthesized with the new prompt).
+  - **GitHub-sync invocation** → unguarded but the corpus literally just changed, so the hash differs and it regenerates. Belt-and-suspenders: the github connector's tree-SHA gate already filters out unchanged-repo invocations one layer up, so a no-change github sync never even reaches this layer.
+
+Existing `wiki/_meta.json` files without a `corpus_sha` field (pre-rollout state) are treated as "no prior hash → regenerate", so the next run after deploying this populates the field naturally — no backfill needed.
+
+### Single-flight: no duplicate Fargate tasks
+
+Two users clicking **Refresh now** simultaneously, or a user clicking while the 10h tick is mid-flight, won't spawn duplicate tasks. The dispatcher Lambda (`start-wiki-gen`) inspects the wiki cluster via `ecs:ListTasks` + `ecs:DescribeTasks` before each `RunTask`, matching by `WIKI_MODE` and (for code mode) `REPO_FULL_NAME` env overrides. If a matching task is already running or pending, it returns that task's ARN with `alreadyRunning: true` instead of starting a new one — the second clicker attaches to the same regen and watches the same progress.
+
+The frontend leans on the same Lambda for cross-session visibility: on `/wiki` page-mount it issues `GET /api/wiki/refresh?check=1`, which invokes the dispatcher in `checkOnly` mode (same dedup query, no `RunTask`). If a regen is in flight, the page enters the **Regenerating…** state and polls until the task stops — so refreshing the page, opening it from another browser, or a different teammate landing on `/wiki` all converge on the same task ARN. The button stays disabled (no re-trigger) until the regen finishes.
+
+ECS is the source of truth — there's no separate lock store. A crashed task self-heals because it just stops appearing in `ListTasks`; no zombie locks to clear. Race window for two near-simultaneous Lambda invocations seeing "no running task" before either's `RunTask` is visible to `ListTasks` is ~hundreds of ms; acceptable for a UX dedup. If it ever turns into a real problem, an S3 conditional `IfNoneMatch:'*'` lock file is the obvious upgrade.
 
 ### Run the generator locally
 
@@ -585,7 +606,7 @@ DOCS_BUCKET=<DocsBucketName> \
 python generate.py
 ```
 
-Env knobs (all optional): `WIKI_PREFIX` (default `wiki/`), `MODEL_ID` (default `us.anthropic.claude-opus-4-7`), `MIN_PAGES` / `MAX_PAGES` (default 4 / 8), `CORPUS_PREVIEW_CHARS` (default 600 — how much of each source doc feeds into the structure call), `MAX_TOKENS` (default 8192 per Opus call).
+Env knobs (all optional): `WIKI_PREFIX` (default `wiki/`), `MODEL_ID` (default `us.anthropic.claude-opus-4-7`), `MIN_PAGES` / `MAX_PAGES` (default 4 / 8), `CORPUS_PREVIEW_CHARS` (default 600 — how much of each source doc feeds into the structure call), `MAX_TOKENS` (default 8192 per Opus call), `WIKI_FORCE=1` (bypass the corpus-hash guard described above).
 
 Set `WIKI_PREFIX=wiki-preview/` to iterate on prompts without overwriting the live wiki.
 
