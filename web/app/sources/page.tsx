@@ -188,23 +188,26 @@ function SourcesContent() {
 
   return (
     <main className="flex min-h-screen flex-col">
-      <header className="border-b px-6 py-3 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
+      <header className="border-b px-3 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <Link href="/">
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back
             </Button>
+            <Button variant="ghost" size="icon-sm" className="sm:hidden" aria-label="Back">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
           </Link>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
               Data sources
             </h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground hidden sm:block truncate">
               Connected systems — synced into the brain every 6 hours
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <Button
             variant="outline"
             size="sm"
@@ -212,14 +215,16 @@ function SourcesContent() {
             disabled={loading}
           >
             <RefreshCw
-              className={cn("mr-1 h-3.5 w-3.5", loading && "animate-spin")}
+              className={cn("sm:mr-1 h-3.5 w-3.5", loading && "animate-spin")}
             />
-            Refresh
+            <span className="hidden sm:inline">Refresh</span>
           </Button>
           <DropdownMenu>
             <DropdownMenuTrigger>
-              <span className="inline-flex items-center gap-1 h-9 px-3 text-sm rounded-md bg-primary text-primary-foreground hover:opacity-90">
-                <Plus className="h-3.5 w-3.5" /> Add new source
+              <span className="inline-flex items-center gap-1 h-9 px-2 sm:px-3 text-sm rounded-md bg-primary text-primary-foreground hover:opacity-90">
+                <Plus className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Add new source</span>
+                <span className="sm:hidden">Add</span>
               </span>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
@@ -244,7 +249,7 @@ function SourcesContent() {
         </div>
       </header>
 
-      <article className="mx-auto w-full max-w-4xl px-6 py-6 space-y-4">
+      <article className="mx-auto w-full max-w-4xl px-3 sm:px-6 py-4 sm:py-6 space-y-4">
         {error && (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
             {error}
@@ -287,7 +292,7 @@ function SourcesContent() {
                 <StatusPill s={c.status} />
               </div>
 
-              <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+              <dl className="grid grid-cols-[auto_1fr] gap-x-3 sm:gap-x-4 gap-y-1 text-xs">
                 <dt className="text-muted-foreground">Added by</dt>
                 <dd>{c.created_by ?? "unknown"}</dd>
                 <dt className="text-muted-foreground">

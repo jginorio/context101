@@ -10,12 +10,20 @@ import {
   ChevronLeft,
   ChevronRight,
   Code2,
+  Menu,
   RefreshCw,
 } from "lucide-react";
 import { toast } from "sonner";
 
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { WikiMarkdown } from "@/components/previews/wiki-markdown";
 import { cn } from "@/lib/utils";
 
@@ -112,6 +120,7 @@ export default function WikiPage() {
   const [collapsedRepos, setCollapsedRepos] = React.useState<
     Record<string, boolean>
   >({});
+  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   // Default selection: first team-wiki page if user hasn't picked anything.
   const activeSelection: Selection | null =
@@ -258,25 +267,206 @@ export default function WikiPage() {
     setCollapsedRepos((prev) => ({ ...prev, [slug]: !prev[slug] }));
   }
 
+  const selectPage = (sel: Selection) => {
+    setUserSelection(sel);
+    setMobileNavOpen(false);
+  };
+
+  const navContent = (
+    <>
+      {!indexLoaded ? (
+        <p className="px-2 py-2 text-sm text-muted-foreground">Loading…</p>
+      ) : !index || index.pages.length === 0 ? (
+        !codeWikis.length ? (
+          <p className="px-2 py-2 text-sm text-muted-foreground">
+            No wiki yet. Click{" "}
+            <span className="font-medium">Refresh now</span> to generate one.
+          </p>
+        ) : null
+      ) : (
+        <div className="mb-4">
+          <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Team wiki
+          </p>
+          <nav className="flex flex-col gap-0.5">
+            {index.pages.map((p) => {
+              const isActive =
+                activeSelection?.repo === null &&
+                activeSelection.slug === p.slug;
+              return (
+                <button
+                  key={p.id}
+                  onClick={() => selectPage({ repo: null, slug: p.slug })}
+                  className={cn(
+                    "rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent",
+                    isActive
+                      ? "bg-accent font-medium"
+                      : "text-muted-foreground"
+                  )}
+                >
+                  {p.title}
+                </button>
+              );
+            })}
+          </nav>
+        </div>
+      )}
+
+      {indexLoaded && codeWikis.length > 0 && (
+        <div>
+          <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            Code wikis
+          </p>
+          <div className="space-y-1">
+            {codeWikis.map((cw) => {
+              const collapsed = !!collapsedRepos[cw.repoSlug];
+              const idx = cw.index;
+              return (
+                <div key={cw.repoSlug}>
+                  <button
+                    onClick={() => toggleRepo(cw.repoSlug)}
+                    className="flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
+                  >
+                    {collapsed ? (
+                      <ChevronRight className="h-3 w-3 shrink-0" />
+                    ) : (
+                      <ChevronDown className="h-3 w-3 shrink-0" />
+                    )}
+                    <Code2 className="h-3 w-3 shrink-0 opacity-70" />
+                    <span className="truncate font-mono text-[11px]">
+                      {cw.repoSlug}
+                    </span>
+                  </button>
+                  {!collapsed && idx && (
+                    <nav className="ml-4 flex flex-col gap-0.5 border-l pl-2">
+                      {idx.pages.map((p) => {
+                        const isActive =
+                          activeSelection?.repo === cw.repoSlug &&
+                          activeSelection.slug === p.slug;
+                        return (
+                          <button
+                            key={p.id}
+                            onClick={() =>
+                              selectPage({
+                                repo: cw.repoSlug,
+                                slug: p.slug,
+                              })
+                            }
+                            className={cn(
+                              "rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent",
+                              isActive
+                                ? "bg-accent font-medium"
+                                : "text-muted-foreground"
+                            )}
+                          >
+                            {p.title}
+                          </button>
+                        );
+                      })}
+                    </nav>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </>
+  );
+
+  const metaCard = (
+    <div className="rounded-md border p-3 text-sm">
+      <div className="mb-1 font-semibold">{activeWikiLabel}</div>
+      {activeMeta ? (
+        <>
+          <div className="text-xs text-muted-foreground">
+            Last indexed:
+            <br />
+            <span className="text-foreground">
+              {formatTimestamp(activeMeta.finished_at)}
+            </span>
+          </div>
+          <div className="mt-1 text-xs text-muted-foreground">
+            {activeMeta.page_count} page
+            {activeMeta.page_count === 1 ? "" : "s"} from{" "}
+            {activeMeta.source_doc_count} source
+            {activeMeta.source_doc_count === 1 ? "" : "s"}
+          </div>
+        </>
+      ) : (
+        <div className="text-xs text-muted-foreground">
+          Not yet generated.
+        </div>
+      )}
+      {(!activeSelection || activeSelection.repo === null) && (
+        <Button
+          size="sm"
+          className="mt-3 w-full"
+          onClick={handleRefresh}
+          disabled={refreshing}
+        >
+          <RefreshCw
+            className={cn("mr-1 h-3.5 w-3.5", refreshing && "animate-spin")}
+          />
+          {refreshing ? "Regenerating…" : "Refresh now"}
+        </Button>
+      )}
+      {activeSelection?.repo && (
+        <p className="mt-3 text-[11px] text-muted-foreground">
+          Code wikis regenerate automatically on the next connector sync
+          (every 6h, or when you click <em>Sync now</em> on the connector
+          card).
+        </p>
+      )}
+    </div>
+  );
+
   return (
     <main className="flex h-screen flex-col">
-      <header className="flex shrink-0 items-center justify-between border-b px-6 py-3">
-        <div className="flex items-center gap-4">
+      <header className="flex shrink-0 items-center justify-between gap-2 border-b px-3 sm:px-6 py-3">
+        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
+          <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+            <SheetTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  className="md:hidden shrink-0"
+                  aria-label="Open wiki navigation"
+                />
+              }
+            >
+              <Menu className="h-4 w-4" />
+            </SheetTrigger>
+            <SheetContent side="left" className="w-[85vw] max-w-sm p-0 flex flex-col">
+              <SheetHeader>
+                <SheetTitle className="flex items-center gap-2">
+                  <BookOpen className="h-4 w-4" /> Wiki
+                </SheetTitle>
+              </SheetHeader>
+              <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
+                {navContent}
+              </div>
+            </SheetContent>
+          </Sheet>
           <Link href="/">
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
               <ChevronLeft className="mr-1 h-3.5 w-3.5" /> Back
             </Button>
+            <Button variant="ghost" size="icon-sm" className="sm:hidden" aria-label="Back">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
           </Link>
-          <div>
-            <h1 className="flex items-center gap-2 text-lg font-semibold tracking-tight">
-              <BookOpen className="h-4 w-4" /> Wiki
+          <div className="min-w-0">
+            <h1 className="flex items-center gap-2 text-base sm:text-lg font-semibold tracking-tight">
+              <BookOpen className="h-4 w-4 hidden sm:inline-block" /> Wiki
             </h1>
-            <p className="text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground hidden md:block truncate">
               {index?.description ?? "Read-only synthesis of the knowledge base"}
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <ThemeToggle />
           <Button
             variant="outline"
@@ -284,6 +474,7 @@ export default function WikiPage() {
             onClick={() =>
               signOut().then(() => (window.location.href = "/login"))
             }
+            className="hidden sm:inline-flex"
           >
             Sign out
           </Button>
@@ -291,114 +482,16 @@ export default function WikiPage() {
       </header>
 
       <div className="flex min-h-0 flex-1">
-        {/* Nav sidebar */}
-        <aside className="w-72 shrink-0 overflow-y-auto border-r p-3">
-          {!indexLoaded ? (
-            <p className="px-2 py-2 text-sm text-muted-foreground">Loading…</p>
-          ) : !index || index.pages.length === 0 ? (
-            !codeWikis.length ? (
-              <p className="px-2 py-2 text-sm text-muted-foreground">
-                No wiki yet. Click{" "}
-                <span className="font-medium">Refresh now</span> to generate
-                one.
-              </p>
-            ) : null
-          ) : (
-            <div className="mb-4">
-              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Team wiki
-              </p>
-              <nav className="flex flex-col gap-0.5">
-                {index.pages.map((p) => {
-                  const isActive =
-                    activeSelection?.repo === null &&
-                    activeSelection.slug === p.slug;
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() =>
-                        setUserSelection({ repo: null, slug: p.slug })
-                      }
-                      className={cn(
-                        "rounded-md px-2 py-1.5 text-left text-sm transition-colors hover:bg-accent",
-                        isActive
-                          ? "bg-accent font-medium"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {p.title}
-                    </button>
-                  );
-                })}
-              </nav>
-            </div>
-          )}
-
-          {/* Code wikis section — one collapsible group per connected repo */}
-          {indexLoaded && codeWikis.length > 0 && (
-            <div>
-              <p className="mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                Code wikis
-              </p>
-              <div className="space-y-1">
-                {codeWikis.map((cw) => {
-                  const collapsed = !!collapsedRepos[cw.repoSlug];
-                  const idx = cw.index;
-                  return (
-                    <div key={cw.repoSlug}>
-                      <button
-                        onClick={() => toggleRepo(cw.repoSlug)}
-                        className="flex w-full items-center gap-1 rounded-md px-2 py-1 text-left text-xs hover:bg-accent"
-                      >
-                        {collapsed ? (
-                          <ChevronRight className="h-3 w-3 shrink-0" />
-                        ) : (
-                          <ChevronDown className="h-3 w-3 shrink-0" />
-                        )}
-                        <Code2 className="h-3 w-3 shrink-0 opacity-70" />
-                        <span className="truncate font-mono text-[11px]">
-                          {cw.repoSlug}
-                        </span>
-                      </button>
-                      {!collapsed && idx && (
-                        <nav className="ml-4 flex flex-col gap-0.5 border-l pl-2">
-                          {idx.pages.map((p) => {
-                            const isActive =
-                              activeSelection?.repo === cw.repoSlug &&
-                              activeSelection.slug === p.slug;
-                            return (
-                              <button
-                                key={p.id}
-                                onClick={() =>
-                                  setUserSelection({
-                                    repo: cw.repoSlug,
-                                    slug: p.slug,
-                                  })
-                                }
-                                className={cn(
-                                  "rounded-md px-2 py-1 text-left text-sm transition-colors hover:bg-accent",
-                                  isActive
-                                    ? "bg-accent font-medium"
-                                    : "text-muted-foreground"
-                                )}
-                              >
-                                {p.title}
-                              </button>
-                            );
-                          })}
-                        </nav>
-                      )}
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+        {/* Nav sidebar — desktop only; mobile uses Sheet from header */}
+        <aside className="hidden md:block w-72 shrink-0 overflow-y-auto border-r p-3">
+          {navContent}
         </aside>
 
         {/* Main content + right-side meta panel */}
         <section className="flex min-w-0 flex-1 overflow-hidden">
-          <div className="min-w-0 flex-1 overflow-auto p-8">
+          <div className="min-w-0 flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
+            {/* Mobile/tablet: meta card inline above content */}
+            <div className="lg:hidden mb-4">{metaCard}</div>
             {contentLoading ? (
               <p className="text-sm text-muted-foreground">Loading page…</p>
             ) : activePage && content ? (
@@ -415,7 +508,7 @@ export default function WikiPage() {
                     <div className="mb-1 font-semibold uppercase tracking-wide">
                       Synthesized from
                     </div>
-                    <ul className="flex flex-wrap gap-x-3 gap-y-1 font-mono">
+                    <ul className="flex flex-wrap gap-x-3 gap-y-1 font-mono break-all">
                       {activePage.sources.map((src) => (
                         <li key={src}>{src}</li>
                       ))}
@@ -430,57 +523,9 @@ export default function WikiPage() {
             ) : null}
           </div>
 
-          {/* Right-side "last indexed / refresh" card */}
-          <aside className="w-64 shrink-0 overflow-y-auto border-l p-4">
-            <div className="rounded-md border p-3 text-sm">
-              <div className="mb-1 font-semibold">{activeWikiLabel}</div>
-              {activeMeta ? (
-                <>
-                  <div className="text-xs text-muted-foreground">
-                    Last indexed:
-                    <br />
-                    <span className="text-foreground">
-                      {formatTimestamp(activeMeta.finished_at)}
-                    </span>
-                  </div>
-                  <div className="mt-1 text-xs text-muted-foreground">
-                    {activeMeta.page_count} page
-                    {activeMeta.page_count === 1 ? "" : "s"} from{" "}
-                    {activeMeta.source_doc_count} source
-                    {activeMeta.source_doc_count === 1 ? "" : "s"}
-                  </div>
-                </>
-              ) : (
-                <div className="text-xs text-muted-foreground">
-                  Not yet generated.
-                </div>
-              )}
-              {/* Refresh button — only for team wiki for now. Code wikis
-                  regenerate automatically when their connector syncs. */}
-              {(!activeSelection || activeSelection.repo === null) && (
-                <Button
-                  size="sm"
-                  className="mt-3 w-full"
-                  onClick={handleRefresh}
-                  disabled={refreshing}
-                >
-                  <RefreshCw
-                    className={cn(
-                      "mr-1 h-3.5 w-3.5",
-                      refreshing && "animate-spin"
-                    )}
-                  />
-                  {refreshing ? "Regenerating…" : "Refresh now"}
-                </Button>
-              )}
-              {activeSelection?.repo && (
-                <p className="mt-3 text-[11px] text-muted-foreground">
-                  Code wikis regenerate automatically on the next connector
-                  sync (every 6h, or when you click <em>Sync now</em> on the
-                  connector card).
-                </p>
-              )}
-            </div>
+          {/* Desktop right-side "last indexed / refresh" card */}
+          <aside className="hidden lg:block w-64 shrink-0 overflow-y-auto border-l p-4">
+            {metaCard}
           </aside>
         </section>
       </div>

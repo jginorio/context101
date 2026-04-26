@@ -124,16 +124,21 @@ export default function SuggestionsPage() {
 
   return (
     <main className="flex min-h-screen flex-col">
-      <header className="border-b px-6 py-3 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
+      <header className="border-b px-3 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <Link href="/">
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back
             </Button>
+            <Button variant="ghost" size="icon-sm" className="sm:hidden" aria-label="Back">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
           </Link>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">Suggestions</h1>
-            <p className="text-xs text-muted-foreground">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
+              Suggestions
+            </h1>
+            <p className="text-xs text-muted-foreground hidden sm:block truncate">
               Knowledge proposals from agents — review, approve, or reject
             </p>
           </div>
@@ -141,15 +146,15 @@ export default function SuggestionsPage() {
         <ThemeToggle />
       </header>
 
-      <div className="mx-auto w-full max-w-6xl px-6 py-6 space-y-4 flex-1 min-h-0 flex flex-col">
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-1">
+      <div className="mx-auto w-full max-w-6xl px-3 sm:px-6 py-4 sm:py-6 space-y-4 flex-1 min-h-0 flex flex-col">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
+          <div className="flex items-center gap-1 overflow-x-auto -mx-1 px-1">
             {TABS.map((t) => (
               <button
                 key={t.value}
                 onClick={() => setStatus(t.value)}
                 className={cn(
-                  "px-3 py-1 text-sm rounded-md transition-colors",
+                  "px-3 py-1 text-sm rounded-md transition-colors whitespace-nowrap shrink-0",
                   status === t.value
                     ? "bg-muted font-medium"
                     : "text-muted-foreground hover:bg-muted/60"
@@ -160,13 +165,13 @@ export default function SuggestionsPage() {
             ))}
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
+            <div className="relative flex-1 sm:flex-initial">
               <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
               <Input
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Search suggestions…"
-                className="h-8 pl-7 w-64"
+                className="h-8 pl-7 w-full sm:w-64"
               />
             </div>
             <Button
@@ -174,11 +179,12 @@ export default function SuggestionsPage() {
               size="sm"
               onClick={load}
               disabled={loading}
+              className="shrink-0"
             >
               <RefreshCw
-                className={cn("mr-1 h-3.5 w-3.5", loading && "animate-spin")}
+                className={cn("sm:mr-1 h-3.5 w-3.5", loading && "animate-spin")}
               />
-              Refresh
+              <span className="hidden sm:inline">Refresh</span>
             </Button>
           </div>
         </div>
@@ -194,9 +200,9 @@ export default function SuggestionsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Trigger / Title</TableHead>
-                <TableHead>Content preview</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead>Target</TableHead>
+                <TableHead className="hidden lg:table-cell">Content preview</TableHead>
+                <TableHead className="hidden md:table-cell">Created</TableHead>
+                <TableHead className="hidden sm:table-cell">Target</TableHead>
                 <TableHead className="w-[90px] text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -247,19 +253,19 @@ export default function SuggestionsPage() {
                       </p>
                     )}
                   </TableCell>
-                  <TableCell className="align-top max-w-[320px]">
+                  <TableCell className="hidden lg:table-cell align-top max-w-[320px]">
                     <p className="text-xs text-muted-foreground line-clamp-2">
                       {truncate(s.content.replace(/\s+/g, " ").trim(), 200)}
                     </p>
                   </TableCell>
-                  <TableCell className="align-top whitespace-nowrap text-xs">
+                  <TableCell className="hidden md:table-cell align-top whitespace-nowrap text-xs">
                     {new Date(s.created_at).toLocaleDateString(undefined, {
                       month: "short",
                       day: "numeric",
                       year: "numeric",
                     })}
                   </TableCell>
-                  <TableCell className="align-top">
+                  <TableCell className="hidden sm:table-cell align-top">
                     {s.target_path ? (
                       <code className="text-[10px] font-mono px-1.5 py-0.5 rounded border bg-muted/30">
                         {truncate(s.target_path, 28)}

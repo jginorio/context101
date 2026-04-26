@@ -144,16 +144,21 @@ function Item({
 export default function AboutPage() {
   return (
     <main className="flex min-h-screen flex-col">
-      <header className="border-b px-6 py-3 flex items-center justify-between shrink-0">
-        <div className="flex items-center gap-3">
+      <header className="border-b px-3 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <Link href="/">
-            <Button variant="ghost" size="sm">
+            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back
             </Button>
+            <Button variant="ghost" size="icon-sm" className="sm:hidden" aria-label="Back">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
           </Link>
-          <div>
-            <h1 className="text-lg font-semibold tracking-tight">About</h1>
-            <p className="text-xs text-muted-foreground">
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
+              About
+            </h1>
+            <p className="text-xs text-muted-foreground hidden sm:block truncate">
               What Context101 is and why it exists
             </p>
           </div>
@@ -161,9 +166,9 @@ export default function AboutPage() {
         <ThemeToggle />
       </header>
 
-      <article className="mx-auto w-full max-w-3xl px-6 py-10 space-y-8">
+      <article className="mx-auto w-full max-w-3xl px-4 sm:px-6 py-6 sm:py-10 space-y-6 sm:space-y-8">
         <section>
-          <h2 className="text-2xl font-semibold tracking-tight mb-3">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-3">
             The problem
           </h2>
           <p className="text-sm leading-relaxed text-muted-foreground">
@@ -213,7 +218,7 @@ export default function AboutPage() {
         </Card>
 
         <section>
-          <h2 className="text-2xl font-semibold tracking-tight mb-3">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-3">
             Why not just use Devin?
           </h2>
           <p className="text-sm leading-relaxed text-muted-foreground">
@@ -243,7 +248,7 @@ export default function AboutPage() {
         <CopyMcpConfig />
 
         <section>
-          <h2 className="text-2xl font-semibold tracking-tight mb-3">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-3">
             How Context101 fits in
           </h2>
           <div className="rounded-md border bg-muted/30 p-4 mb-4 font-mono text-xs whitespace-pre overflow-x-auto">
@@ -274,7 +279,7 @@ export default function AboutPage() {
         <Separator />
 
         <section>
-          <h2 className="text-2xl font-semibold tracking-tight mb-3">
+          <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-3">
             Current PoC status
           </h2>
           <ul className="space-y-4">
