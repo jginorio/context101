@@ -512,17 +512,22 @@ export const handler = async (event) => {
       );
     }
 
-    // Layer 2: kick off the per-repo code-wiki Fargate task. The
-    // start-wiki-gen Lambda accepts { mode, repo } overrides and runs
-    // the same Fargate task with code-mode env vars. Fire-and-forget —
-    // a code-wiki failure shouldn't fail the connector sync.
+    // Layer 2: optionally kick off the per-repo code-wiki Fargate task.
     //
-    // Gated on treeChanged: when the tree SHA matches the previous
-    // sync, the corpus is byte-identical and Opus would regenerate the
-    // same wiki. ~$0.30-0.80 saved per repo per 6h tick.
+    // OFF by default — wiki regens cost ~$0.30-0.80 in Opus per run
+    // and we'd rather pay only when a human asks. Set the Lambda env
+    // var AUTO_TRIGGER_CODE_WIKI=true to opt back into the original
+    // behavior (auto-regen after every successful github sync, gated
+    // by tree SHA change).
+    //
+    // Manual paths still work: invoking start-wiki-gen directly
+    // (`{ mode: "code", repo: "owner/repo" }`) or hitting the wiki UI
+    // refresh button regenerates regardless of this flag.
+    const autoTrigger =
+      (process.env.AUTO_TRIGGER_CODE_WIKI ?? "").toLowerCase() === "true";
     const startWikiGenFn = process.env.START_WIKI_GEN_FN_NAME;
     let codeWikiFired = false;
-    if (startWikiGenFn && written > 0 && treeChanged) {
+    if (autoTrigger && startWikiGenFn && written > 0 && treeChanged) {
       await lambdaClient
         .send(
           new InvokeCommand({
@@ -537,9 +542,13 @@ export const handler = async (event) => {
           codeWikiFired = true;
         })
         .catch((e) => console.error("code-wiki dispatch failed:", e));
-    } else if (!treeChanged) {
+    } else if (autoTrigger && !treeChanged) {
       console.log(
         `tree SHA unchanged (${treeSha}) — skipping code-wiki regen for ${repoFullName}`
+      );
+    } else if (!autoTrigger) {
+      console.log(
+        "AUTO_TRIGGER_CODE_WIKI not set — skipping code-wiki dispatch (manual only)"
       );
     }
 

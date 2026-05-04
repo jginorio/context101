@@ -462,9 +462,16 @@ export default function WikiPage() {
       )}
       {activeSelection?.repo && (
         <p className="mt-3 text-[11px] text-muted-foreground">
-          Code wikis regenerate automatically on the next connector sync
-          (every 6h, or when you click <em>Sync now</em> on the connector
-          card).
+          Code wikis are manual-only today. To regenerate this one, run:
+          <code className="mt-1 block whitespace-pre-wrap font-mono text-[10px]">
+            aws lambda invoke \
+            <br />
+            {"  "}--function-name context101-start-wiki-gen \
+            <br />
+            {'  --payload \'{"mode":"code","repo":"<owner>/<repo>"}\' \\'}
+            <br />
+            {"  --cli-binary-format raw-in-base64-out /dev/stdout"}
+          </code>
         </p>
       )}
     </div>

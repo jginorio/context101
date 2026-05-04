@@ -341,13 +341,19 @@ export default function AboutPage() {
               Selecting a code-wiki page swaps the right-side panel to that
               repo&apos;s last-indexed timestamp and page count.
             </Item>
-            <Item title="Cost guard on code-wiki regen" status="done">
-              Each github sync records the repo&apos;s tree SHA on the
-              connector row. The next sync skips the code-wiki Fargate task
-              when the SHA hasn&apos;t moved — saves ~$0.30-0.80/repo on
-              every 6h tick where nothing actually changed in the repo.
-              Files are still re-PUT to S3 (idempotent), only the Opus
-              regen is gated.
+            <Item title="Manual-only wiki regen" status="done">
+              Wiki regen costs ~$0.30-0.80/run in Opus, so both auto-paths
+              are off by default: the team-wiki EventBridge schedule is
+              created with{" "}
+              <code className="font-mono text-xs">enabled: false</code>, and
+              the GitHub connector&apos;s post-sync code-wiki dispatch is
+              gated behind{" "}
+              <code className="font-mono text-xs">AUTO_TRIGGER_CODE_WIKI</code>{" "}
+              (unset). Team wiki regenerates on the <strong>Refresh now</strong>{" "}
+              button; code wikis via a manual{" "}
+              <code className="font-mono text-xs">start-wiki-gen</code>{" "}
+              invoke. Tree-SHA + corpus-SHA cost guards still ride along
+              if you re-enable either auto-path.
             </Item>
             <Item title="GitHub OAuth (replace PAT)" status="later">
               Today GitHub auth is a PAT pasted into the dialog — simple but

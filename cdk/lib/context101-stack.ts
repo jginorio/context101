@@ -347,9 +347,14 @@ export class Context101Stack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
-    // h) EventBridge rule — scheduled run every 10h
+    // h) EventBridge rule — kept around but DISABLED by default. Wiki
+    //    regen costs ~$0.30-0.80 in Opus per run; we'd rather pay it
+    //    only when a human clicks "Refresh now" on /wiki. Flip the
+    //    `enabled` flag back to `true` (and redeploy) if you want
+    //    scheduled regens.
     new events.Rule(this, "WikiGenSchedule", {
-      description: "Regenerate the Context101 wiki every 10h",
+      description: "Regenerate the Context101 wiki every 10h (disabled)",
+      enabled: false,
       schedule: events.Schedule.rate(cdk.Duration.hours(10)),
       targets: [
         new events_targets.EcsTask({

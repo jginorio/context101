@@ -434,10 +434,10 @@ EventBridge (6h) ──────────────▶│  connector-dis
                                           ▼                                                            │
                                 auto-ingest Lambda → Bedrock KB                                        │
                                                                                                        │
-                       After a github sync succeeds, sync-github also fires ─────────────────────────┘
-                       start-wiki-gen Lambda → ECS RunTask in code mode →
-                       per-repo deepwiki under wiki/code/<repo-slug>/.
-                       See "Per-repo code wikis" below.
+                       Optional: when AUTO_TRIGGER_CODE_WIKI=true on sync-github, ────────────────┘
+                       a successful sync fires start-wiki-gen → ECS RunTask in
+                       code mode → wiki/code/<repo-slug>/. Off by default —
+                       see "Per-repo code wikis" below for manual invocation.
 ```
 
 ### OAuth setup (one-time per provider)
@@ -573,16 +573,21 @@ Generated pages land in the same bucket as raw docs and the auto-ingest Lambda p
 
 Cost: ~$0.30–0.80 per full regen (one Opus call for the structure + one per page). Fargate runtime is ~3-5 min at $0.04/hr-ish for a 0.5 vCPU / 1 GB task — negligible compared to the Opus spend.
 
-### Skip when nothing changed
+### Manual-only regen + no-change guard
 
-Without a guard, the 10h EventBridge tick would re-run Opus regardless of whether anything in the corpus actually changed — for an idle bucket that's ~$0.30-0.80 every 10h producing a byte-identical wiki. The generator gates itself, mirroring the pattern the GitHub connector already uses for code wikis (see [Costs + delta-detection guard](#costs--delta-detection-guard) for code mode):
+Wiki regen is **off the schedule by default** to keep Opus spend predictable. The team-wiki EventBridge rule (`WikiGenSchedule`) is created with `enabled: false`, and the GitHub connector's auto-fire after sync is gated on the Lambda env var `AUTO_TRIGGER_CODE_WIKI` (unset by default). So today:
+
+- Team wiki regenerates only when a human clicks **Refresh now** on `/wiki`.
+- Code wikis regenerate only via the manual `start-wiki-gen` invoke (see below) or by flipping `AUTO_TRIGGER_CODE_WIKI=true` on `connector-sync-github` and waiting for the next 6h connector tick.
+
+If you want the schedule back, flip `enabled: true` on `WikiGenSchedule` in `cdk/lib/context101-stack.ts`. If you want post-sync code-wiki regen back, set the Lambda env var to `true`. The cost-saving plumbing below stays useful either way:
 
 - Each successful regen records a **corpus fingerprint** in `wiki/_meta.json` — SHA-256 over sorted `(key, ETag)` pairs of every input file. Mode-aware: main mode hashes the whole bucket excluding top-level `wiki/<slug>.md`; code mode hashes `sources/github/<repo-slug>/`. ETags are MD5s S3 already computes server-side, so the hash needs **no body downloads** — one `ListObjectsV2` paginate is enough.
-- The next run lists the corpus, computes the new fingerprint, reads the old one from `_meta.json`. **Same hash → exit 0 without calling Opus.** A no-op tick costs ~3-5s of Fargate boot + 1-2 S3 calls; nothing is overwritten.
+- A run lists the corpus, computes the new fingerprint, reads the old one from `_meta.json`. **Same hash → exit 0 without calling Opus.** A no-op invocation costs ~3-5s of Fargate boot + 1-2 S3 calls; nothing is overwritten.
 - The manual **Refresh now** button passes `WIKI_FORCE=1` to the container (via `start-wiki-gen` Lambda → `containerOverrides.environment`), which bypasses the guard. So:
-  - **Scheduled tick** → guarded → no-op when nothing changed.
   - **User click** → forced → always regenerates (e.g. when you've edited prompts in `wiki-generator/prompts.py` and want the existing corpus re-synthesized with the new prompt).
-  - **GitHub-sync invocation** → unguarded but the corpus literally just changed, so the hash differs and it regenerates. Belt-and-suspenders: the github connector's tree-SHA gate already filters out unchanged-repo invocations one layer up, so a no-change github sync never even reaches this layer.
+  - **Re-enabled schedule / auto-fire** → guarded → no-op when nothing changed.
+  - **GitHub-sync invocation** (when auto-fire is on) → unguarded but the corpus literally just changed, so the hash differs and it regenerates. Belt-and-suspenders: the github connector's tree-SHA gate already filters out unchanged-repo invocations one layer up.
 
 Existing `wiki/_meta.json` files without a `corpus_sha` field (pre-rollout state) are treated as "no prior hash → regenerate", so the next run after deploying this populates the field naturally — no backfill needed.
 
@@ -657,17 +662,30 @@ Connecting a GitHub repo gets you two layers of automatic synthesis:
 
 The same `start-wiki-gen` Lambda starts both. SSR `/api/wiki/refresh` invokes it with `{}` for main mode; `connector-sync-github` invokes it with `{ mode: "code", repo: "owner/repo" }` after a sync. `containerOverrides.environment` carries the per-task env diffs.
 
-### Costs + delta-detection guard
+### Costs + auto-trigger gating
 
 Per code-wiki regen: ~$0.30-0.80 in Opus calls (one structure call + one per page) + ~3-5 min of Fargate at ~$0.04/hr.
 
-Without a guard, the 6h dispatch tick would re-run everything regardless of whether anything changed — for an idle repo that'd be ~$1.20-3.20/day in Opus calls for nothing. Cost guard:
+By default, **the GitHub connector does not auto-fire code-wiki regens** — the env var `AUTO_TRIGGER_CODE_WIKI` is unset on `connector-sync-github`, and the per-sync code path bails before any Opus call. Code wikis only regenerate when *you* trigger them (via the manual `start-wiki-gen` invoke command below). Sources still sync content into `sources/github/<repo>/` every 6h — only the expensive synthesis is gated.
 
-- Each successful github sync records the GitHub **tree SHA** (`row.last_synced_tree_sha` on the connector row) — that's the SHA of the repo's tree object at HEAD, deterministic from file structure + blob contents.
-- The next sync compares against the stored value. **Same SHA → skip the code-wiki dispatch entirely.** Files are still re-PUT to S3 (idempotent, microseconds, restores anything deleted out of band); only the expensive Opus regen is gated.
+To opt back into the original auto-regen behavior, set the Lambda env var to `true`:
+
+```bash
+aws lambda update-function-configuration \
+  --function-name context101-connector-sync-github \
+  --environment 'Variables={
+    CONNECTORS_TABLE=context101-connectors,
+    DOCS_BUCKET=<...>,
+    START_WIKI_GEN_FN_NAME=context101-start-wiki-gen,
+    AUTO_TRIGGER_CODE_WIKI=true
+  }' --region us-east-1
+```
+
+(Or set it in CDK and redeploy.) When auto-trigger is on, a tree-SHA cost guard kicks in:
+
+- Each successful github sync records the GitHub **tree SHA** (`row.last_synced_tree_sha` on the connector row) — the SHA of the repo's tree object at HEAD, deterministic from file structure + blob contents.
+- The next sync compares against the stored value. **Same SHA → skip the code-wiki dispatch entirely.** Files are still re-PUT to S3 (idempotent, microseconds, restores anything deleted out of band); only the Opus regen is gated.
 - The sync's return value includes `tree_changed` and `code_wiki_fired` so you can see what happened in CloudWatch.
-
-Trigger an immediate code-wiki rebuild even when the SHA hasn't moved by hitting **Sync now** with a force flag (today only via the manual `start-wiki-gen` invoke command below).
 
 Further-down-the-roadmap optimization: cache page-level outputs by `relevant_files` content hash and only regenerate pages whose inputs changed.
 
@@ -678,7 +696,7 @@ The `/wiki` page sidebar has two groups:
 - **Team wiki** — top-level synthesis under `wiki/<slug>.md` (what `search_knowledge` returns).
 - **Code wikis** — one collapsible section per connected GitHub repo. Pages come from `wiki/code/<repo-slug>/_index.json`. Click a repo's name to expand its pages.
 
-Selecting a code-wiki page swaps the right-side meta panel to show that repo's `last_indexed` + page count instead of the team wiki's. The **Refresh now** button is hidden for code wikis because they regenerate automatically on the next connector sync (or when you hit *Sync now* on the connector card on `/sources`).
+Selecting a code-wiki page swaps the right-side meta panel to show that repo's `last_indexed` + page count instead of the team wiki's. The **Refresh now** button is hidden for code wikis today — auto-trigger is off by default (see "Costs + auto-trigger gating" above), so to regenerate a code wiki you invoke `start-wiki-gen` manually with `{ mode: "code", repo: "owner/repo" }`. The next iteration will surface that as a per-repo button in the UI.
 
 Selection state in the URL is **not** persisted today — refreshing the page resets to the first team-wiki page. That's a deliberate v1 simplification, easy follow-up to add deep links later (e.g. `/wiki?repo=foo-bar&slug=architecture`).
 
