@@ -114,13 +114,14 @@ cat <<'EOF'
 This will:
   1. Make sure Homebrew is installed (or skip if you already have it)
   2. Install: jq, uv (uvx), pipx, gcloud, nvm + Node 20 — only what's missing
-  3. Walk you through each MCP server we use:
+  3. Show a numbered menu of MCPs and let you pick which to install:
        · Context101         (team knowledge base)
        · AWS Docs           (no creds)
        · Metabase           (URL + API key)
        · Google Analytics   (gcloud ADC + project ID)
-       · Iterable           (optional — URL + token)
-       · Sentry (hosted)    (optional — OAuth in browser)
+       · Iterable           (URL + token)
+       · Sentry (hosted)    (OAuth in browser)
+     You can pick all, none, individual numbers, or ranges.
   4. Merge them into your Claude Desktop config
        (~/Library/Application Support/Claude/claude_desktop_config.json)
      A timestamped backup is taken first.
@@ -236,9 +237,140 @@ fi
 # ── 4. MCP picker ─────────────────────────────────────────────────────
 
 step "MCP servers"
+
+# The catalog. Three parallel indexed arrays (kept in sync by index)
+# rather than associative arrays — works on macOS's default bash 3.2.
+# Add a new MCP by appending one row to each, in the same position,
+# and a matching `is_selected <id>` block lower down.
+MCP_IDS=(
+  "context101"
+  "aws-docs"
+  "metabase"
+  "google-analytics"
+  "iterable"
+  "sentry"
+)
+MCP_LABELS=(
+  "Context101"
+  "AWS Documentation"
+  "Metabase"
+  "Google Analytics"
+  "Iterable"
+  "Sentry (hosted)"
+)
+MCP_DESCS=(
+  "team knowledge base — needs URL + bearer token"
+  "AWS product docs — no creds"
+  "Metabase queries — needs URL + API key"
+  "GA reports — needs gcloud ADC + project ID"
+  "Iterable API — optional, needs URL + token"
+  "Sentry hosted MCP — optional, OAuth in browser"
+)
+
+# Print the menu, then read selection.
+echo
+echo "  ${BOLD}Available MCPs${RESET}"
 hr
-echo "  Pick which MCPs to add to Claude Desktop. Skip any you already have."
+i=0
+while [[ $i -lt ${#MCP_IDS[@]} ]]; do
+  num=$((i + 1))
+  printf "    %2d) %-20s %s\n" "$num" "${MCP_LABELS[$i]}" "${DIM}${MCP_DESCS[$i]}${RESET}"
+  i=$((i + 1))
+done
 hr
+cat <<'EOF'
+  Pick which to install. Examples:
+    1 3 5        single picks (space- or comma-separated)
+    1-4          a range
+    1,3-5        mixed
+    all          everything
+    none         skip and just write the existing config
+EOF
+
+SELECTED_IDS=""   # space-padded list of selected ids — bash 3.2 friendly
+TOTAL=${#MCP_IDS[@]}
+
+# bash 3.2 has no ${var,,} — use tr for lowercase.
+lower() { printf '%s' "$1" | tr '[:upper:]' '[:lower:]'; }
+
+select_id() {
+  case " $SELECTED_IDS " in
+    *" $1 "*) return 0 ;;  # already in
+    *) SELECTED_IDS="$SELECTED_IDS $1" ;;
+  esac
+}
+
+while true; do
+  raw=$(read_value "Selection")
+  raw=$(lower "$raw")
+  raw="${raw// /,}"   # spaces → commas
+  # collapse runs of commas via parameter substitution loop
+  while [[ "$raw" == *,,* ]]; do raw="${raw//,,/,}"; done
+  raw="${raw#,}"; raw="${raw%,}"
+  if [[ -z "$raw" ]]; then
+    warn "Empty — try again, or type 'none' to skip."
+    continue
+  fi
+  if [[ "$raw" == "all" ]]; then
+    for id in "${MCP_IDS[@]}"; do select_id "$id"; done
+    break
+  fi
+  if [[ "$raw" == "none" ]]; then
+    break
+  fi
+  # Parse comma-separated tokens; each token is either N or N-M.
+  bad=false
+  IFS=',' read -ra parts <<< "$raw"
+  for p in "${parts[@]}"; do
+    if [[ "$p" =~ ^[0-9]+$ ]]; then
+      n="$p"
+      if (( n < 1 || n > TOTAL )); then bad=true; break; fi
+      select_id "${MCP_IDS[$((n-1))]}"
+    elif [[ "$p" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+      lo="${BASH_REMATCH[1]}"; hi="${BASH_REMATCH[2]}"
+      if (( lo < 1 || hi > TOTAL || lo > hi )); then bad=true; break; fi
+      n=$lo
+      while [[ $n -le $hi ]]; do
+        select_id "${MCP_IDS[$((n-1))]}"
+        n=$((n + 1))
+      done
+    else
+      bad=true; break
+    fi
+  done
+  if $bad; then
+    SELECTED_IDS=""
+    err "Couldn't parse '$raw' — use numbers 1-$TOTAL, ranges (1-3), 'all', or 'none'."
+    continue
+  fi
+  break
+done
+
+# Trim leading space so a single-token selection prints nicely.
+SELECTED_IDS="${SELECTED_IDS# }"
+
+if [[ -z "$SELECTED_IDS" ]]; then
+  warn "Nothing selected — skipping per-MCP configuration."
+else
+  echo
+  echo "  ${BOLD}Will configure:${RESET}"
+  i=0
+  while [[ $i -lt ${#MCP_IDS[@]} ]]; do
+    id="${MCP_IDS[$i]}"
+    case " $SELECTED_IDS " in
+      *" $id "*) printf "    · %s\n" "${MCP_LABELS[$i]}" ;;
+    esac
+    i=$((i + 1))
+  done
+  echo
+fi
+
+is_selected() {
+  case " $SELECTED_IDS " in
+    *" $1 "*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 
 # Each "ADD_*" var holds a JSON object that will become one mcpServers entry,
 # keyed by SERVER_KEY. We'll merge them into the Claude Desktop config below.
@@ -253,7 +385,8 @@ add_server() {
 
 # ── 4a. Context101 ────────────────────────────────────────────────────
 
-if confirm "Add Context101 (the team knowledge MCP)?"; then
+if is_selected context101; then
+  step "Context101"
   CTX_URL=$(read_value "Context101 MCP URL" "https://wd3y3hnp7s.us-east-1.awsapprunner.com/mcp")
   CTX_TOKEN=$(read_secret "Bearer token (ask in #context101 if you don't have it):")
   if [[ -z "$CTX_TOKEN" ]]; then
@@ -273,7 +406,8 @@ fi
 
 # ── 4b. AWS Docs ──────────────────────────────────────────────────────
 
-if confirm "Add AWS Documentation MCP?"; then
+if is_selected aws-docs; then
+  step "AWS Documentation"
   add_server "awslabs.aws-documentation-mcp-server" "$(jq -n '{
     command: "uvx",
     args: ["awslabs.aws-documentation-mcp-server@latest"],
@@ -284,7 +418,8 @@ fi
 
 # ── 4c. Metabase ──────────────────────────────────────────────────────
 
-if confirm "Add Metabase MCP?"; then
+if is_selected metabase; then
+  step "Metabase"
   MB_URL=$(read_value "Metabase URL" "https://metabase.finditpr.com")
   MB_KEY=$(read_secret "Metabase API key (Account → Account settings → API Keys):")
   if [[ -z "$MB_KEY" ]]; then
@@ -305,7 +440,8 @@ fi
 
 # ── 4d. Google Analytics ──────────────────────────────────────────────
 
-if confirm "Add Google Analytics MCP?"; then
+if is_selected google-analytics; then
+  step "Google Analytics"
   cat <<'EOF'
 
   Google Analytics needs Application Default Credentials (ADC) — see
@@ -363,7 +499,8 @@ fi
 
 # ── 4e. Iterable (optional) ───────────────────────────────────────────
 
-if confirm "Add Iterable MCP?" "N"; then
+if is_selected iterable; then
+  step "Iterable"
   cat <<'EOF'
 
   Iterable's MCP isn't in our context101 docs yet — give us:
@@ -415,7 +552,8 @@ fi
 
 # ── 4f. Sentry (hosted MCP) ───────────────────────────────────────────
 
-if confirm "Add Sentry hosted MCP (mcp.sentry.dev — OAuth in browser)?" "N"; then
+if is_selected sentry; then
+  step "Sentry (hosted)"
   add_server "sentry" "$(jq -n '{
     command: "npx",
     args: ["-y", "mcp-remote", "https://mcp.sentry.dev/sse"]
