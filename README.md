@@ -231,6 +231,29 @@ Once deployed with `-c token=<value>`, teammates point their MCP client at `McpU
 
 Restart Claude Desktop and Context101 should appear in the tools list. The `-y` lets `npx` auto-install `mcp-remote` the first time.
 
+## Onboarding teammates to the MCP servers
+
+The team uses several MCP servers from Claude Desktop / Cursor / Devin: **Context101** (this knowledge base), **Metabase**, **Google Analytics**, **AWS Docs**, plus optional **Iterable** and **Sentry**. Each one has its own toolchain (`uv`/`uvx`, `pipx`, `gcloud`, `nvm`/Node, etc.) and a Claude Desktop config block.
+
+To save teammates 30 minutes of fiddling, there's an interactive installer:
+
+```bash
+./scripts/install-mcps.sh        # walks through everything
+./scripts/install-mcps.sh --dry-run   # show what would happen, change nothing
+./scripts/install-mcps.sh --yes       # accept brew/pipx/etc. installs without confirming
+```
+
+It will:
+
+1. Install Homebrew (if missing) → `jq`, `uv`, `pipx`, `gcloud`, `nvm` + Node 20 — only what's missing.
+2. Ask, per MCP, whether you want it; collect any tokens / URLs / project IDs needed.
+3. Run `gcloud auth application-default login` for the Google Analytics ADC if you opt in.
+4. Merge the resulting `mcpServers` blocks into `~/Library/Application Support/Claude/claude_desktop_config.json` (with a timestamped backup of any existing file).
+
+Re-running the script is safe — answer "n" to anything you don't want to touch and it stays untouched. macOS only for v1.
+
+The installer's source of truth for the config snippets is the wiki — it mirrors the docs at [`mcp/aws-docs-mcp.md`](knowledge/mcp/aws-docs-mcp.md), [`mcp/google-analytics-mcp.md`](knowledge/mcp/google-analytics-mcp.md), [`mcp/metabase-mcp.md`](knowledge/mcp/metabase-mcp.md), and [`mcp/uvx.md`](knowledge/mcp/uvx.md).
+
 ## Inviting teammates to the web app
 
 The web admin UI is gated by Cognito. Self-signup is off by design — you invite people explicitly. Each invite sends an email with a one-time temp password; on first login they set a real one.
