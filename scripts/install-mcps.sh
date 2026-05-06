@@ -442,59 +442,76 @@ fi
 
 if is_selected google-analytics; then
   step "Google Analytics"
+
+  # The team-default project ID — overridable but most teammates can
+  # accept it.
+  GA_DEFAULT_PROJECT="348391748"
+  GA_DEFAULT_CREDS_PATH="$HOME/Documents/claude-ga-mcp-creds.json"
+
   cat <<'EOF'
 
-  Google Analytics needs Application Default Credentials (ADC) — see
-  https://cloud.google.com/docs/authentication/provide-credentials-adc.
+  The GA MCP authenticates with a Google Cloud credentials JSON file —
+  either a service-account key or an OAuth client/ADC file. We'll save
+  it to ~/Documents/claude-ga-mcp-creds.json and point the MCP at it.
 
-  Two paths:
-    1. Service-account impersonation (recommended — no hourly logout).
-       You'll need a service account + impersonation permission.
-    2. User credentials with an OAuth desktop client JSON file.
+  If you don't have a credentials JSON yet, ask in #context101 for the
+  team's service-account file.
 
 EOF
-  GA_PROJECT=$(read_value "Google Cloud project ID")
-  GA_AUTH_MODE=$(read_value "Auth mode: [1] impersonate (recommended)  [2] user creds  [s]kip ADC setup" "1")
 
-  case "$GA_AUTH_MODE" in
-    1)
-      GA_SA=$(read_value "Service account email to impersonate")
-      if [[ -n "$GA_SA" ]]; then
-        run "gcloud auth application-default login \
-          --impersonate-service-account=$GA_SA \
-          --scopes=https://www.googleapis.com/auth/analytics.readonly,https://www.googleapis.com/auth/cloud-platform"
-      fi
-      ;;
-    2)
-      GA_CLIENT_JSON=$(read_value "Path to OAuth client JSON file")
-      if [[ -n "$GA_CLIENT_JSON" && -f "$GA_CLIENT_JSON" ]]; then
-        run "gcloud auth application-default login \
-          --scopes=https://www.googleapis.com/auth/analytics.readonly,https://www.googleapis.com/auth/cloud-platform \
-          --client-id-file=$GA_CLIENT_JSON"
-      fi
-      ;;
-    *)
-      skip "ADC step skipped — make sure your existing ADC has the analytics.readonly scope"
-      ;;
-  esac
+  GA_PROJECT=$(read_value "Google Cloud project ID" "$GA_DEFAULT_PROJECT")
+  GA_CREDS_PATH=$(read_value "Where to save the credentials file" "$GA_DEFAULT_CREDS_PATH")
 
-  # The ADC default location, used by GOOGLE_APPLICATION_CREDENTIALS.
-  GA_ADC_DEFAULT="$HOME/.config/gcloud/application_default_credentials.json"
-  GA_ADC=$(read_value "Path to ADC credentials file" "$GA_ADC_DEFAULT")
+  # Multi-line paste loop. Read until a single line containing only
+  # "EOF" — same convention as a heredoc terminator and keeps the user
+  # in control of when paste ends.
+  cat <<'EOF'
 
-  add_server "analytics-mcp" "$(jq -n \
-    --arg adc "$GA_ADC" \
-    --arg proj "$GA_PROJECT" \
-    '{
-      command: "pipx",
-      args: ["run", "analytics-mcp"],
-      env: {
-        GOOGLE_APPLICATION_CREDENTIALS: $adc,
-        GOOGLE_PROJECT_ID: $proj,
-        GOOGLE_CLOUD_PROJECT: $proj
-      }
-    }')"
-  ok "Google Analytics queued"
+  Paste the entire credentials JSON below. When you're done, press
+  Enter and type EOF on its own line, then Enter again.
+
+EOF
+  GA_CREDS_BODY=""
+  while IFS= read -r line; do
+    if [[ "$line" == "EOF" ]]; then break; fi
+    GA_CREDS_BODY+="$line"$'\n'
+  done
+
+  # Trim trailing newline so jq sees a single JSON value.
+  GA_CREDS_BODY="${GA_CREDS_BODY%$'\n'}"
+
+  if [[ -z "$GA_CREDS_BODY" ]]; then
+    err "No credentials pasted — skipping Google Analytics."
+  elif ! printf '%s' "$GA_CREDS_BODY" | jq empty >/dev/null 2>&1; then
+    err "What you pasted isn't valid JSON. Run again and paste the file's contents verbatim."
+  else
+    if $DRY_RUN; then
+      printf "  ${DIM}\$ would write %s (%d bytes)${RESET}\n" \
+        "$GA_CREDS_PATH" "${#GA_CREDS_BODY}"
+    else
+      mkdir -p "$(dirname "$GA_CREDS_PATH")"
+      # 0600 — only the current user can read; this is a credential.
+      umask 077
+      printf '%s' "$GA_CREDS_BODY" > "$GA_CREDS_PATH"
+      chmod 600 "$GA_CREDS_PATH"
+      umask 022
+      ok "Wrote $GA_CREDS_PATH (mode 600)"
+    fi
+
+    add_server "analytics-mcp" "$(jq -n \
+      --arg adc "$GA_CREDS_PATH" \
+      --arg proj "$GA_PROJECT" \
+      '{
+        command: "pipx",
+        args: ["run", "analytics-mcp"],
+        env: {
+          GOOGLE_APPLICATION_CREDENTIALS: $adc,
+          GOOGLE_PROJECT_ID: $proj,
+          GOOGLE_CLOUD_PROJECT: $proj
+        }
+      }')"
+    ok "Google Analytics queued (project=$GA_PROJECT)"
+  fi
 fi
 
 # ── 4e. Iterable (optional) ───────────────────────────────────────────
