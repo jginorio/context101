@@ -392,14 +392,17 @@ if is_selected context101; then
   if [[ -z "$CTX_TOKEN" ]]; then
     warn "Empty token — skipping Context101"
   else
-    # Native HTTP MCP entry — recent Claude Desktop / Cursor / Claude Code
-    # all accept { url, headers } directly without an mcp-remote shim.
+    # Claude Desktop doesn't yet support the native HTTP MCP form
+    # ({ url, headers }), so we wrap the remote endpoint in mcp-remote —
+    # a tiny stdio→HTTP proxy auto-fetched by npx on first run. Cursor
+    # and Claude Code accept { url, headers } directly, but this shim
+    # works for all three clients, so we use it everywhere.
     add_server "context101" "$(jq -n \
       --arg url "$CTX_URL" \
-      --arg auth "Bearer $CTX_TOKEN" \
+      --arg auth "Authorization: Bearer $CTX_TOKEN" \
       '{
-        url: $url,
-        headers: { Authorization: $auth }
+        command: "npx",
+        args: ["-y", "mcp-remote", $url, "--header", $auth]
       }')"
     ok "Context101 queued"
   fi
