@@ -116,12 +116,10 @@ This will:
   2. Install: jq, uv (uvx), pipx, gcloud, nvm + Node 20 — only what's missing
   3. Show a numbered menu of MCPs and let you pick which to install:
        · Context101         (team knowledge base)
-       · AWS Docs           (no creds)
        · Metabase           (URL + API key)
        · Google Analytics   (creds JSON + project ID)
        · Contentful         (CMS — Management API token)
        · Iterable           (hands off to Iterable's setup CLI)
-       · Sentry (hosted)    (OAuth in browser)
      You can pick all, none, individual numbers, or ranges.
   4. Merge them into your Claude Desktop config
        (~/Library/Application Support/Claude/claude_desktop_config.json)
@@ -245,30 +243,24 @@ step "MCP servers"
 # and a matching `is_selected <id>` block lower down.
 MCP_IDS=(
   "context101"
-  "aws-docs"
   "metabase"
   "google-analytics"
   "contentful"
   "iterable"
-  "sentry"
 )
 MCP_LABELS=(
   "Context101"
-  "AWS Documentation"
   "Metabase"
   "Google Analytics"
   "Contentful"
   "Iterable"
-  "Sentry (hosted)"
 )
 MCP_DESCS=(
   "team knowledge base — needs URL + bearer token"
-  "AWS product docs — no creds"
   "Metabase queries — needs URL + API key"
   "GA reports — paste creds JSON + project ID"
   "Contentful CMS — needs management API token"
   "Iterable — runs Iterable's own 'npx @iterable/mcp setup' CLI"
-  "Sentry hosted MCP — optional, OAuth in browser"
 )
 
 # Print the menu, then read selection.
@@ -409,19 +401,7 @@ if is_selected context101; then
   fi
 fi
 
-# ── 4b. AWS Docs ──────────────────────────────────────────────────────
-
-if is_selected aws-docs; then
-  step "AWS Documentation"
-  add_server "awslabs.aws-documentation-mcp-server" "$(jq -n '{
-    command: "uvx",
-    args: ["awslabs.aws-documentation-mcp-server@latest"],
-    env: { FASTMCP_LOG_LEVEL: "ERROR", AWS_DOCUMENTATION_PARTITION: "aws" }
-  }')"
-  ok "AWS Docs queued"
-fi
-
-# ── 4c. Metabase ──────────────────────────────────────────────────────
+# ── 4b. Metabase ──────────────────────────────────────────────────────
 
 if is_selected metabase; then
   step "Metabase"
@@ -443,7 +423,7 @@ if is_selected metabase; then
   fi
 fi
 
-# ── 4d. Google Analytics ──────────────────────────────────────────────
+# ── 4c. Google Analytics ──────────────────────────────────────────────
 
 if is_selected google-analytics; then
   step "Google Analytics"
@@ -519,7 +499,7 @@ EOF
   fi
 fi
 
-# ── 4e. Contentful ────────────────────────────────────────────────────
+# ── 4d. Contentful ────────────────────────────────────────────────────
 
 if is_selected contentful; then
   step "Contentful"
@@ -549,10 +529,7 @@ if is_selected contentful; then
   fi
 fi
 
-# ── 4f. Iterable (optional) ──────────────────────────────────────────
-
-# (Iterable was 4e in earlier revisions — renumbered when Contentful
-# slotted in; ordering matches the catalog above.)
+# ── 4e. Iterable ─────────────────────────────────────────────────────
 
 if is_selected iterable; then
   step "Iterable"
@@ -577,18 +554,6 @@ EOF
   # we add here would conflict.
   RUN_ITERABLE_SETUP=true
   ok "Iterable setup deferred to npx @iterable/mcp setup (runs at end)"
-fi
-
-# ── 4g. Sentry (hosted MCP) ───────────────────────────────────────────
-
-if is_selected sentry; then
-  step "Sentry (hosted)"
-  add_server "sentry" "$(jq -n '{
-    command: "npx",
-    args: ["-y", "mcp-remote", "https://mcp.sentry.dev/sse"]
-  }')"
-  ok "Sentry queued"
-  warn "On first launch Claude Desktop will pop a browser to authorize Sentry."
 fi
 
 # ── 5. Merge into claude_desktop_config.json ──────────────────────────
@@ -682,9 +647,6 @@ Next steps:
   1. ${BOLD}Quit and reopen Claude Desktop${RESET} — it only reads the config at launch.
   2. ${BOLD}Open a new terminal${RESET} so PATH changes (pipx, brew shellenv) apply.
   3. Verify in Claude: ask "what MCP servers do you have?"
-
-If Sentry was queued, click through the OAuth flow that pops up the
-first time Claude Desktop connects to it.
 
 To re-run later (e.g. to add another MCP, or after rotating a token):
 

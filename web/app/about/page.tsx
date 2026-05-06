@@ -142,9 +142,9 @@ function BootstrapInstaller() {
           servers — Homebrew, <code className="font-mono text-xs">uv</code>,{" "}
           <code className="font-mono text-xs">pipx</code>,{" "}
           <code className="font-mono text-xs">gcloud</code>, Node 20 — then
-          walks you through Context101, AWS Docs, Metabase, Google Analytics,
-          Contentful, Iterable, and Sentry, and merges them into your Claude
-          Desktop config (with a backup of the existing file).
+          walks you through Context101, Metabase, Google Analytics,
+          Contentful, and Iterable, and merges them into your Claude Desktop
+          config (with a backup of the existing file).
         </p>
 
         <div className="space-y-2">
