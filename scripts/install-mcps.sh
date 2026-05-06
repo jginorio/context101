@@ -392,17 +392,18 @@ add_server() {
 if is_selected context101; then
   step "Context101"
   CTX_URL=$(read_value "Context101 MCP URL" "https://wd3y3hnp7s.us-east-1.awsapprunner.com/mcp")
-  CTX_TOKEN=$(read_secret "Bearer token (ask in #context101 if you don't have it):")
+  CTX_TOKEN=$(read_value "Bearer token" "context101-platea-2026-bearer")
   if [[ -z "$CTX_TOKEN" ]]; then
     warn "Empty token — skipping Context101"
   else
-    # Claude Desktop only speaks stdio, so we proxy via mcp-remote (npx).
+    # Native HTTP MCP entry — recent Claude Desktop / Cursor / Claude Code
+    # all accept { url, headers } directly without an mcp-remote shim.
     add_server "context101" "$(jq -n \
       --arg url "$CTX_URL" \
-      --arg auth "Authorization: Bearer $CTX_TOKEN" \
+      --arg auth "Bearer $CTX_TOKEN" \
       '{
-        command: "npx",
-        args: ["-y", "mcp-remote", $url, "--header", $auth]
+        url: $url,
+        headers: { Authorization: $auth }
       }')"
     ok "Context101 queued"
   fi
