@@ -233,7 +233,7 @@ Restart Claude Desktop and Context101 should appear in the tools list. The `-y` 
 
 ## Onboarding teammates to the MCP servers
 
-The team uses several MCP servers from Claude Desktop / Cursor / Devin: **Context101** (this knowledge base), **Metabase**, **Google Analytics**, **Contentful**, and **Iterable**. Each one has its own toolchain (`uv`/`uvx`, `pipx`, `gcloud`, `nvm`/Node, etc.) and a Claude Desktop config block. AWS Docs and Sentry can be added back to the catalog in `scripts/install-mcps.sh` if your sub-team wants them.
+The team uses several MCP servers from Claude Desktop / Cursor / Devin: **Context101** (this knowledge base), **Metabase**, **Google Analytics**, **Contentful**, **Iterable**, and **Sprout Social**. Each one has its own toolchain (`uv`/`uvx`, `pipx`, `gcloud`, `nvm`/Node, etc.) and a Claude Desktop config block. AWS Docs and Sentry can be added back to the catalog in `scripts/install-mcps.sh` if your sub-team wants them.
 
 To save teammates 30 minutes of fiddling, there's an interactive installer:
 

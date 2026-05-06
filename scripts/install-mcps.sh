@@ -120,6 +120,7 @@ This will:
        · Google Analytics   (creds JSON + project ID)
        · Contentful         (CMS — Management API token)
        · Iterable           (hands off to Iterable's setup CLI)
+       · Sprout Social      (API token + customer ID)
      You can pick all, none, individual numbers, or ranges.
   4. Merge them into your Claude Desktop config
        (~/Library/Application Support/Claude/claude_desktop_config.json)
@@ -247,6 +248,7 @@ MCP_IDS=(
   "google-analytics"
   "contentful"
   "iterable"
+  "sprout-social"
 )
 MCP_LABELS=(
   "Context101"
@@ -254,6 +256,7 @@ MCP_LABELS=(
   "Google Analytics"
   "Contentful"
   "Iterable"
+  "Sprout Social"
 )
 MCP_DESCS=(
   "team knowledge base — needs URL + bearer token"
@@ -261,6 +264,7 @@ MCP_DESCS=(
   "GA reports — paste creds JSON + project ID"
   "Contentful CMS — needs management API token"
   "Iterable — runs Iterable's own 'npx @iterable/mcp setup' CLI"
+  "Sprout Social analytics — needs API token + customer ID"
 )
 
 # Print the menu, then read selection.
@@ -554,6 +558,39 @@ EOF
   # we add here would conflict.
   RUN_ITERABLE_SETUP=true
   ok "Iterable setup deferred to npx @iterable/mcp setup (runs at end)"
+fi
+
+# ── 4f. Sprout Social ─────────────────────────────────────────────────
+
+if is_selected sprout-social; then
+  step "Sprout Social"
+  cat <<'EOF'
+
+  Sprout Social needs:
+    · An API token  — see https://api.sproutsocial.com/docs/#using-api-tokens
+    · A customer ID — see https://api.sproutsocial.com/docs/#get-client-customer-id
+                     (run `get_client` from the MCP after install if you need
+                      to look it up)
+
+EOF
+  SPROUT_TOKEN=$(read_secret "Sprout Social API token:")
+  SPROUT_CUSTOMER=$(read_value "Sprout Social customer ID")
+  if [[ -z "$SPROUT_TOKEN" || -z "$SPROUT_CUSTOMER" ]]; then
+    warn "API token + customer ID both required — skipping Sprout Social."
+  else
+    add_server "sprout-social" "$(jq -n \
+      --arg token "$SPROUT_TOKEN" \
+      --arg cust "$SPROUT_CUSTOMER" \
+      '{
+        command: "npx",
+        args: ["-y", "@jginorio/sprout-social-mcp"],
+        env: {
+          SPROUT_SOCIAL_API_KEY: $token,
+          SPROUT_SOCIAL_CUSTOMER_ID: $cust
+        }
+      }')"
+    ok "Sprout Social queued"
+  fi
 fi
 
 # ── 5. Merge into claude_desktop_config.json ──────────────────────────

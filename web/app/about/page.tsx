@@ -143,8 +143,8 @@ function BootstrapInstaller() {
           <code className="font-mono text-xs">pipx</code>,{" "}
           <code className="font-mono text-xs">gcloud</code>, Node 20 — then
           walks you through Context101, Metabase, Google Analytics,
-          Contentful, and Iterable, and merges them into your Claude Desktop
-          config (with a backup of the existing file).
+          Contentful, Iterable, and Sprout Social, and merges them into your
+          Claude Desktop config (with a backup of the existing file).
         </p>
 
         <div className="space-y-2">
