@@ -118,7 +118,8 @@ This will:
        · Context101         (team knowledge base)
        · AWS Docs           (no creds)
        · Metabase           (URL + API key)
-       · Google Analytics   (gcloud ADC + project ID)
+       · Google Analytics   (creds JSON + project ID)
+       · Contentful         (CMS — Management API token)
        · Iterable           (URL + token)
        · Sentry (hosted)    (OAuth in browser)
      You can pick all, none, individual numbers, or ranges.
@@ -247,6 +248,7 @@ MCP_IDS=(
   "aws-docs"
   "metabase"
   "google-analytics"
+  "contentful"
   "iterable"
   "sentry"
 )
@@ -255,6 +257,7 @@ MCP_LABELS=(
   "AWS Documentation"
   "Metabase"
   "Google Analytics"
+  "Contentful"
   "Iterable"
   "Sentry (hosted)"
 )
@@ -262,7 +265,8 @@ MCP_DESCS=(
   "team knowledge base — needs URL + bearer token"
   "AWS product docs — no creds"
   "Metabase queries — needs URL + API key"
-  "GA reports — needs gcloud ADC + project ID"
+  "GA reports — paste creds JSON + project ID"
+  "Contentful CMS — needs management API token"
   "Iterable API — optional, needs URL + token"
   "Sentry hosted MCP — optional, OAuth in browser"
 )
@@ -514,7 +518,40 @@ EOF
   fi
 fi
 
-# ── 4e. Iterable (optional) ───────────────────────────────────────────
+# ── 4e. Contentful ────────────────────────────────────────────────────
+
+if is_selected contentful; then
+  step "Contentful"
+  CF_SPACE=$(read_value "Contentful space ID" "mj6ykc7haq31")
+  CF_ENV=$(read_value "Contentful environment ID" "master")
+  CF_HOST=$(read_value "Contentful host" "https://api.contentful.com")
+  CF_TOKEN=$(read_secret "Contentful Management API token (Settings → API keys → Content management tokens):")
+  if [[ -z "$CF_TOKEN" ]]; then
+    warn "Empty token — skipping Contentful"
+  else
+    add_server "contentful-mcp" "$(jq -n \
+      --arg token "$CF_TOKEN" \
+      --arg space "$CF_SPACE" \
+      --arg env "$CF_ENV" \
+      --arg host "$CF_HOST" \
+      '{
+        command: "npx",
+        args: ["-y", "@contentful/mcp-server"],
+        env: {
+          CONTENTFUL_MANAGEMENT_ACCESS_TOKEN: $token,
+          SPACE_ID: $space,
+          ENVIRONMENT_ID: $env,
+          CONTENTFUL_HOST: $host
+        }
+      }')"
+    ok "Contentful queued (space=$CF_SPACE, env=$CF_ENV)"
+  fi
+fi
+
+# ── 4f. Iterable (optional) ──────────────────────────────────────────
+
+# (Iterable was 4e in earlier revisions — renumbered when Contentful
+# slotted in; ordering matches the catalog above.)
 
 if is_selected iterable; then
   step "Iterable"
@@ -567,7 +604,7 @@ EOF
   esac
 fi
 
-# ── 4f. Sentry (hosted MCP) ───────────────────────────────────────────
+# ── 4g. Sentry (hosted MCP) ───────────────────────────────────────────
 
 if is_selected sentry; then
   step "Sentry (hosted)"
