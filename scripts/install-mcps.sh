@@ -120,7 +120,7 @@ This will:
        · Metabase           (URL + API key)
        · Google Analytics   (creds JSON + project ID)
        · Contentful         (CMS — Management API token)
-       · Iterable           (URL + token)
+       · Iterable           (hands off to Iterable's setup CLI)
        · Sentry (hosted)    (OAuth in browser)
      You can pick all, none, individual numbers, or ranges.
   4. Merge them into your Claude Desktop config
@@ -267,7 +267,7 @@ MCP_DESCS=(
   "Metabase queries — needs URL + API key"
   "GA reports — paste creds JSON + project ID"
   "Contentful CMS — needs management API token"
-  "Iterable API — optional, needs URL + token"
+  "Iterable — runs Iterable's own 'npx @iterable/mcp setup' CLI"
   "Sentry hosted MCP — optional, OAuth in browser"
 )
 
@@ -558,51 +558,25 @@ if is_selected iterable; then
   step "Iterable"
   cat <<'EOF'
 
-  Iterable's MCP isn't in our context101 docs yet — give us:
-    · the MCP URL (HTTP) or stdio command
-    · an Iterable API key
+  Iterable's MCP setup needs an OAuth flow + workspace token that we
+  can't shortcut from here. Iterable ships a CLI that handles it:
 
-  If you have a stdio installer (e.g. an internal package), pick "stdio"
-  below. Otherwise pick "http" and paste the team URL.
+    npx @iterable/mcp setup
+
+  It'll open your browser for authorization, generate the right token,
+  and write the entry into your Claude Desktop config itself.
+
+  We'll run it for you AFTER this script merges the other MCPs you
+  picked, so the two tools don't fight over the same config file.
+
+  Reference: https://support.iterable.com/hc/en-us/articles/42936790497812-Setting-up-Iterable-s-MCP-Server
 
 EOF
-  IT_MODE=$(read_value "Mode: http / stdio / skip" "http")
-  case "$IT_MODE" in
-    http)
-      IT_URL=$(read_value "Iterable MCP URL")
-      IT_TOKEN=$(read_secret "Iterable API key:")
-      if [[ -n "$IT_URL" && -n "$IT_TOKEN" ]]; then
-        add_server "iterable" "$(jq -n \
-          --arg url "$IT_URL" \
-          --arg auth "Authorization: Bearer $IT_TOKEN" \
-          '{
-            command: "npx",
-            args: ["-y", "mcp-remote", $url, "--header", $auth]
-          }')"
-        ok "Iterable queued (HTTP via mcp-remote)"
-      fi
-      ;;
-    stdio)
-      IT_CMD=$(read_value "Stdio command (e.g. uvx iterable-mcp)")
-      IT_KEY=$(read_secret "Iterable API key:")
-      if [[ -n "$IT_CMD" && -n "$IT_KEY" ]]; then
-        IT_PARTS=($IT_CMD)
-        IT_BIN="${IT_PARTS[0]}"
-        IT_ARGS=("${IT_PARTS[@]:1}")
-        add_server "iterable" "$(jq -n \
-          --arg bin "$IT_BIN" \
-          --argjson args "$(printf '%s\n' "${IT_ARGS[@]}" | jq -R . | jq -s .)" \
-          --arg key "$IT_KEY" \
-          '{
-            command: $bin,
-            args: $args,
-            env: { ITERABLE_API_KEY: $key }
-          }')"
-        ok "Iterable queued (stdio)"
-      fi
-      ;;
-    *) skip "Iterable skipped" ;;
-  esac
+  # Mark for the post-merge runner. We deliberately don't add Iterable
+  # to SERVER_KEYS — Iterable's own CLI writes the entry, so anything
+  # we add here would conflict.
+  RUN_ITERABLE_SETUP=true
+  ok "Iterable setup deferred to npx @iterable/mcp setup (runs at end)"
 fi
 
 # ── 4g. Sentry (hosted MCP) ───────────────────────────────────────────
@@ -675,6 +649,26 @@ else
       "$CFG")
     printf '%s\n' "$NEW_CFG" > "$CFG"
     ok "Wrote $CFG"
+  fi
+fi
+
+# ── 5b. Iterable's own setup CLI (after our config merge) ─────────────
+
+if [[ "${RUN_ITERABLE_SETUP:-false}" == "true" ]]; then
+  step "Iterable: handing off to Iterable's setup CLI"
+  echo
+  echo "  Running: npx @iterable/mcp setup"
+  echo "  Follow the prompts — Iterable's tool will open a browser to"
+  echo "  authenticate and write its entry into Claude Desktop's config."
+  echo
+  if $DRY_RUN; then
+    printf "  ${DIM}\$ npx @iterable/mcp setup${RESET}\n"
+  else
+    if command -v npx >/dev/null 2>&1; then
+      npx @iterable/mcp setup || warn "Iterable setup exited non-zero — check the output above and re-run 'npx @iterable/mcp setup' manually if needed."
+    else
+      err "npx not found. Open a new shell (so the nvm/Node PATH applies) and run 'npx @iterable/mcp setup' yourself."
+    fi
   fi
 fi
 
