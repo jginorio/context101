@@ -2,7 +2,16 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, CheckCircle2, CircleDashed, Construction, Check, Copy } from "lucide-react";
+import {
+  ArrowLeft,
+  Check,
+  CheckCircle2,
+  CircleDashed,
+  Construction,
+  Copy,
+  Download,
+  Terminal,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { ThemeToggle } from "@/components/theme-toggle";
@@ -92,6 +101,104 @@ function CopyMcpConfig() {
             "Claude Desktop only speaks stdio — mcp-remote is a tiny proxy (auto-installed by npx on first run). Paste into claude_desktop_config.json, then restart Claude Desktop."
           }
         />
+      </CardContent>
+    </Card>
+  );
+}
+
+function BootstrapInstaller() {
+  // The script is copied into web/public/install-mcps.sh by the build step
+  // (see web/package.json). It's served at the root: /install-mcps.sh.
+  // Curl uses a relative URL so this works on any deploy / preview domain.
+  const ONELINER = `bash <(curl -fsSL ${
+    typeof window === "undefined"
+      ? "https://your-deploy.amplifyapp.com"
+      : window.location.origin
+  }/install-mcps.sh)`;
+
+  const [copied, setCopied] = React.useState(false);
+  async function copyOneliner() {
+    try {
+      await navigator.clipboard.writeText(ONELINER);
+      setCopied(true);
+      toast.success("One-liner copied");
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast.error("Copy failed — select and copy manually");
+    }
+  }
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Terminal className="h-4 w-4" />
+          One-shot installer (macOS)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <p className="text-sm text-muted-foreground leading-relaxed">
+          A bash script that bootstraps your machine with the team&apos;s MCP
+          servers — Homebrew, <code className="font-mono text-xs">uv</code>,{" "}
+          <code className="font-mono text-xs">pipx</code>,{" "}
+          <code className="font-mono text-xs">gcloud</code>, Node 20 — then
+          walks you through Context101, AWS Docs, Metabase, Google Analytics,
+          Contentful, Iterable, and Sentry, and merges them into your Claude
+          Desktop config (with a backup of the existing file).
+        </p>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium">Run it</p>
+            <Button size="sm" variant="outline" onClick={copyOneliner}>
+              {copied ? (
+                <Check className="mr-1 h-3.5 w-3.5" />
+              ) : (
+                <Copy className="mr-1 h-3.5 w-3.5" />
+              )}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+          </div>
+          <pre className="text-xs font-mono whitespace-pre overflow-x-auto rounded-md border bg-muted/30 p-3">
+            {ONELINER}
+          </pre>
+          <p className="text-xs text-muted-foreground">
+            Pipes the script straight into bash. The interactive prompts
+            (selection menu, credential paste fields) work because{" "}
+            <code className="font-mono text-xs">bash &lt;(...)</code> keeps
+            stdin attached to your terminal — unlike{" "}
+            <code className="font-mono text-xs">curl ... | bash</code>.
+          </p>
+        </div>
+
+        <Separator />
+
+        <div className="space-y-2">
+          <p className="text-sm font-medium">…or download + inspect first</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <a href="/install-mcps.sh" download="install-mcps.sh">
+              <Button size="sm" variant="outline">
+                <Download className="mr-1 h-3.5 w-3.5" /> Download script
+              </Button>
+            </a>
+            <a
+              href="/install-mcps.sh"
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-muted-foreground hover:text-foreground underline-offset-2 hover:underline"
+            >
+              View raw
+            </a>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Read it, then{" "}
+            <code className="font-mono text-xs">
+              chmod +x install-mcps.sh && ./install-mcps.sh
+            </code>
+            . Re-running it later is idempotent — picks back up where you
+            left off.
+          </p>
+        </div>
       </CardContent>
     </Card>
   );
@@ -246,6 +353,8 @@ export default function AboutPage() {
         </section>
 
         <CopyMcpConfig />
+
+        <BootstrapInstaller />
 
         <section>
           <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-3">

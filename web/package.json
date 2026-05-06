@@ -4,7 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "predev": "cp ../scripts/install-mcps.sh public/install-mcps.sh",
     "build": "next build",
+    "prebuild": "cp ../scripts/install-mcps.sh public/install-mcps.sh",
     "start": "next start",
     "lint": "eslint"
   },
