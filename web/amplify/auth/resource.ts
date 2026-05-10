@@ -16,5 +16,5 @@ export const auth = defineAuth({
     preferredUsername: { required: false, mutable: true },
   },
   // No triggers yet. Add a pre-signup Lambda if you want to
-  // restrict by email domain (e.g. only @redventures.com).
+  // restrict by email domain (e.g. only @your-company.com).
 });

@@ -42,7 +42,7 @@ const COPY: Record<SourceType, Copy> = {
       "Paste a spreadsheet URL and give it a friendly label. You'll be redirected to Google to authorize read access. After you approve, every tab is pulled into the brain as markdown and re-synced every 6 hours.",
     urlLabel: "Spreadsheet URL",
     urlPlaceholder: "https://docs.google.com/spreadsheets/d/…",
-    labelPlaceholder: "Platea Instagram analytics",
+    labelPlaceholder: "Quarterly metrics dashboard",
   },
   docs: {
     icon: FileText,

@@ -21,10 +21,15 @@ import { Separator } from "@/components/ui/separator";
 
 import "@/utils/amplify-client-config";
 
+const MCP_URL =
+  process.env.NEXT_PUBLIC_MCP_URL ?? "https://<your-mcp-host>/mcp";
+const MCP_TOKEN =
+  process.env.NEXT_PUBLIC_MCP_TOKEN ?? "<your-shared-bearer-token>";
+
 const SNIPPET_HTTP = `"context101": {
-  "url": "https://wd3y3hnp7s.us-east-1.awsapprunner.com/mcp",
+  "url": "${MCP_URL}",
   "headers": {
-    "Authorization": "Bearer context101-platea-2026-bearer"
+    "Authorization": "Bearer ${MCP_TOKEN}"
   }
 }`;
 
@@ -33,9 +38,9 @@ const SNIPPET_STDIO = `"context101": {
   "args": [
     "-y",
     "mcp-remote",
-    "https://wd3y3hnp7s.us-east-1.awsapprunner.com/mcp",
+    "${MCP_URL}",
     "--header",
-    "Authorization: Bearer context101-platea-2026-bearer"
+    "Authorization: Bearer ${MCP_TOKEN}"
   ]
 }`;
 
@@ -333,9 +338,9 @@ export default function AboutPage() {
             this problem well, but they&apos;re expensive and heavyweight for
             non-technical use cases. A social media manager asking &quot;how did
             our Instagram post perform this week?&quot; shouldn&apos;t burn Devin
-            credits. Red Ventures already has an in-house agent that&apos;s
-            better suited for those lighter-weight queries. Different roles
-            use different agents, and that&apos;s fine — but{" "}
+            credits — a lighter in-house agent or a plain Claude Desktop
+            session is a better fit. Different roles use different agents,
+            and that&apos;s fine — but{" "}
             <strong>
               every one of those agents still needs the same underlying team
               knowledge
@@ -476,7 +481,8 @@ export default function AboutPage() {
               files alongside each doc with attributes like{" "}
               <code className="font-mono text-xs">team</code>,{" "}
               <code className="font-mono text-xs">source</code>. Agents can
-              scope queries (&quot;only Platea docs&quot;).
+              scope queries (e.g. &quot;only docs tagged{" "}
+              <code className="font-mono text-xs">team=marketing</code>&quot;).
             </Item>
             <Item title="Per-user auth (Cognito JWT) for the MCP" status="later">
               Graduate from the shared bearer token once we need per-person
