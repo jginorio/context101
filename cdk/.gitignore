@@ -4,3 +4,6 @@ cdk.out/
 *.js
 !jest.config.js
 .DS_Store
+
+# Deploy wrapper local creds (cdk/deploy.sh)
+.deploy-env
