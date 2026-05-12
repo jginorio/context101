@@ -36,11 +36,14 @@ export async function proxy(request: NextRequest) {
 
 export const config = {
   // Match everything except:
+  //  - / (the public marketing landing)
   //  - /login (the page itself)
   //  - /_next (Next.js internals)
-  //  - /api/public/* (if we ever add public endpoints)
+  //  - the install-mcps.sh public download
   //  - static files (svg/png/etc.)
+  // Using `.+` instead of `.*` so the empty path (i.e. `/`) doesn't match
+  // and is served as the public landing without an auth round-trip.
   matcher: [
-    "/((?!login|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)",
+    "/((?!login|_next/static|_next/image|favicon.ico|install-mcps\\.sh|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).+)",
   ],
 };
