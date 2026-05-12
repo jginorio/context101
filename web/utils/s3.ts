@@ -4,7 +4,7 @@ import { S3Client } from "@aws-sdk/client-s3";
  * Single S3 client for the Next.js runtime.
  *
  * Local dev: uses the standard AWS SDK credential chain — set
- *   AWS_PROFILE=plateapr.com in .env.local.
+ *   AWS_PROFILE=<your-profile> in .env.local.
  *
  * Amplify Hosting: the SSR compute Lambda runs under a ComputeRoleArn
  * (wired up in CDK). Its role gives us s3:* on the docs bucket + CW logs.

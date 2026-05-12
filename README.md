@@ -60,7 +60,7 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 Before your first deploy, make sure you have:
 
 **Local tooling**
-- **AWS CLI v2** authenticated for the target account (`aws sts get-caller-identity` should work). The examples use `AWS_PROFILE=plateapr.com`; replace with your own profile/region.
+- **AWS CLI v2** authenticated for the target account (`aws sts get-caller-identity` should work). The examples use `AWS_PROFILE=<your-profile>`; replace with your own profile/region.
 - **Node 20+** and **npm** — for the CDK app and the Next.js web build.
 - **Docker** — CDK asset bundling for the wiki-generator image uses it. `colima start` on macOS if you use Colima.
 - **GitHub CLI (`gh`)** or a manually-created Personal Access Token — Amplify Hosting needs a GitHub token with `repo` scope to watch your fork. `gh auth token` returns one if you're already logged in.
@@ -70,7 +70,7 @@ Before your first deploy, make sure you have:
 - **Region** — everything is wired up for `us-east-1`. It can be changed, but S3 Vectors and the Opus 4.7 cross-region inference profile (`us.anthropic.claude-opus-4-7`) have region caveats; staying in `us-east-1` for the first deploy is the smooth path.
 - **CDK bootstrap** — run once per account+region:
   ```bash
-  AWS_PROFILE=plateapr.com npx cdk bootstrap aws://<ACCOUNT_ID>/us-east-1
+  npx cdk bootstrap aws://<ACCOUNT_ID>/us-east-1
   ```
 - **Bedrock model access** — enable the models we use in the Bedrock console → *Model access*:
   - `amazon.titan-embed-text-v2:0` (embeddings for the KB)
@@ -90,12 +90,18 @@ Before your first deploy, make sure you have:
 ```bash
 cd cdk
 npm install
-AWS_PROFILE=plateapr.com npx cdk deploy
+npx cdk deploy
 ```
 
-This provisions the baseline infra — S3 docs bucket, Bedrock Knowledge Base, S3 Vectors, DynamoDB tables, all Lambdas — and seeds the docs bucket from the local `knowledge/` folder. The auto-ingest Lambda kicks off a Bedrock ingestion job; wait ~1-3 min (watch the KB in the AWS console).
+This provisions the baseline infra — S3 docs bucket, Bedrock Knowledge Base, S3 Vectors, DynamoDB tables, all Lambdas. To also seed the docs bucket with the example markdown under `knowledge/` so a brand-new stack isn't empty, pass `-c seed=true`:
 
-> **Source of truth:** At runtime, the **S3 docs bucket** is the source of truth. Content is managed through the web admin UI, agent `suggest_knowledge` proposals (reviewed in the Suggestions tab), and data connectors. The local `knowledge/` folder is just a **bootstrap seed** synced on the *initial* `cdk deploy` so a fresh stack isn't empty. Avoid editing files in the S3 console directly — use the web UI so writes go through the app's auth, approval, and audit surfaces.
+```bash
+npx cdk deploy -c seed=true
+```
+
+The seed flag is **off by default** so subsequent `cdk deploy` runs never clobber whatever your team has put in S3 via the web UI / connectors / approved suggestions. Once you're past first deploy, omit the flag — the bucket itself is retained and stays the source of truth. The auto-ingest Lambda kicks off a Bedrock ingestion job on every S3 write; wait ~1-3 min after a write before searching (watch the KB in the AWS console).
+
+> **Source of truth:** At runtime, the **S3 docs bucket** is the source of truth. Content is managed through the web admin UI, agent `suggest_knowledge` proposals (reviewed in the Suggestions tab), and data connectors. The local `knowledge/` folder is just an **optional bootstrap seed** that's only uploaded when you pass `-c seed=true`. Avoid editing files in the S3 console directly — use the web UI so writes go through the app's auth, approval, and audit surfaces.
 
 **Key outputs** (you'll want to save these):
 - `DocsBucketName` — the S3 bucket holding your markdown
@@ -109,7 +115,7 @@ The web admin UI and App Runner MCP service are **gated on two CDK context flags
 Pass a shared bearer token — this is what MCP clients will use to authenticate:
 
 ```bash
-AWS_PROFILE=plateapr.com npx cdk deploy -c token=<pick-any-long-random-string>
+npx cdk deploy -c token=<pick-any-long-random-string>
 ```
 
 `McpUrl` appears in the outputs. Rotating the token later = re-deploy with a new `-c token=` and redistribute the new value to teammates' MCP client configs.
@@ -124,7 +130,7 @@ GH_PAT=$(gh auth token)
 
 # …or paste one you generated at github.com/settings/tokens
 
-AWS_PROFILE=plateapr.com npx cdk deploy \
+npx cdk deploy \
   -c token=<your-bearer-token> \
   -c githubToken="$GH_PAT"
 ```
@@ -144,14 +150,14 @@ Cognito is provisioned by Amplify Gen 2 auth on the first web build. Self-signup
 # Find the user pool (fresh deploys get a new one every time the Amplify app is recreated)
 POOL_ID=$(aws cognito-idp list-user-pools --max-results 30 \
   --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)] | sort_by(@, &CreationDate)[-1].Id' \
-  --output text --profile plateapr.com --region us-east-1)
+  --output text --region us-east-1)
 
 aws cognito-idp admin-create-user \
   --user-pool-id "$POOL_ID" \
   --username YOUR_EMAIL \
   --user-attributes Name=email,Value=YOUR_EMAIL Name=email_verified,Value=true \
   --desired-delivery-mediums EMAIL \
-  --profile plateapr.com --region us-east-1
+  --region us-east-1
 ```
 
 Check your inbox for a temp password (from `no-reply@verificationemail.com`). First login at `WebAppDefaultDomain` forces a password reset.
@@ -183,7 +189,7 @@ Without a bearer token — no auth, anyone on your machine can hit it:
 ```bash
 pip install -r requirements.txt
 
-export AWS_PROFILE=plateapr.com
+export AWS_PROFILE=<your-profile>
 export AWS_REGION=us-east-1
 export KB_ID=<KnowledgeBaseId>
 export DOCS_BUCKET=<DocsBucketName>
@@ -252,7 +258,7 @@ It will:
 
 Re-running the script is safe — answer "n" to anything you don't want to touch and it stays untouched. macOS only for v1.
 
-The installer's source of truth for the config snippets is the wiki — it mirrors the docs at [`mcp/aws-docs-mcp.md`](knowledge/mcp/aws-docs-mcp.md), [`mcp/google-analytics-mcp.md`](knowledge/mcp/google-analytics-mcp.md), [`mcp/metabase-mcp.md`](knowledge/mcp/metabase-mcp.md), and [`mcp/uvx.md`](knowledge/mcp/uvx.md).
+The MCP catalog inside the script (`scripts/install-mcps.sh`) is meant to be edited per team — drop in the MCPs you actually use, remove the ones you don't, and tweak the prompts.
 
 ## Inviting teammates to the web app
 
@@ -267,7 +273,7 @@ The pool ID changes every time the Amplify app is recreated (e.g. if you destroy
 ```bash
 POOL_ID=$(aws cognito-idp list-user-pools --max-results 30 \
   --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)] | sort_by(@, &CreationDate)[-1].Id' \
-  --output text --profile plateapr.com --region us-east-1)
+  --output text --region us-east-1)
 echo "$POOL_ID"
 ```
 
@@ -279,7 +285,7 @@ aws cognito-idp admin-create-user \
   --username TEAMMATE_EMAIL \
   --user-attributes Name=email,Value=TEAMMATE_EMAIL Name=email_verified,Value=true \
   --desired-delivery-mediums EMAIL \
-  --profile plateapr.com --region us-east-1
+  --region us-east-1
 ```
 
 Replace `TEAMMATE_EMAIL` (both places) with their actual email. They'll get an email titled "Your temporary password" from `no-reply@verificationemail.com`.
@@ -290,7 +296,7 @@ Replace `TEAMMATE_EMAIL` (both places) with their actual email. They'll get an e
 aws cognito-idp admin-delete-user \
   --user-pool-id "$POOL_ID" \
   --username TEAMMATE_EMAIL \
-  --profile plateapr.com --region us-east-1
+  --region us-east-1
 ```
 
 ### Separate from the MCP bearer token
@@ -532,7 +538,7 @@ A practical quirk: **Google returns a refresh token** (access tokens expire ever
 {
   "access_token":   "ntn_…",
   "workspace_id":   "…",
-  "workspace_name": "FinditPR",
+  "workspace_name": "Acme",
   "bot_id":         "…"
 }
 ```
@@ -628,7 +634,7 @@ ECS is the source of truth — there's no separate lock store. A crashed task se
 cd wiki-generator
 pip install -r requirements.txt
 
-AWS_PROFILE=plateapr.com \
+\
 AWS_REGION=us-east-1 \
 DOCS_BUCKET=<DocsBucketName> \
 python generate.py
@@ -870,7 +876,7 @@ knowledge/databases.md                   (local markdown)
 
 ```bash
 cd cdk
-AWS_PROFILE=plateapr.com npx cdk destroy
+npx cdk destroy
 ```
 
 The S3 docs bucket and S3 Vectors bucket have `RETAIN` policies — you won't lose data. Empty them manually if you want them gone.
@@ -905,13 +911,13 @@ knowledge/
 ├── databases.md.metadata.json          ← sidecar for a raw doc
 │     {
 │       "metadataAttributes": {
-│         "team":    "platea",
+│         "team":    "marketing",
 │         "origin":  "notion",
 │         "updated": "2026-04-18"
 │       }
 │     }
-├── domain-knowledge/amplia.md
-└── domain-knowledge/amplia.md.metadata.json
+├── domain-knowledge/example-product.md
+└── domain-knowledge/example-product.md.metadata.json
 ```
 
 Query-time filter on the raw tier (hypothetical — requires extending `search_knowledge` with a `filter` param and/or a `tier: "raw" | "wiki"` arg):
@@ -920,7 +926,7 @@ Query-time filter on the raw tier (hypothetical — requires extending `search_k
 search_knowledge(
   query  = "pricing strategy",
   tier   = "raw",
-  filter = { equals: { key: "team", value: "platea" } }
+  filter = { equals: { key: "team", value: "marketing" } }
 )
 ```
 

@@ -220,21 +220,33 @@ export class Context101Stack extends cdk.Stack {
       new s3n.LambdaDestination(ingestFn)
     );
 
-    // ── 7. Sync local knowledge/ → docs bucket on every deploy ────────
-    //      The local knowledge/ folder is the source of truth.
-    //      prune: true = S3 files not in knowledge/ get deleted. Matches
-    //      the "git repo is source of truth" model.
-    const deployment = new s3deploy.BucketDeployment(this, "KnowledgeSync", {
-      sources: [
-        s3deploy.Source.asset(path.resolve(__dirname, "..", "..", "knowledge")),
-      ],
-      destinationBucket: docsBucket,
-      prune: true,
-      retainOnDelete: true, // keep files on stack destroy
-    });
-    // Ensure the notification → Lambda wiring exists before files land,
-    // so the auto-ingest Lambda fires on the initial upload.
-    deployment.node.addDependency(ingestFn);
+    // ── 7. Optional: seed local knowledge/ → docs bucket ──────────────
+    //      Off by default. Pass `-c seed=true` on a fresh stack to
+    //      bootstrap the bucket with the example markdown under
+    //      knowledge/. Subsequent deploys should *not* pass the flag —
+    //      at runtime the bucket is the source of truth (web UI,
+    //      connectors, approved suggestions all write directly to it),
+    //      and we don't want to clobber that on `cdk deploy`.
+    //
+    //      Note for existing stacks that previously had this construct:
+    //      removing the BucketDeployment between deploys causes CFN to
+    //      delete the custom resource. With `retainOnDelete: true` set
+    //      below, the underlying S3 objects are preserved — only the
+    //      Lambda + IAM role behind the deployer go away.
+    const shouldSeed = this.node.tryGetContext("seed") === "true";
+    if (shouldSeed) {
+      const deployment = new s3deploy.BucketDeployment(this, "KnowledgeSync", {
+        sources: [
+          s3deploy.Source.asset(path.resolve(__dirname, "..", "..", "knowledge")),
+        ],
+        destinationBucket: docsBucket,
+        // prune: false — only add/update; never delete files added via the
+        // web UI / connectors / approved suggestions.
+        prune: false,
+        retainOnDelete: true,
+      });
+      deployment.node.addDependency(ingestFn);
+    }
 
     // ── Wiki generator (Fargate + EventBridge schedule) ───────────────
     //      Periodically synthesizes the raw markdown corpus into a
@@ -625,6 +637,11 @@ export class Context101Stack extends cdk.Stack {
     //      Only provisioned if -c token=<value> is passed at deploy time.
     const teamToken = this.node.tryGetContext("token") as string | undefined;
 
+    // Public-safe env vars exposed to the Amplify build (read by the
+    // /about page so teammates can copy a working MCP config out of the
+    // UI). Populated only when the App Runner service is in the stack.
+    const mcpEnvVars: Array<{ name: string; value: string }> = [];
+
     if (teamToken) {
       // a) Store the bearer token in Secrets Manager
       const tokenSecret = new secretsmanager.Secret(this, "TokenSecret", {
@@ -698,11 +715,24 @@ export class Context101Stack extends cdk.Stack {
         healthCheckConfiguration: { protocol: "TCP" },
       });
 
+      const mcpUrl = cdk.Fn.join("", [
+        "https://",
+        service.attrServiceUrl,
+        "/mcp",
+      ]);
+
       new cdk.CfnOutput(this, "McpUrl", {
-        value: cdk.Fn.join("", ["https://", service.attrServiceUrl, "/mcp"]),
+        value: mcpUrl,
         description:
           "Share with the team. Requires Authorization: Bearer <token> header.",
       });
+
+      // Expose to the Amplify build so /about can render a copy-pasteable
+      // MCP client config without a hardcoded URL/token in source.
+      mcpEnvVars.push(
+        { name: "NEXT_PUBLIC_MCP_URL", value: mcpUrl },
+        { name: "NEXT_PUBLIC_MCP_TOKEN", value: teamToken }
+      );
     }
 
     // ── 9. Optional: Amplify Hosting for the web admin UI ─────────────
@@ -782,6 +812,10 @@ export class Context101Stack extends cdk.Stack {
           { name: "GOOGLE_OAUTH_CLIENT_SECRET_ID", value: googleOAuthClientSecret.secretName },
           { name: "NOTION_OAUTH_CLIENT_SECRET_ID", value: notionOAuthClientSecret.secretName },
           { name: "CONNECTOR_TOKEN_SECRET_PREFIX", value: `${namePrefix}-connector-` },
+          // MCP URL + bearer token for the /about page snippets. Empty
+          // unless `-c token=` was also passed; the page falls back to
+          // placeholder strings.
+          ...mcpEnvVars,
         ],
       });
 

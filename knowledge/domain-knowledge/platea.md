@@ -1,3 +1,0 @@
-Platea is a platform that helps users discover what to do, what to eat, and what to know in Puerto Rico. It serves as a local guide for both locals and tourists. One of Platea's most important products is El Pocillo, a daily newsletter that gets you up to speed with the most relevant news in Puerto Rico. We have more than 50,000 subscribers.
-
-Platea has a solid social media presence, with over 270,000 followers on Facebook, 283,000 on Instagram, 65,000 on TikTok, 1,800 on YouTube, and 800 on LinkedIn as of April 1, 2026. Its website, plateapr.com, averages over 150K monthly sessions as of the same date.

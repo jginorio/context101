@@ -387,10 +387,10 @@ add_server() {
 
 if is_selected context101; then
   step "Context101"
-  CTX_URL=$(read_value "Context101 MCP URL" "https://wd3y3hnp7s.us-east-1.awsapprunner.com/mcp")
-  CTX_TOKEN=$(read_value "Bearer token" "context101-platea-2026-bearer")
-  if [[ -z "$CTX_TOKEN" ]]; then
-    warn "Empty token — skipping Context101"
+  CTX_URL=$(read_value "Context101 MCP URL (e.g. https://<id>.<region>.awsapprunner.com/mcp)")
+  CTX_TOKEN=$(read_secret "Bearer token:")
+  if [[ -z "$CTX_URL" || -z "$CTX_TOKEN" ]]; then
+    warn "Need both URL and token — skipping Context101"
   else
     # Claude Desktop doesn't yet support the native HTTP MCP form
     # ({ url, headers }), so we wrap the remote endpoint in mcp-remote —
@@ -412,7 +412,7 @@ fi
 
 if is_selected metabase; then
   step "Metabase"
-  MB_URL=$(read_value "Metabase URL" "https://metabase.finditpr.com")
+  MB_URL=$(read_value "Metabase URL")
   MB_KEY=$(read_secret "Metabase API key (Account → Account settings → API Keys):")
   if [[ -z "$MB_KEY" ]]; then
     warn "Empty API key — skipping Metabase"
@@ -435,9 +435,9 @@ fi
 if is_selected google-analytics; then
   step "Google Analytics"
 
-  # The team-default project ID — overridable but most teammates can
-  # accept it.
-  GA_DEFAULT_PROJECT="348391748"
+  # No team default project ID — every team has its own. Set
+  # GA_DEFAULT_PROJECT in your fork if you want to pre-fill it.
+  GA_DEFAULT_PROJECT="${GA_DEFAULT_PROJECT:-}"
   GA_DEFAULT_CREDS_PATH="$HOME/Documents/claude-ga-mcp-creds.json"
 
   cat <<'EOF'
@@ -446,8 +446,8 @@ if is_selected google-analytics; then
   either a service-account key or an OAuth client/ADC file. We'll save
   it to ~/Documents/claude-ga-mcp-creds.json and point the MCP at it.
 
-  If you don't have a credentials JSON yet, ask in #context101 for the
-  team's service-account file.
+  If you don't have a credentials JSON yet, ask whoever owns Google
+  Analytics on your team for the service-account file.
 
 EOF
 
@@ -510,7 +510,7 @@ fi
 
 if is_selected contentful; then
   step "Contentful"
-  CF_SPACE=$(read_value "Contentful space ID" "mj6ykc7haq31")
+  CF_SPACE=$(read_value "Contentful space ID")
   CF_ENV=$(read_value "Contentful environment ID" "master")
   CF_HOST=$(read_value "Contentful host" "https://api.contentful.com")
   CF_TOKEN=$(read_secret "Contentful Management API token (Settings → API keys → Content management tokens):")
