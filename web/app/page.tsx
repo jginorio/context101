@@ -1,232 +1,643 @@
-"use client";
-
-import * as React from "react";
-import "@aws-amplify/ui-react/styles.css";
-import { signOut } from "aws-amplify/auth";
+import type { Metadata } from "next";
 import Link from "next/link";
 import {
-  BookOpen,
-  FilePlus,
-  FolderPlus,
-  Info,
-  Menu,
+  ArrowRight,
+  Cloud,
+  ExternalLink,
+  Layers,
   Plug,
-  Sparkles,
+  ShieldCheck,
+  Star,
 } from "lucide-react";
 
-import { ThemeToggle } from "@/components/theme-toggle";
-import { KnowledgeTree } from "@/components/knowledge-tree";
-import { KnowledgeViewer } from "@/components/knowledge-viewer";
-import { NewItemDialog } from "@/components/new-item-dialog";
-import { RenameDialog } from "@/components/rename-dialog";
 import { Button } from "@/components/ui/button";
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
+import { ThemeToggle } from "@/components/theme-toggle";
+import { ConnectionDiagram } from "@/components/landing/connection-diagram";
+import { FadeIn } from "@/components/landing/fade-in";
+import { TextReveal } from "@/components/landing/text-reveal";
+import { TypingRotate } from "@/components/landing/typing-rotate";
 
-import "@/utils/amplify-client-config";
+export const metadata: Metadata = {
+  title: "Context101: one brain, every AI tool",
+  description:
+    "A self-hosted, MCP-native knowledge base. Write team knowledge once; Cursor, Claude Code, Claude Desktop, Devin, and any MCP-compatible agent retrieve from it.",
+};
 
-export default function Home() {
-  const [selected, setSelected] = React.useState<string | null>(null);
-  const [refreshKey, setRefreshKey] = React.useState(0);
-  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+const REPO_URL = "https://github.com/jginorio/context101";
 
-  const [newItem, setNewItem] = React.useState<{
-    mode: "file" | "folder";
-    parentPrefix: string;
-  } | null>(null);
-  const [rename, setRename] = React.useState<{
-    key: string;
-    isFolder: boolean;
-  } | null>(null);
-
-  const refresh = () => setRefreshKey((k) => k + 1);
-
-  const tree = (
-    <KnowledgeTree
-      selectedKey={selected}
-      refreshKey={refreshKey}
-      onSelectFile={(key) => {
-        setSelected(key);
-        setMobileNavOpen(false);
-      }}
-      onNewFile={(parentPrefix) =>
-        setNewItem({ mode: "file", parentPrefix })
-      }
-      onNewFolder={(parentPrefix) =>
-        setNewItem({ mode: "folder", parentPrefix })
-      }
-      onRename={(key, isFolder) => setRename({ key, isFolder })}
-      onDeleted={(key) => {
-        if (selected === key) setSelected(null);
-        refresh();
-      }}
-    />
-  );
-
+export default function LandingPage() {
   return (
-    <main className="flex h-screen flex-col">
-      <header className="border-b px-3 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2 min-w-0">
-          <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-            <SheetTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="md:hidden shrink-0"
-                  aria-label="Open menu"
-                />
-              }
-            >
-              <Menu className="h-4 w-4" />
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[85vw] max-w-sm p-0 flex flex-col">
-              <SheetHeader>
-                <SheetTitle>Context101</SheetTitle>
-              </SheetHeader>
-              <nav className="flex flex-col gap-1 px-2 pb-2 border-b">
-                <Link href="/wiki" onClick={() => setMobileNavOpen(false)}>
-                  <Button variant="ghost" size="sm" className="w-full justify-start">
-                    <BookOpen className="mr-2 h-3.5 w-3.5" /> Wiki
-                  </Button>
-                </Link>
-                <Link href="/suggestions" onClick={() => setMobileNavOpen(false)}>
-                  <Button variant="ghost" size="sm" className="w-full justify-start">
-                    <Sparkles className="mr-2 h-3.5 w-3.5" /> Suggestions
-                  </Button>
-                </Link>
-                <Link href="/sources" onClick={() => setMobileNavOpen(false)}>
-                  <Button variant="ghost" size="sm" className="w-full justify-start">
-                    <Plug className="mr-2 h-3.5 w-3.5" /> Sources
-                  </Button>
-                </Link>
-                <Link href="/about" onClick={() => setMobileNavOpen(false)}>
-                  <Button variant="ghost" size="sm" className="w-full justify-start">
-                    <Info className="mr-2 h-3.5 w-3.5" /> About
-                  </Button>
-                </Link>
-              </nav>
-              <div className="flex-1 min-h-0 overflow-y-auto p-2">{tree}</div>
-            </SheetContent>
-          </Sheet>
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
-              Context101
-            </h1>
-            <p className="text-xs text-muted-foreground hidden sm:block">
-              Shared team knowledge base
+    <main className="flex min-h-screen flex-col">
+      <SiteHeader />
+      <Hero />
+      <ProblemSection />
+      <DiagramSection />
+      <FeaturesSection />
+      <AnatomySection />
+      <ArchitectureSection />
+      <ScopeSection />
+      <FinalCTA />
+      <SiteFooter />
+    </main>
+  );
+}
+
+/* ── Header ───────────────────────────────────────────────────────── */
+
+function SiteHeader() {
+  return (
+    <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
+        <Link href="/" className="flex items-center gap-2">
+          <span className="inline-block size-2 rounded-full bg-primary" />
+          <span className="text-sm font-semibold tracking-tight">
+            Context101
+          </span>
+        </Link>
+        <nav className="flex items-center gap-1 sm:gap-2">
+          <Link
+            href="/about"
+            className="hidden text-xs text-muted-foreground hover:text-foreground sm:inline px-2"
+          >
+            About
+          </Link>
+          <Link
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="hidden text-xs text-muted-foreground hover:text-foreground sm:inline px-2"
+          >
+            GitHub
+          </Link>
+          <ThemeToggle />
+          <Link href="/login?next=/knowledge">
+            <Button size="sm">
+              Open app
+              <ArrowRight className="ml-1 h-3.5 w-3.5" />
+            </Button>
+          </Link>
+        </nav>
+      </div>
+    </header>
+  );
+}
+
+/* ── Hero ─────────────────────────────────────────────────────────── */
+
+function Hero() {
+  return (
+    <section className="relative overflow-hidden">
+      {/* Subtle background grid + radial glow. Pure CSS, no deps. */}
+      <div
+        aria-hidden
+        className="absolute inset-0 -z-10 [background-image:linear-gradient(to_right,oklch(var(--foreground)/.04)_1px,transparent_1px),linear-gradient(to_bottom,oklch(var(--foreground)/.04)_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]"
+      />
+      <div className="mx-auto w-full max-w-6xl px-4 pt-16 pb-12 sm:px-6 sm:pt-24 sm:pb-20">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border bg-background/60 px-3 py-1 text-xs text-muted-foreground">
+            <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
+            Open source · MCP-native · Self-hosted on AWS
+          </div>
+
+          <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
+            One brain. Every AI tool.
+          </h1>
+
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+            A self-hosted knowledge base your team writes into once. Every
+            MCP-compatible agent retrieves from the same brain. No per-tool
+            integrations, no copy-pasted context.
+          </p>
+
+          <div className="mx-auto mt-7 flex max-w-md flex-col items-center justify-center gap-2 text-sm text-muted-foreground sm:flex-row sm:gap-3">
+            <span>So now</span>
+            <TypingRotate
+              className="text-foreground"
+              phrases={[
+                "Cursor knows this.",
+                "Claude Code knows this.",
+                "Claude Desktop knows this.",
+                "Devin knows this.",
+                "Your custom agent knows this.",
+              ]}
+            />
+          </div>
+
+          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+            <Link href={REPO_URL} target="_blank" rel="noreferrer">
+              <Button size="lg">
+                <Star className="mr-1.5 h-4 w-4" />
+                View on GitHub
+              </Button>
+            </Link>
+            <Link href={REPO_URL} target="_blank" rel="noreferrer">
+              <Button size="lg" variant="outline">
+                Read the docs
+                <ExternalLink className="ml-1 h-4 w-4" />
+              </Button>
+            </Link>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── §01 The problem ──────────────────────────────────────────────── */
+
+function ProblemSection() {
+  return (
+    <section className="border-y bg-muted/30">
+      <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
+        <SectionLabel n="01">The problem</SectionLabel>
+        <TextReveal
+          as="h2"
+          className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl"
+        >
+          Knowledge gets stuck in chat sessions.
+        </TextReveal>
+        <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
+          Every teammate&apos;s AI only knows what that person has told it. The
+          analyst&apos;s findings stay inside their Claude Desktop. The PM asks
+          their own AI and gets a generic answer. The engineer in Cursor
+          restarts from zero context.
+        </p>
+        <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
+          Decisions get made on fragmented memory, and the chain of
+          understanding breaks at every handoff.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ── §02 The protocol (diagram) ───────────────────────────────────── */
+
+function DiagramSection() {
+  return (
+    <section>
+      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+        <FadeIn className="mb-12 max-w-2xl sm:mb-16">
+          <SectionLabel n="02">The protocol</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            Write once. Retrieve from everywhere.
+          </h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            MCP is the open protocol Anthropic defined for exactly this. Any
+            MCP-compatible client plugs into the same brain with zero custom
+            work. No SDK lock-in, no per-tool wiring.
+          </p>
+        </FadeIn>
+
+        <div className="mx-auto max-w-5xl">
+          <ConnectionDiagram />
+        </div>
+
+        <p className="mt-10 max-w-xl text-sm text-muted-foreground">
+          One source of truth. Many consumers. The brain lives in your AWS
+          account, not someone else&apos;s SaaS.
+        </p>
+      </div>
+    </section>
+  );
+}
+
+/* ── §03 Design decisions ─────────────────────────────────────────── */
+
+const FEATURES = [
+  {
+    Icon: Layers,
+    title: "Reconciled answers, not duplicate chunks",
+    body: "A scheduled Opus job synthesizes the raw corpus into a canonical wiki with citations. Search returns the reconciled version; raw originals are one call away when you need to verify.",
+  },
+  {
+    Icon: ShieldCheck,
+    title: "Agents propose. Humans approve.",
+    body: "Agents can suggest new knowledge as they work via MCP. Proposals land in a review queue; nothing reaches the brain until you accept it in the UI.",
+  },
+  {
+    Icon: Cloud,
+    title: "Your AWS account. No per-seat pricing.",
+    body: "Runs on managed AWS primitives at ~$5-15/mo at PoC scale. Cost scales with content, not headcount. Data never leaves your perimeter.",
+  },
+  {
+    Icon: Plug,
+    title: "Connectors that don't lock you in",
+    body: "Google Sheets, Docs, Slides, Notion, and GitHub all re-sync into the same retrieval surface every 6h. Source data stays in its home tool.",
+  },
+];
+
+function FeaturesSection() {
+  return (
+    <section className="border-y bg-muted/30">
+      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+        <FadeIn className="mx-auto mb-12 max-w-2xl text-center">
+          <SectionLabel n="03">Design decisions</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            What you actually get
+          </h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            Four choices that make Context101 distinct from a vanilla RAG
+            server.
+          </p>
+        </FadeIn>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          {FEATURES.map(({ Icon, title, body }) => (
+            <Card key={title}>
+              <CardHeader>
+                <div className="mb-2 flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
+                  <Icon className="size-4" />
+                </div>
+                <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <p className="text-sm leading-relaxed text-muted-foreground">
+                  {body}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── §04 Anatomy of an answer ─────────────────────────────────────── */
+
+const ANATOMY_CALLOUTS: Array<{ title: string; body: string }> = [
+  {
+    title: "Two-tier sidebar",
+    body: "Team wiki on top, per-repo code wikis below. Each connected GitHub repo gets its own deepwiki-style synthesis.",
+  },
+  {
+    title: "Synthesized prose, sourced",
+    body: "Every claim ends with a Sources line linking back to the raw markdown the model read.",
+  },
+  {
+    title: "Auto-generated diagrams",
+    body: "Mermaid blocks fall out of the synthesis when relationships in the corpus are structural enough to draw.",
+  },
+  {
+    title: "Honest indexing state",
+    body: "Last-indexed timestamp, source count, and a manual refresh button. No hidden caches.",
+  },
+];
+
+function AnatomySection() {
+  return (
+    <section>
+      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+        <FadeIn className="mx-auto mb-10 max-w-2xl text-center sm:mb-14">
+          <SectionLabel n="04">Anatomy of an answer</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            What the brain actually looks like.
+          </h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            Every retrieval lands on a synthesized wiki page with citations
+            back to raw sources. Here is a page from a running deployment.
+          </p>
+        </FadeIn>
+
+        <FadeIn as="figure" className="mx-auto max-w-5xl">
+          <div className="overflow-hidden rounded-xl border bg-card">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/wiki-preview.png"
+              alt="A Context101 wiki page showing synthesized prose with linked source citations, an auto-generated Mermaid diagram, a sidebar with team-wiki and per-repo code-wiki sections, and a refresh-status panel with last-indexed timestamp."
+              width={3024}
+              height={1720}
+              loading="lazy"
+              decoding="async"
+              className="block h-auto w-full"
+            />
+          </div>
+        </FadeIn>
+
+        <FadeIn delayMs={120}>
+          <ol className="mx-auto mt-10 grid max-w-5xl gap-6 text-sm sm:mt-12 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+            {ANATOMY_CALLOUTS.map(({ title, body }, i) => (
+              <li key={title} className="grid gap-2">
+                <span
+                  aria-hidden
+                  className="font-mono text-xs tabular-nums text-muted-foreground"
+                >
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <p className="font-medium text-foreground">{title}</p>
+                <p className="leading-relaxed text-muted-foreground">{body}</p>
+              </li>
+            ))}
+          </ol>
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
+/* ── §05 Architecture ─────────────────────────────────────────────── */
+
+const STACK_ROWS: Array<{ name: string; role: string }> = [
+  {
+    name: "S3",
+    role: "Markdown docs, versioned. The runtime source of truth.",
+  },
+  {
+    name: "Bedrock KB",
+    role: "Chunks, embeds, retrieves. Auto-ingests on every S3 PutObject.",
+  },
+  {
+    name: "S3 Vectors",
+    role: "Cosine top-K over 1024-dim chunk vectors. Cheapest store in AWS.",
+  },
+  {
+    name: "Titan embed v2",
+    role: "Default embedding model, native to Bedrock. Swappable later.",
+  },
+  {
+    name: "FastMCP",
+    role: "Python MCP server on App Runner. Bearer-token auth, stable TLS URL.",
+  },
+  {
+    name: "Opus 4.7",
+    role: "Reconciles raw corpus into a canonical wiki. Improve-with-AI button.",
+  },
+  {
+    name: "Next.js 16",
+    role: "Admin UI on Amplify Hosting. Cognito auth, CRUD over the same S3.",
+  },
+  {
+    name: "AWS CDK",
+    role: "Whole stack as one TypeScript file. One `cdk deploy` brings it up.",
+  },
+];
+
+function ArchitectureSection() {
+  return (
+    <section className="border-y bg-muted/30">
+      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+        <FadeIn className="mb-12 max-w-2xl sm:mb-16">
+          <SectionLabel n="05">Architecture</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            Boring managed primitives, wired up by CDK.
+          </h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            Nothing exotic. Each layer is one AWS primitive you can read about
+            in the docs, picked because it had the smallest footprint for the
+            job.
+          </p>
+        </FadeIn>
+
+        <div className="grid gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-10">
+          {/* Stack table */}
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <div className="border-b bg-muted/40 px-4 py-3 font-mono text-xs uppercase tracking-wider text-muted-foreground sm:px-5">
+              {"// The stack"}
+            </div>
+            <dl className="divide-y">
+              {STACK_ROWS.map(({ name, role }) => (
+                <div
+                  key={name}
+                  className="grid gap-1 px-4 py-3.5 sm:grid-cols-[9rem_1fr] sm:items-baseline sm:gap-5 sm:px-5"
+                >
+                  <dt className="font-mono text-sm font-medium text-card-foreground">
+                    {name}
+                  </dt>
+                  <dd className="text-sm leading-relaxed text-muted-foreground">
+                    {role}
+                  </dd>
+                </div>
+              ))}
+            </dl>
+          </div>
+
+          {/* Deploy block */}
+          <div className="rounded-xl border bg-card p-5 font-mono text-xs leading-relaxed text-card-foreground sm:p-6">
+            <div className="text-muted-foreground"># 1. clone + deploy</div>
+            <pre className="mt-1 whitespace-pre-wrap break-words">
+{`git clone ${REPO_URL}.git
+cd context101/cdk && npm install
+npx cdk deploy -c seed=true`}
+            </pre>
+
+            <div className="mt-5 text-muted-foreground">
+              # 2. point any MCP client
+            </div>
+            <pre className="mt-1 whitespace-pre-wrap break-words">
+{`"context101": {
+  "url": "https://<your-mcp>/mcp",
+  "headers": {
+    "Authorization": "Bearer <token>"
+  }
+}`}
+            </pre>
+
+            <p className="mt-6 text-muted-foreground">
+              Full setup, including OAuth for connectors and the Amplify
+              admin, in the README.
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setNewItem({ mode: "folder", parentPrefix: "" })}
-            className="hidden sm:inline-flex"
-          >
-            <FolderPlus className="mr-1 h-3.5 w-3.5" /> New folder
-          </Button>
-          <Button
-            variant="outline"
-            size="icon-sm"
-            onClick={() => setNewItem({ mode: "folder", parentPrefix: "" })}
-            className="sm:hidden"
-            aria-label="New folder"
-          >
-            <FolderPlus className="h-3.5 w-3.5" />
-          </Button>
-          <Button
-            size="sm"
-            onClick={() => setNewItem({ mode: "file", parentPrefix: "" })}
-            className="hidden sm:inline-flex"
-          >
-            <FilePlus className="mr-1 h-3.5 w-3.5" /> New file
-          </Button>
-          <Button
-            size="icon-sm"
-            onClick={() => setNewItem({ mode: "file", parentPrefix: "" })}
-            className="sm:hidden"
-            aria-label="New file"
-          >
-            <FilePlus className="h-3.5 w-3.5" />
-          </Button>
-          <Link href="/wiki" className="hidden md:inline-flex">
-            <Button variant="ghost" size="sm">
-              <BookOpen className="mr-1 h-3.5 w-3.5" /> Wiki
-            </Button>
-          </Link>
-          <Link href="/suggestions" className="hidden md:inline-flex">
-            <Button variant="ghost" size="sm">
-              <Sparkles className="mr-1 h-3.5 w-3.5" /> Suggestions
-            </Button>
-          </Link>
-          <Link href="/sources" className="hidden md:inline-flex">
-            <Button variant="ghost" size="sm">
-              <Plug className="mr-1 h-3.5 w-3.5" /> Sources
-            </Button>
-          </Link>
-          <Link href="/about" className="hidden md:inline-flex">
-            <Button variant="ghost" size="sm">
-              <Info className="mr-1 h-3.5 w-3.5" /> About
-            </Button>
-          </Link>
-          <ThemeToggle />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              signOut().then(() => (window.location.href = "/login"))
-            }
-            className="hidden sm:inline-flex"
-          >
-            Sign out
-          </Button>
-        </div>
-      </header>
-
-      <div className="flex flex-1 min-h-0">
-        <aside className="hidden md:block w-72 border-r overflow-y-auto p-2 shrink-0">
-          {tree}
-        </aside>
-        <section className="flex-1 min-w-0">
-          <KnowledgeViewer
-            fileKey={selected}
-            onDeleted={() => {
-              setSelected(null);
-              refresh();
-            }}
-          />
-        </section>
       </div>
+    </section>
+  );
+}
 
-      {newItem && (
-        <NewItemDialog
-          open={!!newItem}
-          mode={newItem.mode}
-          parentPrefix={newItem.parentPrefix}
-          onOpenChange={(o) => !o && setNewItem(null)}
-          onCreated={refresh}
-        />
-      )}
+/* ── §06 Scope ────────────────────────────────────────────────────── */
 
-      {rename && (
-        <RenameDialog
-          open={!!rename}
-          currentKey={rename.key}
-          isFolder={rename.isFolder}
-          onOpenChange={(o) => !o && setRename(null)}
-          onRenamed={(newKey) => {
-            if (selected === rename.key) setSelected(newKey);
-            refresh();
-          }}
-        />
-      )}
-    </main>
+const NOT_INCLUDED: Array<{ tag: string; title: string; body: React.ReactNode }> = [
+  {
+    tag: "AUTH",
+    title: "No SSO, no SCIM, no per-doc ACLs.",
+    body: "Cognito for the web admin, a shared bearer token for the MCP. Roadmap item, not done.",
+  },
+  {
+    tag: "HOSTING",
+    title: "Not a turn-key SaaS.",
+    body: "You deploy it. The upside is your data never leaves your AWS account; the cost is half an afternoon of engineer setup the first time.",
+  },
+  {
+    tag: "MODELS",
+    title: "Embedding quality is solid, not bleeding-edge.",
+    body: "Titan v2 (1024-dim) is the default because it's native to Bedrock. Swappable when retrieval quality becomes the bottleneck.",
+  },
+  {
+    tag: "TIMELINE",
+    title: "PoC, not 1.0.",
+    body: (
+      <>
+        The architecture is working end-to-end and in daily use, but we&apos;re
+        currently leveling it up: multi-org, multi-brain, per-user JWT on the
+        MCP. Track the README and{" "}
+        <Link
+          href="/about"
+          className="text-foreground underline-offset-4 hover:underline"
+        >
+          About
+        </Link>{" "}
+        page for status.
+      </>
+    ),
+  },
+];
+
+function ScopeSection() {
+  return (
+    <section>
+      <div className="mx-auto w-full max-w-3xl px-4 py-20 sm:px-6 sm:py-24">
+        <FadeIn className="mb-10">
+          <SectionLabel n="06">Scope</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            What&apos;s not in the box.
+          </h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            The things we&apos;d rather you read here than be surprised by
+            later.
+          </p>
+        </FadeIn>
+
+        <div className="overflow-hidden rounded-xl border bg-card">
+          <div className="border-b bg-muted/40 px-4 py-3 font-mono text-xs uppercase tracking-wider text-muted-foreground sm:px-5">
+            {"// Not included"}
+          </div>
+          <ul className="divide-y">
+            {NOT_INCLUDED.map(({ tag, title, body }) => (
+              <li
+                key={tag}
+                className="grid gap-2 px-4 py-4 sm:grid-cols-[5.5rem_1fr] sm:gap-5 sm:px-5 sm:py-5"
+              >
+                <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground sm:pt-1">
+                  {tag}
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-card-foreground">
+                    {title}
+                  </p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    {body}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── §07 Get started (final) ──────────────────────────────────────── */
+
+function FinalCTA() {
+  return (
+    <section className="border-y bg-muted/30">
+      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
+        <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-end lg:gap-16">
+          <FadeIn>
+            <SectionLabel n="07">Get started</SectionLabel>
+            <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+              Five minutes from clone to first search.
+            </h2>
+            <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+              Prereqs: an AWS account, Node 20+, Docker, and Bedrock model
+              access enabled for Titan and Claude Opus 4.7 in{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
+                us-east-1
+              </code>
+              .
+            </p>
+            <div className="mt-7 flex flex-wrap items-center gap-3">
+              <Link href={REPO_URL} target="_blank" rel="noreferrer">
+                <Button size="lg">
+                  <Star className="mr-1.5 h-4 w-4" />
+                  View on GitHub
+                </Button>
+              </Link>
+              <Link href={REPO_URL} target="_blank" rel="noreferrer">
+                <Button size="lg" variant="outline">
+                  Full walkthrough
+                  <ExternalLink className="ml-1 h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </FadeIn>
+
+          <div className="rounded-xl border bg-card p-5 font-mono text-xs leading-relaxed text-card-foreground sm:p-6">
+            <div className="text-muted-foreground"># clone</div>
+            <pre className="mt-1 whitespace-pre-wrap break-words">
+{`git clone ${REPO_URL}.git
+cd context101`}
+            </pre>
+            <div className="mt-5 text-muted-foreground"># deploy</div>
+            <pre className="mt-1 whitespace-pre-wrap break-words">
+{`cd cdk && npm install
+npx cdk deploy -c seed=true`}
+            </pre>
+            <p className="mt-6 text-muted-foreground">
+              Auto-ingest indexes the seed in ~1 min. After that,{" "}
+              <code className="font-mono">search_knowledge</code> is live for
+              every MCP client you point at it.
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ── Footer ───────────────────────────────────────────────────────── */
+
+function SiteFooter() {
+  return (
+    <footer className="border-t">
+      <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-xs text-muted-foreground sm:flex-row sm:px-6">
+        <div className="flex items-center gap-2">
+          <span className="inline-block size-1.5 rounded-full bg-primary" />
+          <span className="font-medium text-foreground">Context101</span>
+          <span>· Open source</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <Link href="/about" className="hover:text-foreground">
+            About
+          </Link>
+          <Link
+            href={REPO_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="hover:text-foreground"
+          >
+            GitHub
+          </Link>
+          <Link href="/login?next=/knowledge" className="hover:text-foreground">
+            Sign in
+          </Link>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+/* ── Section label (shared) ───────────────────────────────────────── */
+
+function SectionLabel({
+  n,
+  children,
+}: {
+  n: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+      <span aria-hidden>§{n}</span>{" "}
+      <span className="sr-only">Section {n}.</span>
+      {children}
+    </p>
   );
 }

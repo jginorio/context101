@@ -11,7 +11,10 @@ function Redirector() {
   const { authStatus } = useAuthenticator((ctx) => [ctx.authStatus]);
   const router = useRouter();
   const search = useSearchParams();
-  const next = search.get("next") || "/";
+  // Default to /knowledge (the authenticated admin home), not / —
+  // / is the public marketing landing and would land a freshly-logged-in
+  // user away from the app they just signed in to use.
+  const next = search.get("next") || "/knowledge";
 
   React.useEffect(() => {
     if (authStatus === "authenticated") {

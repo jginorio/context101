@@ -126,7 +126,7 @@ export default function SuggestionsPage() {
     <main className="flex min-h-screen flex-col">
       <header className="border-b px-3 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <Link href="/">
+          <Link href="/knowledge">
             <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
               <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back
             </Button>

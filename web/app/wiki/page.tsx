@@ -505,7 +505,7 @@ export default function WikiPage() {
               </div>
             </SheetContent>
           </Sheet>
-          <Link href="/">
+          <Link href="/knowledge">
             <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
               <ChevronLeft className="mr-1 h-3.5 w-3.5" /> Back
             </Button>
@@ -528,7 +528,7 @@ export default function WikiPage() {
             variant="outline"
             size="sm"
             onClick={() =>
-              signOut().then(() => (window.location.href = "/login"))
+              signOut().then(() => (window.location.href = "/login?next=/knowledge"))
             }
             className="hidden sm:inline-flex"
           >
