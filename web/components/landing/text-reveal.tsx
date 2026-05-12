@@ -6,8 +6,11 @@ import { cn } from "@/lib/utils";
 
 /**
  * Scroll-triggered text reveal. Splits the children string into words and
- * fades them in one at a time as the block enters the viewport. Use sparingly
- * — one or two moments per page, not every heading.
+ * fades them in one at a time as the block enters the viewport. Use sparingly:
+ * one or two moments per page, not every heading.
+ *
+ * Accessibility: when `prefers-reduced-motion: reduce` is set, the animation
+ * is skipped and the text renders as plain content.
  */
 export function TextReveal({
   children,
@@ -24,8 +27,19 @@ export function TextReveal({
 }) {
   const ref = React.useRef<HTMLElement | null>(null);
   const [visible, setVisible] = React.useState(false);
+  const [reduceMotion, setReduceMotion] = React.useState(false);
 
   React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduceMotion(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  React.useEffect(() => {
+    if (reduceMotion) return;
     const el = ref.current;
     if (!el) return;
     const obs = new IntersectionObserver(
@@ -39,7 +53,11 @@ export function TextReveal({
     );
     obs.observe(el);
     return () => obs.disconnect();
-  }, [threshold]);
+  }, [threshold, reduceMotion]);
+
+  if (reduceMotion) {
+    return <Tag className={cn(className)}>{children}</Tag>;
+  }
 
   const words = children.split(" ");
 
@@ -49,19 +67,20 @@ export function TextReveal({
       className={cn(className)}
     >
       {words.map((word, i) => (
-        <span
-          key={i}
-          className={cn(
-            "inline-block transition-all duration-700 ease-out will-change-[opacity,transform]",
-            visible
-              ? "translate-y-0 opacity-100"
-              : "translate-y-2 opacity-0"
-          )}
-          style={{ transitionDelay: visible ? `${i * delayStepMs}ms` : "0ms" }}
-        >
-          {word}
-          {i < words.length - 1 && " "}
-        </span>
+        <React.Fragment key={i}>
+          <span
+            className={cn(
+              "inline-block transition-all duration-700 ease-out will-change-[opacity,transform]",
+              visible
+                ? "translate-y-0 opacity-100"
+                : "translate-y-2 opacity-0"
+            )}
+            style={{ transitionDelay: visible ? `${i * delayStepMs}ms` : "0ms" }}
+          >
+            {word}
+          </span>
+          {i < words.length - 1 && " "}
+        </React.Fragment>
       ))}
     </Tag>
   );

@@ -17,14 +17,18 @@ import { cn } from "@/lib/utils";
 /**
  * The "many tools, one brain, your cloud" diagram.
  *
- * Layout: 5 tool nodes on the left → Context101 hub in the middle →
- * 2 backend nodes on the right. The SVG layer underneath draws cubic
- * Bezier paths between them and animates a dashed gradient stroke
- * along each path with pure CSS (no framer-motion dependency).
+ * Two layouts share the same node data:
  *
- * Aspect ratio is fixed via the container, so the SVG viewBox and the
- * absolutely-positioned HTML nodes share a coordinate system and stay
- * aligned at every screen size.
+ *   sm and up: a horizontal schematic. 5 tools on the left, the
+ *   Context101 hub in the middle, 2 backends on the right; cubic
+ *   Bezier beams travel between them with an animated dashed stroke.
+ *
+ *   below sm: a vertical schematic. Full-width chips stack top to
+ *   bottom, separated by short vertical beams. Chosen because chip
+ *   labels do not fit at 20% of a phone-width viewport.
+ *
+ * Both layouts share the beam-flow animation; only the dash geometry
+ * differs to suit horizontal vs vertical paths.
  */
 
 type Side = "left" | "right";
@@ -33,7 +37,7 @@ type Node = {
   id: string;
   label: string;
   Icon: React.ComponentType<{ className?: string }>;
-  /** percent positions inside the container */
+  /** percent positions inside the horizontal container */
   x: number;
   y: number;
   side: Side;
@@ -84,6 +88,20 @@ function bezier(
 }
 
 export function ConnectionDiagram({ className }: { className?: string }) {
+  return (
+    <>
+      <ConnectionDiagramVertical className={cn("sm:hidden", className)} />
+      <ConnectionDiagramHorizontal
+        className={cn("hidden sm:block", className)}
+      />
+      <BeamStyles />
+    </>
+  );
+}
+
+/* ── Horizontal (sm and up) ───────────────────────────────────────── */
+
+function ConnectionDiagramHorizontal({ className }: { className?: string }) {
   const leftPaths = React.useMemo(
     () =>
       LEFT_NODES.map((n) => bezier(rightEdgeOf(n), hubAnchor("left"))),
@@ -104,7 +122,6 @@ export function ConnectionDiagram({ className }: { className?: string }) {
         className
       )}
     >
-      {/* Beams */}
       <svg
         viewBox={`0 0 ${VIEW_W} ${VIEW_H}`}
         preserveAspectRatio="none"
@@ -132,7 +149,7 @@ export function ConnectionDiagram({ className }: { className?: string }) {
           />
         ))}
 
-        {/* Animated dash overlay — a short dash travels the otherwise-invisible stroke. */}
+        {/* Animated dash overlay: a short dash travels the otherwise-invisible stroke. */}
         {[...leftPaths, ...rightPaths].map((d, i) => (
           <path
             key={`beam-${i}`}
@@ -141,28 +158,20 @@ export function ConnectionDiagram({ className }: { className?: string }) {
             stroke="currentColor"
             strokeWidth={2}
             strokeLinecap="round"
-            className="text-primary [animation:beam-flow_3.2s_linear_infinite] [stroke-dasharray:8_180]"
+            className="ctx-beam-flow text-primary [stroke-dasharray:8_180]"
             style={{ animationDelay: `${(i % 5) * 0.4}s` }}
           />
         ))}
       </svg>
 
-      {/* Inline keyframes so we don't depend on a global stylesheet edit. */}
-      <style>{`
-        @keyframes beam-flow {
-          0%   { stroke-dashoffset: 188; }
-          100% { stroke-dashoffset: 0;   }
-        }
-      `}</style>
-
-      {/* Left column — tools */}
+      {/* Left column: tools */}
       {LEFT_NODES.map((n) => (
-        <NodeChip key={n.id} node={n} align="left" />
+        <NodeChipAbsolute key={n.id} node={n} align="left" />
       ))}
 
-      {/* Right column — backends */}
+      {/* Right column: backends */}
       {RIGHT_NODES.map((n) => (
-        <NodeChip key={n.id} node={n} align="right" />
+        <NodeChipAbsolute key={n.id} node={n} align="right" />
       ))}
 
       {/* Center hub */}
@@ -187,7 +196,7 @@ export function ConnectionDiagram({ className }: { className?: string }) {
   );
 }
 
-function NodeChip({
+function NodeChipAbsolute({
   node,
   align,
 }: {
@@ -209,5 +218,104 @@ function NodeChip({
         {label}
       </span>
     </div>
+  );
+}
+
+/* ── Vertical (below sm) ──────────────────────────────────────────── */
+
+function ConnectionDiagramVertical({ className }: { className?: string }) {
+  return (
+    <div className={cn("flex flex-col items-stretch gap-5", className)}>
+      <NodeColumn nodes={LEFT_NODES} />
+      <VerticalBeam />
+      <Hub />
+      <VerticalBeam />
+      <NodeColumn nodes={RIGHT_NODES} />
+    </div>
+  );
+}
+
+function NodeColumn({ nodes }: { nodes: Node[] }) {
+  return (
+    <ul className="flex flex-col gap-2">
+      {nodes.map((n) => {
+        const { Icon, label } = n;
+        return (
+          <li
+            key={n.id}
+            className="flex items-center gap-2.5 rounded-lg border bg-background/80 px-3 py-2 text-sm shadow-sm"
+          >
+            <Icon className="size-4 shrink-0 text-muted-foreground" />
+            <span className="truncate">{label}</span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function Hub() {
+  return (
+    <div className="mx-auto flex w-full max-w-[16rem] flex-col items-center justify-center rounded-2xl border bg-card px-4 py-4 text-card-foreground shadow-sm ring-1 ring-primary/20">
+      <div className="flex items-center gap-2">
+        <Brain className="size-5 text-primary" />
+        <span className="font-semibold text-sm">Context101</span>
+      </div>
+      <span className="mt-1 text-[10px] text-muted-foreground font-mono">
+        MCP · Bedrock KB
+      </span>
+    </div>
+  );
+}
+
+function VerticalBeam() {
+  return (
+    <svg
+      width="2"
+      height="36"
+      viewBox="0 0 2 36"
+      className="mx-auto block"
+      aria-hidden
+    >
+      <path
+        d="M 1 0 L 1 36"
+        stroke="currentColor"
+        strokeOpacity={0.12}
+        strokeWidth={1.5}
+        fill="none"
+        className="text-foreground"
+      />
+      <path
+        d="M 1 0 L 1 36"
+        stroke="currentColor"
+        strokeWidth={2}
+        strokeLinecap="round"
+        fill="none"
+        className="ctx-beam-flow-vertical text-primary [stroke-dasharray:4_28]"
+      />
+    </svg>
+  );
+}
+
+/* ── Shared inline styles ─────────────────────────────────────────── */
+
+function BeamStyles() {
+  return (
+    <style>{`
+      @keyframes ctx-beam-flow-horizontal {
+        0%   { stroke-dashoffset: 188; }
+        100% { stroke-dashoffset: 0;   }
+      }
+      @keyframes ctx-beam-flow-vertical {
+        0%   { stroke-dashoffset: 32; }
+        100% { stroke-dashoffset: 0;  }
+      }
+      .ctx-beam-flow { animation: ctx-beam-flow-horizontal 3.2s linear infinite; }
+      .ctx-beam-flow-vertical { animation: ctx-beam-flow-vertical 2.2s linear infinite; }
+      @media (prefers-reduced-motion: reduce) {
+        .ctx-beam-flow,
+        .ctx-beam-flow-vertical { animation: none; }
+      }
+    `}</style>
   );
 }

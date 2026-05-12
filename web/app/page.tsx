@@ -2,12 +2,10 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
-  BookOpen,
   Cloud,
   ExternalLink,
   Layers,
   Plug,
-  Server,
   ShieldCheck,
   Star,
 } from "lucide-react";
@@ -19,14 +17,14 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ConnectionDiagram } from "@/components/landing/connection-diagram";
+import { FadeIn } from "@/components/landing/fade-in";
 import { TextReveal } from "@/components/landing/text-reveal";
 import { TypingRotate } from "@/components/landing/typing-rotate";
 
 export const metadata: Metadata = {
-  title: "Context101 — one brain, every AI tool",
+  title: "Context101: one brain, every AI tool",
   description:
     "A self-hosted, MCP-native knowledge base. Write team knowledge once; Cursor, Claude Code, Claude Desktop, Devin, and any MCP-compatible agent retrieve from it.",
 };
@@ -41,9 +39,9 @@ export default function LandingPage() {
       <ProblemSection />
       <DiagramSection />
       <FeaturesSection />
+      <AnatomySection />
       <ArchitectureSection />
       <ScopeSection />
-      <QuickstartSection />
       <FinalCTA />
       <SiteFooter />
     </main>
@@ -95,7 +93,7 @@ function SiteHeader() {
 function Hero() {
   return (
     <section className="relative overflow-hidden">
-      {/* Subtle background grid + radial glow — pure CSS, no deps. */}
+      {/* Subtle background grid + radial glow. Pure CSS, no deps. */}
       <div
         aria-hidden
         className="absolute inset-0 -z-10 [background-image:linear-gradient(to_right,oklch(var(--foreground)/.04)_1px,transparent_1px),linear-gradient(to_bottom,oklch(var(--foreground)/.04)_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]"
@@ -107,15 +105,14 @@ function Hero() {
             Open source · MCP-native · Self-hosted on AWS
           </div>
 
-          <h1 className="text-4xl font-semibold tracking-tight sm:text-6xl">
+          <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
             One brain. Every AI tool.
           </h1>
 
           <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
-            Context101 is a self-hosted knowledge base your team writes into{" "}
-            once. Cursor, Claude Code, Claude Desktop, Devin, and any
-            MCP-compatible agent retrieves from it — no per-tool integrations,
-            no copy-pasted context.
+            A self-hosted knowledge base your team writes into once. Every
+            MCP-compatible agent retrieves from the same brain. No per-tool
+            integrations, no copy-pasted context.
           </p>
 
           <div className="mx-auto mt-7 flex max-w-md flex-col items-center justify-center gap-2 text-sm text-muted-foreground sm:flex-row sm:gap-3">
@@ -152,15 +149,16 @@ function Hero() {
   );
 }
 
-/* ── Problem ──────────────────────────────────────────────────────── */
+/* ── §01 The problem ──────────────────────────────────────────────── */
 
 function ProblemSection() {
   return (
     <section className="border-y bg-muted/30">
       <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
+        <SectionLabel n="01">The problem</SectionLabel>
         <TextReveal
           as="h2"
-          className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl"
+          className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl"
         >
           Knowledge gets stuck in chat sessions.
         </TextReveal>
@@ -179,28 +177,29 @@ function ProblemSection() {
   );
 }
 
-/* ── Diagram ──────────────────────────────────────────────────────── */
+/* ── §02 The protocol (diagram) ───────────────────────────────────── */
 
 function DiagramSection() {
   return (
     <section>
       <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-        <div className="mx-auto mb-12 max-w-2xl text-center sm:mb-16">
-          <h2 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+        <FadeIn className="mb-12 max-w-2xl sm:mb-16">
+          <SectionLabel n="02">The protocol</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
             Write once. Retrieve from everywhere.
           </h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">
             MCP is the open protocol Anthropic defined for exactly this. Any
             MCP-compatible client plugs into the same brain with zero custom
-            work — no SDK lock-in, no per-tool wiring.
+            work. No SDK lock-in, no per-tool wiring.
           </p>
-        </div>
+        </FadeIn>
 
         <div className="mx-auto max-w-5xl">
           <ConnectionDiagram />
         </div>
 
-        <p className="mx-auto mt-10 max-w-xl text-center text-sm text-muted-foreground">
+        <p className="mt-10 max-w-xl text-sm text-muted-foreground">
           One source of truth. Many consumers. The brain lives in your AWS
           account, not someone else&apos;s SaaS.
         </p>
@@ -209,7 +208,7 @@ function DiagramSection() {
   );
 }
 
-/* ── Features ─────────────────────────────────────────────────────── */
+/* ── §03 Design decisions ─────────────────────────────────────────── */
 
 const FEATURES = [
   {
@@ -220,12 +219,12 @@ const FEATURES = [
   {
     Icon: ShieldCheck,
     title: "Agents propose. Humans approve.",
-    body: "Agents can suggest new knowledge as they work via the MCP. Proposals land in a review queue — nothing reaches the brain until you accept it in the UI.",
+    body: "Agents can suggest new knowledge as they work via MCP. Proposals land in a review queue; nothing reaches the brain until you accept it in the UI.",
   },
   {
     Icon: Cloud,
     title: "Your AWS account. No per-seat pricing.",
-    body: "Runs on managed AWS primitives at ~$5–15/mo at PoC scale. Cost scales with content, not headcount. Data never leaves your perimeter.",
+    body: "Runs on managed AWS primitives at ~$5-15/mo at PoC scale. Cost scales with content, not headcount. Data never leaves your perimeter.",
   },
   {
     Icon: Plug,
@@ -238,15 +237,16 @@ function FeaturesSection() {
   return (
     <section className="border-y bg-muted/30">
       <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-        <div className="mx-auto mb-12 max-w-2xl text-center">
-          <h2 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+        <FadeIn className="mx-auto mb-12 max-w-2xl text-center">
+          <SectionLabel n="03">Design decisions</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
             What you actually get
           </h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-            Four design choices that make Context101 distinct from a vanilla
-            RAG server.
+            Four choices that make Context101 distinct from a vanilla RAG
+            server.
           </p>
-        </div>
+        </FadeIn>
 
         <div className="grid gap-4 sm:grid-cols-2">
           {FEATURES.map(({ Icon, title, body }) => (
@@ -270,56 +270,155 @@ function FeaturesSection() {
   );
 }
 
-/* ── Architecture ─────────────────────────────────────────────────── */
+/* ── §04 Anatomy of an answer ─────────────────────────────────────── */
 
-const STACK = [
-  "Bedrock Knowledge Bases",
-  "S3 Vectors",
-  "Titan embed v2",
-  "FastMCP (Python)",
-  "App Runner",
-  "AWS CDK",
-  "Next.js 16",
-  "Amplify Hosting",
+const ANATOMY_CALLOUTS: Array<{ title: string; body: string }> = [
+  {
+    title: "Two-tier sidebar",
+    body: "Team wiki on top, per-repo code wikis below. Each connected GitHub repo gets its own deepwiki-style synthesis.",
+  },
+  {
+    title: "Synthesized prose, sourced",
+    body: "Every claim ends with a Sources line linking back to the raw markdown the model read.",
+  },
+  {
+    title: "Auto-generated diagrams",
+    body: "Mermaid blocks fall out of the synthesis when relationships in the corpus are structural enough to draw.",
+  },
+  {
+    title: "Honest indexing state",
+    body: "Last-indexed timestamp, source count, and a manual refresh button. No hidden caches.",
+  },
+];
+
+function AnatomySection() {
+  return (
+    <section>
+      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+        <FadeIn className="mx-auto mb-10 max-w-2xl text-center sm:mb-14">
+          <SectionLabel n="04">Anatomy of an answer</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            What the brain actually looks like.
+          </h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            Every retrieval lands on a synthesized wiki page with citations
+            back to raw sources. Here is a page from a running deployment.
+          </p>
+        </FadeIn>
+
+        <FadeIn as="figure" className="mx-auto max-w-5xl">
+          <div className="overflow-hidden rounded-xl border bg-card">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/wiki-preview.png"
+              alt="A Context101 wiki page showing synthesized prose with linked source citations, an auto-generated Mermaid diagram, a sidebar with team-wiki and per-repo code-wiki sections, and a refresh-status panel with last-indexed timestamp."
+              width={3024}
+              height={1720}
+              loading="lazy"
+              decoding="async"
+              className="block h-auto w-full"
+            />
+          </div>
+        </FadeIn>
+
+        <FadeIn delayMs={120}>
+          <ol className="mx-auto mt-10 grid max-w-5xl gap-6 text-sm sm:mt-12 sm:grid-cols-2 lg:grid-cols-4 lg:gap-8">
+            {ANATOMY_CALLOUTS.map(({ title, body }, i) => (
+              <li key={title} className="grid gap-2">
+                <span
+                  aria-hidden
+                  className="font-mono text-xs tabular-nums text-muted-foreground"
+                >
+                  {String(i + 1).padStart(2, "0")}
+                </span>
+                <p className="font-medium text-foreground">{title}</p>
+                <p className="leading-relaxed text-muted-foreground">{body}</p>
+              </li>
+            ))}
+          </ol>
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
+/* ── §05 Architecture ─────────────────────────────────────────────── */
+
+const STACK_ROWS: Array<{ name: string; role: string }> = [
+  {
+    name: "S3",
+    role: "Markdown docs, versioned. The runtime source of truth.",
+  },
+  {
+    name: "Bedrock KB",
+    role: "Chunks, embeds, retrieves. Auto-ingests on every S3 PutObject.",
+  },
+  {
+    name: "S3 Vectors",
+    role: "Cosine top-K over 1024-dim chunk vectors. Cheapest store in AWS.",
+  },
+  {
+    name: "Titan embed v2",
+    role: "Default embedding model, native to Bedrock. Swappable later.",
+  },
+  {
+    name: "FastMCP",
+    role: "Python MCP server on App Runner. Bearer-token auth, stable TLS URL.",
+  },
+  {
+    name: "Opus 4.7",
+    role: "Reconciles raw corpus into a canonical wiki. Improve-with-AI button.",
+  },
+  {
+    name: "Next.js 16",
+    role: "Admin UI on Amplify Hosting. Cognito auth, CRUD over the same S3.",
+  },
+  {
+    name: "AWS CDK",
+    role: "Whole stack as one TypeScript file. One `cdk deploy` brings it up.",
+  },
 ];
 
 function ArchitectureSection() {
   return (
-    <section>
+    <section className="border-y bg-muted/30">
       <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-        <div className="grid gap-10 lg:grid-cols-2 lg:items-center">
-          <div>
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border bg-background/60 px-3 py-1 text-xs text-muted-foreground">
-              <Server className="size-3" />
-              For engineers
-            </div>
-            <h2 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-              Boring managed primitives, wired up by CDK.
-            </h2>
-            <p className="mt-5 text-base leading-relaxed text-muted-foreground">
-              S3 holds the markdown. Bedrock Knowledge Bases handles
-              chunking, embedding, and retrieval against S3 Vectors. A
-              FastMCP container on App Runner is the agent-facing surface.
-              A Next.js admin on Amplify is the human-facing one. Every
-              piece is in a single TypeScript CDK stack — one{" "}
-              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
-                cdk deploy
-              </code>{" "}
-              brings everything up.
-            </p>
+        <FadeIn className="mb-12 max-w-2xl sm:mb-16">
+          <SectionLabel n="05">Architecture</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            Boring managed primitives, wired up by CDK.
+          </h2>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            Nothing exotic. Each layer is one AWS primitive you can read about
+            in the docs, picked because it had the smallest footprint for the
+            job.
+          </p>
+        </FadeIn>
 
-            <div className="mt-6 flex flex-wrap gap-2">
-              {STACK.map((s) => (
-                <span
-                  key={s}
-                  className="rounded-md border bg-background px-2 py-1 font-mono text-[0.7rem] text-muted-foreground"
-                >
-                  {s}
-                </span>
-              ))}
+        <div className="grid gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-10">
+          {/* Stack table */}
+          <div className="overflow-hidden rounded-xl border bg-card">
+            <div className="border-b bg-muted/40 px-4 py-3 font-mono text-xs uppercase tracking-wider text-muted-foreground sm:px-5">
+              {"// The stack"}
             </div>
+            <dl className="divide-y">
+              {STACK_ROWS.map(({ name, role }) => (
+                <div
+                  key={name}
+                  className="grid gap-1 px-4 py-3.5 sm:grid-cols-[9rem_1fr] sm:items-baseline sm:gap-5 sm:px-5"
+                >
+                  <dt className="font-mono text-sm font-medium text-card-foreground">
+                    {name}
+                  </dt>
+                  <dd className="text-sm leading-relaxed text-muted-foreground">
+                    {role}
+                  </dd>
+                </div>
+              ))}
+            </dl>
           </div>
 
+          {/* Deploy block */}
           <div className="rounded-xl border bg-card p-5 font-mono text-xs leading-relaxed text-card-foreground sm:p-6">
             <div className="text-muted-foreground"># 1. clone + deploy</div>
             <pre className="mt-1 whitespace-pre-wrap break-words">
@@ -328,7 +427,9 @@ cd context101/cdk && npm install
 npx cdk deploy -c seed=true`}
             </pre>
 
-            <div className="mt-5 text-muted-foreground"># 2. point any MCP client</div>
+            <div className="mt-5 text-muted-foreground">
+              # 2. point any MCP client
+            </div>
             <pre className="mt-1 whitespace-pre-wrap break-words">
 {`"context101": {
   "url": "https://<your-mcp>/mcp",
@@ -338,8 +439,7 @@ npx cdk deploy -c seed=true`}
 }`}
             </pre>
 
-            <Separator className="my-5" />
-            <p className="text-muted-foreground">
+            <p className="mt-6 text-muted-foreground">
               Full setup, including OAuth for connectors and the Amplify
               admin, in the README.
             </p>
@@ -350,120 +450,142 @@ npx cdk deploy -c seed=true`}
   );
 }
 
-/* ── Honest scope ─────────────────────────────────────────────────── */
+/* ── §06 Scope ────────────────────────────────────────────────────── */
+
+const NOT_INCLUDED: Array<{ tag: string; title: string; body: React.ReactNode }> = [
+  {
+    tag: "AUTH",
+    title: "No SSO, no SCIM, no per-doc ACLs.",
+    body: "Cognito for the web admin, a shared bearer token for the MCP. Roadmap item, not done.",
+  },
+  {
+    tag: "HOSTING",
+    title: "Not a turn-key SaaS.",
+    body: "You deploy it. The upside is your data never leaves your AWS account; the cost is half an afternoon of engineer setup the first time.",
+  },
+  {
+    tag: "MODELS",
+    title: "Embedding quality is solid, not bleeding-edge.",
+    body: "Titan v2 (1024-dim) is the default because it's native to Bedrock. Swappable when retrieval quality becomes the bottleneck.",
+  },
+  {
+    tag: "TIMELINE",
+    title: "PoC, not 1.0.",
+    body: (
+      <>
+        The architecture is working end-to-end and in daily use, but we&apos;re
+        currently leveling it up: multi-org, multi-brain, per-user JWT on the
+        MCP. Track the README and{" "}
+        <Link
+          href="/about"
+          className="text-foreground underline-offset-4 hover:underline"
+        >
+          About
+        </Link>{" "}
+        page for status.
+      </>
+    ),
+  },
+];
 
 function ScopeSection() {
   return (
-    <section className="border-y bg-muted/30">
-      <div className="mx-auto w-full max-w-3xl px-4 py-20 sm:px-6 sm:py-24">
-        <h2 className="text-balance text-2xl font-semibold tracking-tight sm:text-3xl">
-          Honest about scope.
-        </h2>
-        <p className="mt-3 text-sm text-muted-foreground">
-          The things we&apos;d rather you read here than be surprised by
-          later.
-        </p>
-
-        <ul className="mt-7 space-y-5 text-sm leading-relaxed text-muted-foreground">
-          <li>
-            <span className="font-medium text-foreground">
-              Not enterprise yet.
-            </span>{" "}
-            No SSO, no SCIM, no fine-grained per-doc ACLs. Cognito for the web
-            admin, a shared bearer token for the MCP. Roadmap item, not done.
-          </li>
-          <li>
-            <span className="font-medium text-foreground">
-              Not a turn-key SaaS.
-            </span>{" "}
-            You deploy it. The upside is that your data never leaves your AWS
-            account; the cost is that initial setup needs an engineer for an
-            afternoon.
-          </li>
-          <li>
-            <span className="font-medium text-foreground">
-              Embedding quality is solid, not bleeding-edge.
-            </span>{" "}
-            Titan v2 (1024-dim) is the default because it&apos;s native to
-            Bedrock — swappable when retrieval quality becomes the bottleneck.
-          </li>
-          <li>
-            <span className="font-medium text-foreground">
-              PoC, not 1.0.
-            </span>{" "}
-            The architecture is working end-to-end and in daily use, but
-            we&apos;re currently leveling it up — multi-org, multi-brain,
-            per-user JWT on the MCP. Track the README and{" "}
-            <Link href="/about" className="text-foreground underline-offset-4 hover:underline">
-              About
-            </Link>{" "}
-            page for status.
-          </li>
-        </ul>
-      </div>
-    </section>
-  );
-}
-
-/* ── Quick start ──────────────────────────────────────────────────── */
-
-function QuickstartSection() {
-  return (
     <section>
       <div className="mx-auto w-full max-w-3xl px-4 py-20 sm:px-6 sm:py-24">
-        <div className="text-center">
-          <BookOpen className="mx-auto mb-3 size-6 text-muted-foreground" />
-          <h2 className="text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-            Five minutes from clone to first search.
+        <FadeIn className="mb-10">
+          <SectionLabel n="06">Scope</SectionLabel>
+          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            What&apos;s not in the box.
           </h2>
-          <p className="mt-3 text-sm text-muted-foreground">
-            Prereqs: an AWS account, Node 20+, Docker, and Bedrock model
-            access enabled for Titan and Claude Opus 4.7 in{" "}
-            <code className="font-mono">us-east-1</code>.
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            The things we&apos;d rather you read here than be surprised by
+            later.
           </p>
-        </div>
+        </FadeIn>
 
-        <div className="mt-9 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
-          <Link href={REPO_URL} target="_blank" rel="noreferrer">
-            <Button size="lg">
-              <ExternalLink className="mr-1.5 h-4 w-4" />
-              Clone the repo
-            </Button>
-          </Link>
-          <Link href={REPO_URL} target="_blank" rel="noreferrer">
-            <Button size="lg" variant="outline">
-              Full walkthrough
-              <ExternalLink className="ml-1 h-4 w-4" />
-            </Button>
-          </Link>
+        <div className="overflow-hidden rounded-xl border bg-card">
+          <div className="border-b bg-muted/40 px-4 py-3 font-mono text-xs uppercase tracking-wider text-muted-foreground sm:px-5">
+            {"// Not included"}
+          </div>
+          <ul className="divide-y">
+            {NOT_INCLUDED.map(({ tag, title, body }) => (
+              <li
+                key={tag}
+                className="grid gap-2 px-4 py-4 sm:grid-cols-[5.5rem_1fr] sm:gap-5 sm:px-5 sm:py-5"
+              >
+                <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground sm:pt-1">
+                  {tag}
+                </span>
+                <div>
+                  <p className="text-sm font-medium text-card-foreground">
+                    {title}
+                  </p>
+                  <p className="mt-1.5 text-sm leading-relaxed text-muted-foreground">
+                    {body}
+                  </p>
+                </div>
+              </li>
+            ))}
+          </ul>
         </div>
       </div>
     </section>
   );
 }
 
-/* ── Final CTA ────────────────────────────────────────────────────── */
+/* ── §07 Get started (final) ──────────────────────────────────────── */
 
 function FinalCTA() {
   return (
-    <section className="border-t bg-foreground text-background">
-      <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-6 px-4 py-14 sm:flex-row sm:px-6">
-        <div>
-          <h3 className="text-xl font-semibold tracking-tight sm:text-2xl">
-            Stop pasting context into every AI.
-          </h3>
-          <p className="mt-2 max-w-xl text-sm text-background/70">
-            Build it once. Let every agent your team uses retrieve from the
-            same brain.
-          </p>
-        </div>
-        <div className="flex gap-2">
-          <Link href={REPO_URL} target="_blank" rel="noreferrer">
-            <Button size="lg" variant="secondary">
-              <Star className="mr-1.5 h-4 w-4" />
-              Get started
-            </Button>
-          </Link>
+    <section className="border-y bg-muted/30">
+      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
+        <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-end lg:gap-16">
+          <FadeIn>
+            <SectionLabel n="07">Get started</SectionLabel>
+            <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+              Five minutes from clone to first search.
+            </h2>
+            <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+              Prereqs: an AWS account, Node 20+, Docker, and Bedrock model
+              access enabled for Titan and Claude Opus 4.7 in{" "}
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
+                us-east-1
+              </code>
+              .
+            </p>
+            <div className="mt-7 flex flex-wrap items-center gap-3">
+              <Link href={REPO_URL} target="_blank" rel="noreferrer">
+                <Button size="lg">
+                  <Star className="mr-1.5 h-4 w-4" />
+                  View on GitHub
+                </Button>
+              </Link>
+              <Link href={REPO_URL} target="_blank" rel="noreferrer">
+                <Button size="lg" variant="outline">
+                  Full walkthrough
+                  <ExternalLink className="ml-1 h-4 w-4" />
+                </Button>
+              </Link>
+            </div>
+          </FadeIn>
+
+          <div className="rounded-xl border bg-card p-5 font-mono text-xs leading-relaxed text-card-foreground sm:p-6">
+            <div className="text-muted-foreground"># clone</div>
+            <pre className="mt-1 whitespace-pre-wrap break-words">
+{`git clone ${REPO_URL}.git
+cd context101`}
+            </pre>
+            <div className="mt-5 text-muted-foreground"># deploy</div>
+            <pre className="mt-1 whitespace-pre-wrap break-words">
+{`cd cdk && npm install
+npx cdk deploy -c seed=true`}
+            </pre>
+            <p className="mt-6 text-muted-foreground">
+              Auto-ingest indexes the seed in ~1 min. After that,{" "}
+              <code className="font-mono">search_knowledge</code> is live for
+              every MCP client you point at it.
+            </p>
+          </div>
         </div>
       </div>
     </section>
@@ -499,5 +621,23 @@ function SiteFooter() {
         </div>
       </div>
     </footer>
+  );
+}
+
+/* ── Section label (shared) ───────────────────────────────────────── */
+
+function SectionLabel({
+  n,
+  children,
+}: {
+  n: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <p className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+      <span aria-hidden>§{n}</span>{" "}
+      <span className="sr-only">Section {n}.</span>
+      {children}
+    </p>
   );
 }

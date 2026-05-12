@@ -6,9 +6,13 @@ import { cn } from "@/lib/utils";
 
 /**
  * Typing animation that cycles through a list of phrases. Each phrase is
- * typed in, held briefly, deleted, then the next phrase types in. Designed
- * to be drop-in for the hero — the surrounding text doesn't shift because
- * we reserve max-width via the longest phrase.
+ * typed in, held briefly, deleted, then the next phrase types in. The
+ * surrounding text doesn't shift because we reserve max-width via the
+ * longest phrase.
+ *
+ * Accessibility: when `prefers-reduced-motion: reduce` is set, the animation
+ * is suppressed and the first phrase renders as static text. A visually
+ * hidden span carries the full list to screen readers in every mode.
  */
 export function TypingRotate({
   phrases,
@@ -28,8 +32,19 @@ export function TypingRotate({
   const [phase, setPhase] = React.useState<"typing" | "holding" | "deleting">(
     "typing"
   );
+  const [reduceMotion, setReduceMotion] = React.useState(false);
 
   React.useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(prefers-reduced-motion: reduce)");
+    const update = () => setReduceMotion(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  React.useEffect(() => {
+    if (reduceMotion) return;
     const current = phrases[index];
     let timeout: ReturnType<typeof setTimeout>;
 
@@ -51,26 +66,50 @@ export function TypingRotate({
           deletingSpeedMs
         );
       } else {
-        setIndex((i) => (i + 1) % phrases.length);
-        setPhase("typing");
+        timeout = setTimeout(() => {
+          setIndex((i) => (i + 1) % phrases.length);
+          setPhase("typing");
+        }, 0);
       }
     }
 
     return () => clearTimeout(timeout);
-  }, [text, phase, index, phrases, typingSpeedMs, deletingSpeedMs, holdMs]);
+  }, [
+    text,
+    phase,
+    index,
+    phrases,
+    typingSpeedMs,
+    deletingSpeedMs,
+    holdMs,
+    reduceMotion,
+  ]);
 
-  // Longest phrase reserves width so the line below doesn't jitter.
   const longest = React.useMemo(
     () => phrases.reduce((a, b) => (a.length >= b.length ? a : b), ""),
     [phrases]
   );
 
+  // Screen-reader summary: phrases joined into one calm sentence,
+  // not announced on every keystroke.
+  const srSummary = phrases.join(" ");
+
+  if (reduceMotion) {
+    return (
+      <span className={cn("inline-flex font-mono", className)}>
+        <span className="sr-only">{srSummary}</span>
+        <span aria-hidden>{phrases[0]}</span>
+      </span>
+    );
+  }
+
   return (
     <span className={cn("relative inline-flex font-mono", className)}>
+      <span className="sr-only">{srSummary}</span>
       <span aria-hidden className="invisible">
         {longest}
       </span>
-      <span className="absolute inset-0">
+      <span aria-hidden className="absolute inset-0">
         {text}
         <span className="ml-0.5 inline-block h-[1em] w-[2px] -translate-y-[1px] animate-pulse bg-current align-middle" />
       </span>
