@@ -85,21 +85,31 @@ Before your first deploy, make sure you have:
 
 ## Setup
 
+> 🛡️ **Use the deploy wrapper.** All the `cdk deploy` examples below go through `./cdk/deploy.sh`, which refuses to run unless both gating tokens (`CTX_TOKEN`, `CTX_GH_TOKEN`) are set in a local env file. Skipping it once already cost the team a full stack rebuild — see [Why the wrapper exists](#why-the-wrapper-exists). One-time setup:
+>
+> ```bash
+> cp cdk/.deploy-env.example cdk/.deploy-env   # or ~/.context101/deploy-env
+> $EDITOR cdk/.deploy-env                       # paste your bearer token
+> chmod 600 cdk/.deploy-env
+> ```
+>
+> The GitHub PAT is auto-discovered from `gh auth token` if you have the GitHub CLI logged in.
+
 ### 1. First deploy (minimal — just KB + docs bucket)
 
 ```bash
 cd cdk
 npm install
-npx cdk deploy
+./deploy.sh
 ```
 
-This provisions the baseline infra — S3 docs bucket, Bedrock Knowledge Base, S3 Vectors, DynamoDB tables, all Lambdas. To also seed the docs bucket with the example markdown under `knowledge/` so a brand-new stack isn't empty, pass `-c seed=true`:
+This provisions the baseline infra — S3 docs bucket, Bedrock Knowledge Base, S3 Vectors, DynamoDB tables, all Lambdas. To also seed the docs bucket with the example markdown under `knowledge/` so a brand-new stack isn't empty, pass `--seed`:
 
 ```bash
-npx cdk deploy -c seed=true
+./deploy.sh --seed
 ```
 
-The seed flag is **off by default** so subsequent `cdk deploy` runs never clobber whatever your team has put in S3 via the web UI / connectors / approved suggestions. Once you're past first deploy, omit the flag — the bucket itself is retained and stays the source of truth. The auto-ingest Lambda kicks off a Bedrock ingestion job on every S3 write; wait ~1-3 min after a write before searching (watch the KB in the AWS console).
+The seed flag is **off by default** so subsequent deploys never clobber whatever your team has put in S3 via the web UI / connectors / approved suggestions. Once you're past first deploy, omit the flag — the bucket itself is retained and stays the source of truth. The auto-ingest Lambda kicks off a Bedrock ingestion job on every S3 write; wait ~1-3 min after a write before searching (watch the KB in the AWS console).
 
 > **Source of truth:** At runtime, the **S3 docs bucket** is the source of truth. Content is managed through the web admin UI, agent `suggest_knowledge` proposals (reviewed in the Suggestions tab), and data connectors. The local `knowledge/` folder is just an **optional bootstrap seed** that's only uploaded when you pass `-c seed=true`. Avoid editing files in the S3 console directly — use the web UI so writes go through the app's auth, approval, and audit surfaces.
 
@@ -110,39 +120,30 @@ The seed flag is **off by default** so subsequent `cdk deploy` runs never clobbe
 
 The web admin UI and App Runner MCP service are **gated on two CDK context flags** (they only deploy if you pass them). See the next two sections.
 
-### 2. Deploy the MCP service (App Runner)
+### 2. Deploy the MCP service + web admin UI
 
-Pass a shared bearer token — this is what MCP clients will use to authenticate:
-
-```bash
-npx cdk deploy -c token=<pick-any-long-random-string>
-```
-
-`McpUrl` appears in the outputs. Rotating the token later = re-deploy with a new `-c token=` and redistribute the new value to teammates' MCP client configs.
-
-### 3. Deploy the web admin UI (Amplify Hosting)
-
-Amplify needs a GitHub PAT with `repo` scope to clone your fork + subscribe to push events:
+Both come up together once `CTX_TOKEN` and `CTX_GH_TOKEN` are in your `.deploy-env` file (see the box above):
 
 ```bash
-# Using the GitHub CLI (recommended)
-GH_PAT=$(gh auth token)
-
-# …or paste one you generated at github.com/settings/tokens
-
-npx cdk deploy \
-  -c token=<your-bearer-token> \
-  -c githubToken="$GH_PAT"
+./deploy.sh
 ```
 
-`WebAppDefaultDomain` in the outputs is the URL to share with teammates (e.g. `https://main.abc123xyz.amplifyapp.com`). The first Amplify build takes ~4 min.
+`McpUrl` and `WebAppDefaultDomain` appear in the outputs. Rotating the bearer token = edit `.deploy-env` and re-run the wrapper; rotating the GitHub PAT = same thing, or `gh auth refresh` if you're using the gh-CLI fallback.
+
+`WebAppDefaultDomain` is the URL to share with teammates (e.g. `https://main.abc123xyz.amplifyapp.com`). The first Amplify build takes ~4 min.
+
+### Why the wrapper exists
+
+The stack's App Runner MCP service and the entire Amplify branch (web app + Cognito user pool + wiki-gen Fargate task) are wrapped in `if (teamToken) { ... }` / `if (githubToken) { ... }` blocks. A bare `cdk deploy` with neither flag tells CloudFormation those resources should no longer exist — so it deletes them. **This has happened once already.** Recovery took ~30 min plus a fresh Cognito user pool (= invite everyone again) and a new App Runner URL (= update every teammate's MCP client config).
+
+`./cdk/deploy.sh` refuses to call `cdk deploy / diff / destroy` without both tokens, sourced from `cdk/.deploy-env` (repo-local, gitignored) or `~/.context101/deploy-env` (user-global). It also falls back to `gh auth token` for the GitHub PAT so you can ignore that field if you have the gh CLI logged in.
 
 > ⚠️ **Amplify build timing gotcha:** if CDK added new Amplify env vars during *this* deploy, the build that was auto-triggered from the deploy doesn't see them — you need to kick one more build after the deploy finishes:
 > ```bash
 > aws amplify start-job --app-id <WebAppId> --branch-name main --job-type RELEASE
 > ```
 
-### 4. Create your first Cognito user
+### 3. Create your first Cognito user
 
 Cognito is provisioned by Amplify Gen 2 auth on the first web build. Self-signup is off — you invite yourself manually:
 
@@ -162,7 +163,7 @@ aws cognito-idp admin-create-user \
 
 Check your inbox for a temp password (from `no-reply@verificationemail.com`). First login at `WebAppDefaultDomain` forces a password reset.
 
-### 5. (Optional) Set up data-source connectors
+### 4. (Optional) Set up data-source connectors
 
 OAuth client creds live in Secrets Manager. See [Data source connectors](#data-source-connectors) for full per-provider setup. The short version:
 
@@ -182,7 +183,7 @@ aws secretsmanager create-secret \
 
 CDK references both secrets by *name*, not value — so rotating the creds doesn't require a redeploy. If a secret doesn't exist yet, that connector's "Add new source" flow returns a clear 500 until it does.
 
-### 6a. Run locally for dev
+### 5a. Run locally for dev
 
 Without a bearer token — no auth, anyone on your machine can hit it:
 
@@ -197,7 +198,7 @@ export DOCS_BUCKET=<DocsBucketName>
 fastmcp run server.py:mcp --transport streamable-http --port 8787
 ```
 
-### 6b. Use the deployed App Runner service (team)
+### 5b. Use the deployed App Runner service (team)
 
 Once deployed with `-c token=<value>`, teammates point their MCP client at `McpUrl` and add the `Authorization: Bearer <token>` header.
 
@@ -301,7 +302,7 @@ aws cognito-idp admin-delete-user \
 
 ### Separate from the MCP bearer token
 
-Note: the Cognito accounts control access to the **web admin UI**. The **MCP endpoint** uses a separate shared bearer token (set at `cdk deploy -c token=...`). Rotating one doesn't affect the other. To rotate the MCP token: re-deploy with a new `-c token=...` value and redistribute to teammates' MCP client configs.
+Note: the Cognito accounts control access to the **web admin UI**. The **MCP endpoint** uses a separate shared bearer token (`CTX_TOKEN` in `cdk/.deploy-env`). Rotating one doesn't affect the other. To rotate the MCP token: edit `.deploy-env`, re-run `./cdk/deploy.sh`, and redistribute the new value to teammates' MCP client configs.
 
 ## Daily Workflow
 
@@ -876,7 +877,7 @@ knowledge/databases.md                   (local markdown)
 
 ```bash
 cd cdk
-npx cdk destroy
+./deploy.sh destroy
 ```
 
 The S3 docs bucket and S3 Vectors bucket have `RETAIN` policies — you won't lose data. Empty them manually if you want them gone.
@@ -894,7 +895,7 @@ The S3 docs bucket and S3 Vectors bucket have `RETAIN` policies — you won't lo
 - `removalPolicy: RETAIN` on docs and vector buckets — accidental `cdk destroy` won't wipe your data.
 - The MCP server doesn't write to the KB directly — agents propose via `suggest_knowledge`, which lands in the review queue (see [Knowledge suggestions](#knowledge-suggestions-web-app)). Content flows into S3 through the web UI, approved suggestions, or the Google Workspace connectors.
 - Each S3 upload triggers a full ingestion job. Bedrock handles dedup/delta indexing internally.
-- To rotate the bearer token: re-run `cdk deploy -c token=<new-value>`. Redeploys the App Runner service with the new secret.
+- To rotate the bearer token: edit `CTX_TOKEN` in `cdk/.deploy-env` (or `~/.context101/deploy-env`) and re-run `./cdk/deploy.sh`. Redeploys the App Runner service with the new secret.
 - The wiki generator writes one file per page on each run, so a full regen kicks N ingestion jobs in rapid succession. Bedrock dedups internally — it's safe, just noisy in the console.
 
 ## Roadmap / TODO

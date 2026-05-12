@@ -1,0 +1,19 @@
+# Context101 — deploy.sh environment file
+#
+# Copy this file to either:
+#   · cdk/.deploy-env             (per-repo, gitignored)
+#   · ~/.context101/deploy-env    (per-user, shared across worktrees)
+#
+# chmod 600 the destination — these are real secrets.
+
+# REQUIRED — gates the App Runner MCP service. Whatever string you pick
+# becomes the shared bearer token your MCP clients send.
+CTX_TOKEN="context101-platea-2026-bearer"
+
+# OPTIONAL — gates the Amplify web app + wiki-gen + Cognito stack.
+# If you have `gh` installed and authenticated, deploy.sh falls back to
+# `gh auth token` so you can leave this commented out.
+# CTX_GH_TOKEN="ghp_..."
+
+# OPTIONAL — passed through to the cdk subprocess.
+AWS_PROFILE="plateapr.com"
