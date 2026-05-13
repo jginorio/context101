@@ -6,24 +6,24 @@ import {
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { DOCS_BUCKET, s3 } from "@/utils/s3";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain, s3 } from "@/utils/s3";
 
 /**
- * POST /api/files/delete
+ * POST /api/files/delete[?brain=<id>]
  * Body: { key: string, recursive?: boolean }
  *
  * - File: { key: "some/file.md" } → single DeleteObject
  * - Folder: { key: "some/folder/", recursive: true } → list + batch delete
  *   (S3 folders are just prefixes; deleting means deleting every object
  *   under the prefix).
+ *
+ * Scoped to the active brain's docs bucket.
  */
 export async function POST(request: NextRequest) {
-  if (!DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "DOCS_BUCKET env var is not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const bucket = bucketForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.key !== "string" || body.key.length === 0) {
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
       do {
         const list = await s3.send(
           new ListObjectsV2Command({
-            Bucket: DOCS_BUCKET,
+            Bucket: bucket,
             Prefix: body.key,
             ContinuationToken: token,
           })
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
         if (objects.length > 0) {
           await s3.send(
             new DeleteObjectsCommand({
-              Bucket: DOCS_BUCKET,
+              Bucket: bucket,
               Delete: { Objects: objects, Quiet: true },
             })
           );
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     // Single-file delete
     await s3.send(
-      new DeleteObjectCommand({ Bucket: DOCS_BUCKET, Key: body.key })
+      new DeleteObjectCommand({ Bucket: bucket, Key: body.key })
     );
     return NextResponse.json({ ok: true, deleted: 1 });
   } catch (err) {

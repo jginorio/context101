@@ -16,30 +16,26 @@
  *                                             container env so generate.py
  *                                             bypasses its no-change guard.
  *                                             Used by the manual "Refresh
- *                                             now" button. The EventBridge
- *                                             schedule never sets force, so
- *                                             scheduled ticks become
- *                                             near-no-ops when nothing
- *                                             changed.
+ *                                             now" button.
  *   • { checkOnly: true }                   — don't start a task; just
  *                                             return whether one is
  *                                             already running for the
- *                                             requested (mode, repo).
- *                                             The frontend uses this on
- *                                             page-mount so any user
- *                                             landing on /wiki sees the
- *                                             same in-flight regen.
+ *                                             requested (brain_id, mode,
+ *                                             repo).
+ *   • { brain_id: <id> }                    — multi-brain: scope the run
+ *                                             to the brain's docs bucket.
+ *                                             Resolved from BrainsTable;
+ *                                             defaults to "default".
  *
  * Single-flight: every invocation that *would* start a task first
  * inspects the cluster for a matching running/pending task (same
- * task-def family, same WIKI_MODE, same REPO_FULL_NAME for code mode).
- * If found, the existing taskArn is returned with alreadyRunning=true
- * instead of starting a duplicate. Source of truth is ECS itself —
- * no separate lock store, so a crashed task self-heals (it just stops
- * appearing in ListTasks).
+ * task-def family, same BRAIN_ID, same WIKI_MODE, same REPO_FULL_NAME
+ * for code mode). If found, the existing taskArn is returned with
+ * alreadyRunning=true. Source of truth is ECS — a crashed task self-heals.
  *
- * Same Fargate task definition handles both modes; we override env
- * vars via containerOverrides at RunTask time.
+ * Same Fargate task definition handles every brain + every mode; we
+ * override DOCS_BUCKET / BRAIN_ID / WIKI_MODE / CORPUS_PREFIX / WIKI_PREFIX
+ * / REPO_FULL_NAME / WIKI_FORCE via containerOverrides at RunTask time.
  */
 import {
   ECSClient,
@@ -47,8 +43,13 @@ import {
   ListTasksCommand,
   DescribeTasksCommand,
 } from "@aws-sdk/client-ecs";
+import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
+import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
 
 const ecs = new ECSClient({});
+const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+
+const BRAINS_TABLE = process.env.BRAINS_TABLE;
 
 function slugify(s) {
   return (s || "")
@@ -58,39 +59,24 @@ function slugify(s) {
     .slice(0, 80);
 }
 
-/**
- * Strip the trailing :revision off a task-definition ARN so we can match
- * any revision of the same family (CDK bumps the revision on container
- * image / env changes).
- */
 function taskDefFamilyArn(arn) {
   return (arn || "").replace(/:\d+$/, "");
 }
 
-/**
- * Inspect a single task's container env overrides. Returns the WIKI_MODE
- * and REPO_FULL_NAME the task was launched with, defaulting WIKI_MODE to
- * "main" when no override was supplied (matches the EventBridge schedule
- * target, which sets no overrides).
- */
-function readTaskModeRepo(task) {
+function readTaskEnv(task, name) {
   const env = task?.overrides?.containerOverrides?.[0]?.environment ?? [];
-  const find = (name) => env.find((e) => e.name === name)?.value;
+  return env.find((e) => e.name === name)?.value;
+}
+
+function readTaskKey(task) {
   return {
-    mode: find("WIKI_MODE") ?? "main",
-    repo: find("REPO_FULL_NAME") ?? null,
+    brainId: readTaskEnv(task, "BRAIN_ID") ?? "default",
+    mode: readTaskEnv(task, "WIKI_MODE") ?? "main",
+    repo: readTaskEnv(task, "REPO_FULL_NAME") ?? null,
   };
 }
 
-/**
- * Find an existing running/pending task that matches (mode, repo).
- *
- * desiredStatus="RUNNING" returns tasks whose *desired* status is RUNNING,
- * which includes ones whose *last* status is still PROVISIONING/PENDING.
- * That's exactly what we want: a task that just got dispatched but isn't
- * fully up yet still counts as a regen in flight.
- */
-async function findRunningTask(cluster, taskDefArn, { mode, repo }) {
+async function findRunningTask(cluster, taskDefArn, { brainId, mode, repo }) {
   const listed = await ecs.send(
     new ListTasksCommand({ cluster, desiredStatus: "RUNNING" })
   );
@@ -106,9 +92,10 @@ async function findRunningTask(cluster, taskDefArn, { mode, repo }) {
     for (const t of desc.tasks ?? []) {
       if (!t.taskDefinitionArn?.startsWith(familyPrefix + ":")) continue;
       if (t.lastStatus === "STOPPED") continue;
-      const m = readTaskModeRepo(t);
-      if (m.mode !== mode) continue;
-      if (mode === "code" && m.repo !== repo) continue;
+      const k = readTaskKey(t);
+      if (k.brainId !== brainId) continue;
+      if (k.mode !== mode) continue;
+      if (mode === "code" && k.repo !== repo) continue;
       matches.push(t);
     }
   }
@@ -120,6 +107,22 @@ async function findRunningTask(cluster, taskDefArn, { mode, repo }) {
   });
   const t = matches[0];
   return { taskArn: t.taskArn, lastStatus: t.lastStatus };
+}
+
+async function resolveBrain(brainId) {
+  if (!BRAINS_TABLE) throw new Error("BRAINS_TABLE env var missing");
+  const res = await ddb.send(
+    new GetCommand({ TableName: BRAINS_TABLE, Key: { brain_id: brainId } })
+  );
+  const item = res.Item;
+  if (!item) throw new Error(`brain not found: ${brainId}`);
+  if (item.status !== "ready") {
+    throw new Error(`brain ${brainId} is ${item.status}, not ready`);
+  }
+  if (!item.docs_bucket) {
+    throw new Error(`brain ${brainId} has no docs_bucket`);
+  }
+  return item;
 }
 
 export const handler = async (event = {}) => {
@@ -135,6 +138,7 @@ export const handler = async (event = {}) => {
     throw new Error("Wiki generator env vars missing on Lambda");
   }
 
+  const brainId = event.brain_id || "default";
   const mode = event.mode === "code" ? "code" : "main";
   let repo = null;
   if (mode === "code") {
@@ -146,7 +150,11 @@ export const handler = async (event = {}) => {
     }
   }
 
-  const existing = await findRunningTask(cluster, taskDef, { mode, repo });
+  const existing = await findRunningTask(cluster, taskDef, {
+    brainId,
+    mode,
+    repo,
+  });
 
   if (event.checkOnly) {
     return existing
@@ -154,15 +162,17 @@ export const handler = async (event = {}) => {
           running: true,
           taskArn: existing.taskArn,
           lastStatus: existing.lastStatus,
+          brainId,
           mode,
           repo,
         }
-      : { running: false, mode, repo };
+      : { running: false, brainId, mode, repo };
   }
 
   if (existing) {
     return {
       statusCode: 200,
+      brainId,
       mode,
       repo,
       taskArn: existing.taskArn,
@@ -171,7 +181,16 @@ export const handler = async (event = {}) => {
     };
   }
 
-  const overrideEnv = [{ name: "WIKI_MODE", value: mode }];
+  // Resolve brain → docs bucket for the container env. Done after the
+  // dedup check so a still-provisioning brain can be polled via checkOnly
+  // without throwing.
+  const brain = await resolveBrain(brainId);
+
+  const overrideEnv = [
+    { name: "BRAIN_ID", value: brainId },
+    { name: "DOCS_BUCKET", value: brain.docs_bucket },
+    { name: "WIKI_MODE", value: mode },
+  ];
   if (mode === "code") {
     const [owner, name] = repo.split("/");
     const repoSlug = slugify(`${owner}-${name}`);
@@ -214,6 +233,7 @@ export const handler = async (event = {}) => {
   const task = res.tasks?.[0];
   return {
     statusCode: 200,
+    brainId,
     mode,
     repo,
     forced: event.force === true,

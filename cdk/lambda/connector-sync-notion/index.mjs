@@ -35,8 +35,11 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
 const sm = new SecretsManagerClient({});
 
-const CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
-const DOCS_BUCKET = process.env.DOCS_BUCKET;
+// Per-brain values come from the invocation event (dispatcher injects
+// per-row). Env-var fallbacks keep legacy invokes against the default
+// brain working.
+let CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
+let DOCS_BUCKET = process.env.DOCS_BUCKET;
 const NOTION_VERSION = "2022-06-28";
 
 const SOURCES_PREFIX = "sources/notion/";
@@ -376,6 +379,13 @@ async function resolveResource(token, id) {
 export const handler = async (event) => {
   const connectorId = event?.connectorId;
   if (!connectorId) throw new Error("connectorId is required");
+  // Reset on every invocation — Lambda containers are reused across
+  // invocations, so a conditional `if (event.X) X = …` would leave the
+  // previous invocation's brain-scoped value in place when the next one
+  // omits the field. Always pick from event ?? env, never from the
+  // module-level state set by a prior call.
+  CONNECTORS_TABLE = event?.connectorsTable || process.env.CONNECTORS_TABLE;
+  DOCS_BUCKET = event?.docsBucket || process.env.DOCS_BUCKET;
   if (!CONNECTORS_TABLE || !DOCS_BUCKET) {
     throw new Error("required env vars missing");
   }

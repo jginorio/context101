@@ -10,5 +10,7 @@ COPY server.py .
 
 EXPOSE 8787
 
-# 0.0.0.0 so App Runner / any external caller can reach it
-CMD ["fastmcp", "run", "server.py:mcp", "--transport", "streamable-http", "--host", "0.0.0.0", "--port", "8787"]
+# server.py builds a Starlette app (`app`) that wraps FastMCP with
+# brain-routing + per-brain token validation. uvicorn runs it directly so
+# we control the ASGI surface; `fastmcp run` would bypass our middleware.
+CMD ["uvicorn", "server:app", "--host", "0.0.0.0", "--port", "8787"]

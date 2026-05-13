@@ -38,8 +38,11 @@ const s3 = new S3Client({});
 const sm = new SecretsManagerClient({});
 const lambdaClient = new LambdaClient({});
 
-const CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
-const DOCS_BUCKET = process.env.DOCS_BUCKET;
+// Per-brain values come from the invocation event (dispatcher injects
+// per-row). Env-var fallbacks keep legacy invokes against the default
+// brain working.
+let CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
+let DOCS_BUCKET = process.env.DOCS_BUCKET;
 
 const SOURCES_PREFIX = "sources/github/";
 
@@ -364,6 +367,13 @@ async function pmap(items, limit, fn) {
 export const handler = async (event) => {
   const connectorId = event?.connectorId;
   if (!connectorId) throw new Error("connectorId is required");
+  // Reset on every invocation — Lambda containers are reused across
+  // invocations, so a conditional `if (event.X) X = …` would leave the
+  // previous invocation's brain-scoped value in place when the next one
+  // omits the field. Always pick from event ?? env, never from the
+  // module-level state set by a prior call.
+  CONNECTORS_TABLE = event?.connectorsTable || process.env.CONNECTORS_TABLE;
+  DOCS_BUCKET = event?.docsBucket || process.env.DOCS_BUCKET;
   if (!CONNECTORS_TABLE || !DOCS_BUCKET) {
     throw new Error("required env vars missing");
   }
@@ -534,7 +544,15 @@ export const handler = async (event) => {
             FunctionName: startWikiGenFn,
             InvocationType: "Event",
             Payload: new TextEncoder().encode(
-              JSON.stringify({ mode: "code", repo: repoFullName })
+              JSON.stringify({
+                mode: "code",
+                repo: repoFullName,
+                // Carry the brain id so the wiki generator writes back to
+                // the same brain's docs bucket. `event.brainId` is set by
+                // the dispatcher; the row also stores brain_id so we fall
+                // back to it if invoked directly.
+                brain_id: event.brainId ?? row.brain_id ?? "default",
+              })
             ),
           })
         )

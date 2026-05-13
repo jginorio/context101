@@ -7,23 +7,22 @@ import {
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { DOCS_BUCKET, s3 } from "@/utils/s3";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain, s3 } from "@/utils/s3";
 
 /**
- * POST /api/files/move
+ * POST /api/files/move[?brain=<id>]
  * Body: { from: string, to: string }
  *
- * Rename/move. S3 has no atomic move — this is CopyObject + DeleteObject.
- * If either `from` or `to` ends with "/", it's treated as a folder and
- * every child is copied/moved recursively.
+ * Rename/move within the active brain's docs bucket. S3 has no atomic
+ * move — this is CopyObject + DeleteObject. If either `from` or `to` ends
+ * with "/", it's treated as a folder and every child is copied/moved
+ * recursively.
  */
 export async function POST(request: NextRequest) {
-  if (!DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "DOCS_BUCKET env var is not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const bucket = bucketForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
   if (
@@ -59,7 +58,7 @@ export async function POST(request: NextRequest) {
       do {
         const list = await s3.send(
           new ListObjectsV2Command({
-            Bucket: DOCS_BUCKET,
+            Bucket: bucket,
             Prefix: body.from,
             ContinuationToken: token,
           })
@@ -70,8 +69,8 @@ export async function POST(request: NextRequest) {
           const newKey = body.to + k.slice(body.from.length);
           await s3.send(
             new CopyObjectCommand({
-              Bucket: DOCS_BUCKET,
-              CopySource: `${DOCS_BUCKET}/${encodeURIComponent(k)}`,
+              Bucket: bucket,
+              CopySource: `${bucket}/${encodeURIComponent(k)}`,
               Key: newKey,
             })
           );
@@ -80,7 +79,7 @@ export async function POST(request: NextRequest) {
         if (keys.length > 0) {
           await s3.send(
             new DeleteObjectsCommand({
-              Bucket: DOCS_BUCKET,
+              Bucket: bucket,
               Delete: {
                 Objects: keys.map((k) => ({ Key: k })),
                 Quiet: true,
@@ -96,13 +95,13 @@ export async function POST(request: NextRequest) {
     // Single-file move
     await s3.send(
       new CopyObjectCommand({
-        Bucket: DOCS_BUCKET,
-        CopySource: `${DOCS_BUCKET}/${encodeURIComponent(body.from)}`,
+        Bucket: bucket,
+        CopySource: `${bucket}/${encodeURIComponent(body.from)}`,
         Key: body.to,
       })
     );
     await s3.send(
-      new DeleteObjectCommand({ Bucket: DOCS_BUCKET, Key: body.from })
+      new DeleteObjectCommand({ Bucket: bucket, Key: body.from })
     );
     return NextResponse.json({ ok: true, moved: 1 });
   } catch (err) {

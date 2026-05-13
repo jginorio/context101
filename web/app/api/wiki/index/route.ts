@@ -3,23 +3,24 @@ import {
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 
-import { DOCS_BUCKET, s3 } from "@/utils/s3";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain, s3 } from "@/utils/s3";
 
 /**
- * GET /api/wiki/index
+ * GET /api/wiki/index[?brain=<id>]
  *
- * Returns the team wiki nav (`wiki/_index.json`) plus metadata
- * (`wiki/_meta.json`) — and a list of per-repo code wikis under
- * `wiki/code/<repo-slug>/`, each with its own _index + _meta. The UI
- * uses this to render a "Code wikis" group in the sidebar.
+ * Returns the active brain's team wiki nav (`wiki/_index.json`) plus
+ * metadata (`wiki/_meta.json`) — and a list of per-repo code wikis under
+ * `wiki/code/<repo-slug>/`, each with its own _index + _meta.
  *
- * 404-ish empty payload if nothing has been generated yet.
+ * 404-ish empty payload if nothing has been generated yet for this brain.
  */
-async function readJson<T>(key: string): Promise<T | null> {
+async function readJson<T>(bucket: string, key: string): Promise<T | null> {
   try {
     const res = await s3.send(
-      new GetObjectCommand({ Bucket: DOCS_BUCKET, Key: key })
+      new GetObjectCommand({ Bucket: bucket, Key: key })
     );
     const body = await res.Body?.transformToString();
     return body ? (JSON.parse(body) as T) : null;
@@ -30,16 +31,13 @@ async function readJson<T>(key: string): Promise<T | null> {
   }
 }
 
-async function listCodeWikiRepoSlugs(): Promise<string[]> {
-  // Use Delimiter so we get only the immediate subdirectories of
-  // wiki/code/, not every individual page key. CommonPrefixes returns
-  // each subdirectory as "wiki/code/<slug>/".
+async function listCodeWikiRepoSlugs(bucket: string): Promise<string[]> {
   const slugs: string[] = [];
   let token: string | undefined;
   do {
     const res = await s3.send(
       new ListObjectsV2Command({
-        Bucket: DOCS_BUCKET,
+        Bucket: bucket,
         Prefix: "wiki/code/",
         Delimiter: "/",
         ContinuationToken: token,
@@ -56,26 +54,23 @@ async function listCodeWikiRepoSlugs(): Promise<string[]> {
   return slugs;
 }
 
-export async function GET() {
-  if (!DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "DOCS_BUCKET env var is not set" },
-      { status: 500 }
-    );
-  }
+export async function GET(request: NextRequest) {
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const bucket = bucketForBrain(r.brain);
 
   try {
     const [index, meta, codeRepoSlugs] = await Promise.all([
-      readJson<unknown>("wiki/_index.json"),
-      readJson<unknown>("wiki/_meta.json"),
-      listCodeWikiRepoSlugs(),
+      readJson<unknown>(bucket, "wiki/_index.json"),
+      readJson<unknown>(bucket, "wiki/_meta.json"),
+      listCodeWikiRepoSlugs(bucket),
     ]);
 
     const codeWikis = await Promise.all(
       codeRepoSlugs.map(async (slug) => {
         const [cIndex, cMeta] = await Promise.all([
-          readJson<unknown>(`wiki/code/${slug}/_index.json`),
-          readJson<unknown>(`wiki/code/${slug}/_meta.json`),
+          readJson<unknown>(bucket, `wiki/code/${slug}/_index.json`),
+          readJson<unknown>(bucket, `wiki/code/${slug}/_meta.json`),
         ]);
         return { repoSlug: slug, index: cIndex, meta: cMeta };
       })

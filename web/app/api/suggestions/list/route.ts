@@ -2,29 +2,26 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { QueryCommand, ScanCommand } from "@aws-sdk/lib-dynamodb";
 
-import { SUGGESTIONS_TABLE, ddb, type Suggestion } from "@/utils/suggestions";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { ddb, suggestionsTableForBrain, type Suggestion } from "@/utils/suggestions";
 
 /**
- * GET /api/suggestions/list?status=pending|accepted|rejected|all
+ * GET /api/suggestions/list?status=pending|accepted|rejected|all[&brain=<id>]
  *
  * Uses the GSI `status-created_at-index` to return newest first.
  * When status=all, falls back to a table scan (fine at this volume).
+ * Scoped to the active brain's suggestions table.
  */
 export async function GET(request: NextRequest) {
-  if (!SUGGESTIONS_TABLE) {
-    return NextResponse.json(
-      { error: "SUGGESTIONS_TABLE env var is not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const table = suggestionsTableForBrain(r.brain);
 
   const status = request.nextUrl.searchParams.get("status") ?? "pending";
 
   try {
     if (status === "all") {
-      const res = await ddb.send(
-        new ScanCommand({ TableName: SUGGESTIONS_TABLE })
-      );
+      const res = await ddb.send(new ScanCommand({ TableName: table }));
       const items = ((res.Items ?? []) as Suggestion[]).sort((a, b) =>
         (b.created_at ?? "").localeCompare(a.created_at ?? "")
       );
@@ -37,7 +34,7 @@ export async function GET(request: NextRequest) {
 
     const res = await ddb.send(
       new QueryCommand({
-        TableName: SUGGESTIONS_TABLE,
+        TableName: table,
         IndexName: "status-created_at-index",
         KeyConditionExpression: "#s = :s",
         ExpressionAttributeNames: { "#s": "status" },

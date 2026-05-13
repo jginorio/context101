@@ -3,13 +3,16 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  AlertCircle,
   ArrowLeft,
+  Brain,
   Check,
   CheckCircle2,
   CircleDashed,
   Construction,
   Copy,
   Download,
+  Loader2,
   Terminal,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -18,31 +21,44 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { useBrain, type ClientBrain } from "@/lib/brain-context";
 
 import "@/utils/amplify-client-config";
 
-const MCP_URL =
-  process.env.NEXT_PUBLIC_MCP_URL ?? "https://<your-mcp-host>/mcp";
-const MCP_TOKEN =
-  process.env.NEXT_PUBLIC_MCP_TOKEN ?? "<your-shared-bearer-token>";
+const MCP_HOST = process.env.NEXT_PUBLIC_MCP_HOST ?? "";
 
-const SNIPPET_HTTP = `"context101": {
-  "url": "${MCP_URL}",
+/** `https://<host>/brain/<id>/mcp` — single brain, single bearer token. */
+function brainMcpUrl(brainId: string): string {
+  if (!MCP_HOST) return `<your-mcp-host>/brain/${brainId}/mcp`;
+  return `${MCP_HOST.replace(/\/$/, "")}/brain/${brainId}/mcp`;
+}
+
+/** mcpServers key used in client configs — distinct per brain. */
+function brainConfigKey(brainId: string): string {
+  return brainId === "default" ? "context101" : `context101-${brainId}`;
+}
+
+function snippetHttp(brainId: string, token: string): string {
+  return `"${brainConfigKey(brainId)}": {
+  "url": "${brainMcpUrl(brainId)}",
   "headers": {
-    "Authorization": "Bearer ${MCP_TOKEN}"
+    "Authorization": "Bearer ${token}"
   }
 }`;
+}
 
-const SNIPPET_STDIO = `"context101": {
+function snippetStdio(brainId: string, token: string): string {
+  return `"${brainConfigKey(brainId)}": {
   "command": "npx",
   "args": [
     "-y",
     "mcp-remote",
-    "${MCP_URL}",
+    "${brainMcpUrl(brainId)}",
     "--header",
-    "Authorization: Bearer ${MCP_TOKEN}"
+    "Authorization: Bearer ${token}"
   ]
 }`;
+}
 
 function CopyableSnippet({
   label,
@@ -85,29 +101,129 @@ function CopyableSnippet({
   );
 }
 
-function CopyMcpConfig() {
+function BrainMcpConfig({ brain }: { brain: ClientBrain }) {
+  // Per-brain tokens are fetched from /api/brains/<id>/token (signed-in
+  // route). They're NOT exposed via NEXT_PUBLIC_* env, so the browser
+  // only sees them after an authenticated SSR roundtrip.
+  const [token, setToken] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+
+  React.useEffect(() => {
+    let alive = true;
+    setToken(null);
+    setError(null);
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/brains/${encodeURIComponent(brain.brain_id)}/token`,
+          { cache: "no-store" }
+        );
+        if (!alive) return;
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          setError(data?.error ?? `token fetch failed (${res.status})`);
+          return;
+        }
+        const data = (await res.json()) as { token?: string };
+        setToken(data.token ?? null);
+      } catch (e) {
+        if (alive) setError(e instanceof Error ? e.message : String(e));
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [brain.brain_id]);
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-base">Connect your MCP client</CardTitle>
+        <CardTitle className="text-base flex items-center gap-2">
+          <Brain className="h-4 w-4" />
+          {brain.display_name}
+          <span className="text-xs font-mono text-muted-foreground font-normal">
+            {brain.brain_id}
+          </span>
+        </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        <CopyableSnippet
-          label="Cursor / Claude Code / Devin"
-          snippet={SNIPPET_HTTP}
-          note={
-            "Paste into the mcpServers object in .cursor/mcp.json or the equivalent. Streamable-HTTP native."
-          }
-        />
-        <CopyableSnippet
-          label="Claude Desktop"
-          snippet={SNIPPET_STDIO}
-          note={
-            "Claude Desktop only speaks stdio — mcp-remote is a tiny proxy (auto-installed by npx on first run). Paste into claude_desktop_config.json, then restart Claude Desktop."
-          }
-        />
+        {error ? (
+          <p className="text-sm text-red-600 dark:text-red-400 inline-flex items-center gap-1">
+            <AlertCircle className="h-3.5 w-3.5" /> {error}
+          </p>
+        ) : token === null ? (
+          <p className="text-sm text-muted-foreground inline-flex items-center gap-1">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Loading token…
+          </p>
+        ) : (
+          <>
+            <CopyableSnippet
+              label="Cursor / Claude Code / Devin"
+              snippet={snippetHttp(brain.brain_id, token)}
+              note={
+                "Paste into the mcpServers object in .cursor/mcp.json or the equivalent. Streamable-HTTP native."
+              }
+            />
+            <CopyableSnippet
+              label="Claude Desktop"
+              snippet={snippetStdio(brain.brain_id, token)}
+              note={
+                "Claude Desktop only speaks stdio — mcp-remote is a tiny proxy (auto-installed by npx on first run). Paste into claude_desktop_config.json, then restart Claude Desktop."
+              }
+            />
+          </>
+        )}
       </CardContent>
     </Card>
+  );
+}
+
+function CopyMcpConfig() {
+  const { brains, loading } = useBrain();
+  const ready = brains.filter((b) => b.status === "ready");
+  if (loading && ready.length === 0) {
+    return (
+      <Card>
+        <CardContent className="py-6 text-sm text-muted-foreground inline-flex items-center gap-2">
+          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          Loading brains…
+        </CardContent>
+      </Card>
+    );
+  }
+  if (ready.length === 0) {
+    return (
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Connect your MCP client</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-sm text-muted-foreground">
+            No brains are ready yet. Create one from{" "}
+            <Link href="/brains" className="underline">
+              /brains
+            </Link>{" "}
+            to get an MCP config snippet.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="text-xl sm:text-2xl font-semibold tracking-tight mb-1">
+          Connect your MCP client
+        </h2>
+        <p className="text-sm text-muted-foreground">
+          One snippet per brain — each brain has its own URL and bearer token.
+          Paste the brain you want each tool to read from.
+        </p>
+      </div>
+      {ready.map((b) => (
+        <BrainMcpConfig key={b.brain_id} brain={b} />
+      ))}
+    </div>
   );
 }
 

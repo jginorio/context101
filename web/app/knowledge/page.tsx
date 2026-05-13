@@ -6,6 +6,7 @@ import { signOut } from "aws-amplify/auth";
 import Link from "next/link";
 import {
   BookOpen,
+  Brain,
   FilePlus,
   FolderPlus,
   Info,
@@ -15,6 +16,7 @@ import {
 } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BrainSwitcher } from "@/components/brain-switcher";
 import { KnowledgeTree } from "@/components/knowledge-tree";
 import { KnowledgeViewer } from "@/components/knowledge-viewer";
 import { NewItemDialog } from "@/components/new-item-dialog";
@@ -29,11 +31,22 @@ import {
 } from "@/components/ui/sheet";
 
 import "@/utils/amplify-client-config";
+import { BrainStatusGate } from "@/components/brain-status-gate";
+import { useBrain } from "@/lib/brain-context";
 
 export default function Home() {
+  const { currentBrainId } = useBrain();
   const [selected, setSelected] = React.useState<string | null>(null);
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+
+  // Switching brain → clear the open file (it lives in the previous brain's
+  // bucket) and bump the tree refresh key so it re-fetches against the new
+  // brain. The cookie/URL update happens in `setBrain` inside BrainProvider.
+  React.useEffect(() => {
+    setSelected(null);
+    setRefreshKey((k) => k + 1);
+  }, [currentBrainId]);
 
   const [newItem, setNewItem] = React.useState<{
     mode: "file" | "folder";
@@ -90,6 +103,11 @@ export default function Home() {
                 <SheetTitle>Context101</SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-1 px-2 pb-2 border-b">
+                <Link href="/brains" onClick={() => setMobileNavOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start">
+                    <Brain className="mr-2 h-3.5 w-3.5" /> Brains
+                  </Button>
+                </Link>
                 <Link href="/wiki" onClick={() => setMobileNavOpen(false)}>
                   <Button variant="ghost" size="sm" className="w-full justify-start">
                     <BookOpen className="mr-2 h-3.5 w-3.5" /> Wiki
@@ -122,6 +140,7 @@ export default function Home() {
               Shared team knowledge base
             </p>
           </div>
+          <BrainSwitcher />
         </div>
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <Button
@@ -156,6 +175,11 @@ export default function Home() {
           >
             <FilePlus className="h-3.5 w-3.5" />
           </Button>
+          <Link href="/brains" className="hidden md:inline-flex">
+            <Button variant="ghost" size="sm">
+              <Brain className="mr-1 h-3.5 w-3.5" /> Brains
+            </Button>
+          </Link>
           <Link href="/wiki" className="hidden md:inline-flex">
             <Button variant="ghost" size="sm">
               <BookOpen className="mr-1 h-3.5 w-3.5" /> Wiki
@@ -190,6 +214,7 @@ export default function Home() {
         </div>
       </header>
 
+      <BrainStatusGate>
       <div className="flex flex-1 min-h-0">
         <aside className="hidden md:block w-72 border-r overflow-y-auto p-2 shrink-0">
           {tree}
@@ -227,6 +252,7 @@ export default function Home() {
           }}
         />
       )}
+      </BrainStatusGate>
     </main>
   );
 }

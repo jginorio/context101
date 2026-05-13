@@ -5,6 +5,8 @@ import {
 } from "@aws-sdk/client-secrets-manager";
 import { LambdaClient } from "@aws-sdk/client-lambda";
 
+import type { BrainConfig } from "@/lib/brains-server";
+
 const region = process.env.AWS_REGION ?? "us-east-1";
 
 export const ddbConnectors = DynamoDBDocumentClient.from(
@@ -14,7 +16,19 @@ export const ddbConnectors = DynamoDBDocumentClient.from(
 export const sm = new SecretsManagerClient({ region });
 export const lambdaClient = new LambdaClient({ region });
 
+/** Default brain's connectors table — fallback for unmigrated callers. */
 export const CONNECTORS_TABLE = process.env.CONNECTORS_TABLE ?? "";
+
+/** Pull the connectors table name out of a resolved brain row. */
+export function connectorsTableForBrain(brain: BrainConfig): string {
+  const t = brain.connectors_table;
+  if (!t) {
+    throw new Error(
+      `brain \`${brain.brain_id}\` has no connectors_table on its registry row`
+    );
+  }
+  return t;
+}
 export const CONNECTOR_SYNC_SHEETS_FN_NAME =
   process.env.CONNECTOR_SYNC_SHEETS_FN_NAME ?? "";
 export const CONNECTOR_SYNC_DOCS_FN_NAME =
@@ -64,6 +78,12 @@ export type Connector = {
   last_error_at?: string;
   created_at: string;
   created_by?: string; // Cognito email of the user who added this
+  // Set on create — the brain this connector belongs to. Stored on the
+  // row so dispatchers / sync Lambdas can route into the right brain
+  // without re-reading the registry. Each brain has its own connectors
+  // table, so this is mostly belt-and-suspenders, but it also helps when
+  // debugging cross-brain issues.
+  brain_id?: string;
 };
 
 // ── Google resource URL parsing ──────────────────────────────────────

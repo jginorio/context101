@@ -3,32 +3,35 @@ import type { NextRequest } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-import { DOCS_BUCKET, s3 } from "@/utils/s3";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain, s3 } from "@/utils/s3";
 import {
-  SUGGESTIONS_TABLE,
   ddb,
+  suggestionsTableForBrain,
   type Suggestion,
 } from "@/utils/suggestions";
 
 /**
- * POST /api/suggestions/approve
+ * POST /api/suggestions/approve[?brain=<id>]
  * Body: { id: string, target_path?: string }
+ *
+ * Both the suggestion row and the destination S3 file live in the same
+ * brain — there is no cross-brain approval. The request's brain id is
+ * the single resolver for both lookups.
  *
  * 1. Load the suggestion.
  * 2. Determine the destination S3 key:
  *    - If the request body overrides target_path, use that.
  *    - Else if the suggestion has target_path (update case), use that.
  *    - Else generate one from a slugified title at root.
- * 3. PutObject on the docs bucket.
+ * 3. PutObject on the brain's docs bucket.
  * 4. Mark the suggestion accepted.
  */
 export async function POST(request: NextRequest) {
-  if (!SUGGESTIONS_TABLE || !DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "SUGGESTIONS_TABLE or DOCS_BUCKET env var is not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const bucket = bucketForBrain(r.brain);
+  const table = suggestionsTableForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.id !== "string") {
@@ -37,7 +40,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const got = await ddb.send(
-      new GetCommand({ TableName: SUGGESTIONS_TABLE, Key: { id: body.id } })
+      new GetCommand({ TableName: table, Key: { id: body.id } })
     );
     const suggestion = got.Item as Suggestion | undefined;
     if (!suggestion) {
@@ -71,7 +74,7 @@ export async function POST(request: NextRequest) {
 
     await s3.send(
       new PutObjectCommand({
-        Bucket: DOCS_BUCKET,
+        Bucket: bucket,
         Key: destKey,
         Body: suggestion.content,
         ContentType: "text/markdown; charset=utf-8",
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
 
     await ddb.send(
       new UpdateCommand({
-        TableName: SUGGESTIONS_TABLE,
+        TableName: table,
         Key: { id: body.id },
         UpdateExpression:
           "SET #s = :s, reviewed_at = :rt, final_path = :fp",

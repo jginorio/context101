@@ -2,26 +2,24 @@ import { PutObjectCommand } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { DOCS_BUCKET, s3 } from "@/utils/s3";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain, s3 } from "@/utils/s3";
 
 /**
- * POST /api/files/put
+ * POST /api/files/put[?brain=<id>]
  * Body: { key: string, content: string, contentType?: string }
  *
- * Creates or updates a file. S3 PutObject is idempotent — same
- * endpoint for create + update.
+ * Creates or updates a file in the active brain's docs bucket. S3
+ * PutObject is idempotent — same endpoint for create + update.
  *
  * For "create folder", pass { key: "folder/.keep", content: "" }.
  * S3 has no real folders; ".keep" is our placeholder convention so
  * the folder shows up in listings.
  */
 export async function POST(request: NextRequest) {
-  if (!DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "DOCS_BUCKET env var is not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const bucket = bucketForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.key !== "string") {
@@ -38,7 +36,7 @@ export async function POST(request: NextRequest) {
   try {
     await s3.send(
       new PutObjectCommand({
-        Bucket: DOCS_BUCKET,
+        Bucket: bucket,
         Key: key,
         Body: content,
         ContentType: contentType,

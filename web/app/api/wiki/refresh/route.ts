@@ -6,6 +6,8 @@ import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+
 const ecs = new ECSClient({ region: process.env.AWS_REGION ?? "us-east-1" });
 const lambdaClient = new LambdaClient({
   region: process.env.AWS_REGION ?? "us-east-1",
@@ -20,6 +22,7 @@ type LambdaResult = {
   alreadyRunning?: boolean;
   running?: boolean;
   forced?: boolean;
+  brainId?: string;
 };
 
 async function invokeStartWikiGen(
@@ -43,22 +46,29 @@ async function invokeStartWikiGen(
 }
 
 /**
- * POST /api/wiki/refresh
+ * POST /api/wiki/refresh[?brain=<id>]
  *
- * Manual "Refresh now" button. Forwards { force: true } to the dispatcher
- * Lambda so generate.py bypasses its no-change corpus-hash guard — when a
- * human asks for a regen they get one. The Lambda also single-flights:
- * if a regen is already in flight for the same mode, it returns that
- * task's arn with alreadyRunning=true and we attach to it.
+ * Manual "Refresh now" button. Forwards { force: true, brain_id } to the
+ * dispatcher Lambda so generate.py bypasses its no-change corpus-hash
+ * guard and runs against the active brain's docs bucket. The dispatcher
+ * also single-flights on (brain_id, mode, repo): if a regen is already
+ * in flight, it returns that task's arn with alreadyRunning=true and we
+ * attach to it.
  *
  * Why not call RunTask directly from here? Amplify Hosting's SSR compute
  * role gets a platform session policy that explicitly denies iam:PassRole,
  * and RunTask needs PassRole on the task + execution roles. The dispatcher
  * Lambda has its own role without that deny.
  */
-export async function POST() {
+export async function POST(request: NextRequest) {
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+
   try {
-    const parsed = await invokeStartWikiGen({ force: true });
+    const parsed = await invokeStartWikiGen({
+      force: true,
+      brain_id: r.brain.brain_id,
+    });
     if (!parsed.taskArn) {
       return NextResponse.json(
         { error: "dispatcher returned no taskArn", detail: parsed },
@@ -81,26 +91,28 @@ export async function POST() {
 /**
  * GET /api/wiki/refresh
  *
- *   • ?check=1                 — ask the dispatcher whether a main-mode
- *                                regen is currently running. Used on
- *                                /wiki page-mount so any user (refresh,
- *                                another browser, another teammate) sees
- *                                the same in-flight regen and converges
- *                                on the same taskArn for polling.
- *                                Returns { running: boolean, taskArn? }.
+ *   • ?check=1[&brain=<id>]    — ask the dispatcher whether a main-mode
+ *                                regen is currently running for the
+ *                                active brain. Returns { running, taskArn? }.
  *
  *   • ?taskArn=<arn>           — poll a known task. Returns lastStatus
  *                                ("PROVISIONING" | "PENDING" | "RUNNING"
  *                                | "DEACTIVATING" | "STOPPING" |
  *                                "STOPPED") and, once stopped, stopReason
- *                                + container exit code.
+ *                                + container exit code. Brain-agnostic
+ *                                (the task ARN itself is unique).
  */
 export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
 
   if (params.get("check") === "1") {
+    const r = await resolveBrainFromRequest(request);
+    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
     try {
-      const parsed = await invokeStartWikiGen({ checkOnly: true });
+      const parsed = await invokeStartWikiGen({
+        checkOnly: true,
+        brain_id: r.brain.brain_id,
+      });
       return NextResponse.json({
         running: parsed.running ?? false,
         taskArn: parsed.taskArn ?? null,

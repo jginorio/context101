@@ -4,28 +4,28 @@ import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { InvokeCommand } from "@aws-sdk/client-lambda";
 
 import {
-  CONNECTORS_TABLE,
+  connectorsTableForBrain,
   ddbConnectors,
   lambdaClient,
   syncFnNameFor,
   type Connector,
 } from "@/utils/connectors";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain } from "@/utils/s3";
 
 /**
- * POST /api/connectors/sync
+ * POST /api/connectors/sync[?brain=<id>]
  * Body: { id: string }
  *
- * Fire-and-forget invoke of the per-type sync Lambda. The Lambda writes
- * the status back to the Dynamo row; the UI polls /api/connectors/list
- * to show progress.
+ * Fire-and-forget invoke of the per-type sync Lambda, scoped to the
+ * active brain. The Lambda writes the status back to the Dynamo row;
+ * the UI polls /api/connectors/list to show progress.
  */
 export async function POST(request: NextRequest) {
-  if (!CONNECTORS_TABLE) {
-    return NextResponse.json(
-      { error: "CONNECTORS_TABLE not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const connectorsTable = connectorsTableForBrain(r.brain);
+  const docsBucket = bucketForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.id !== "string") {
@@ -34,7 +34,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const got = await ddbConnectors.send(
-      new GetCommand({ TableName: CONNECTORS_TABLE, Key: { id: body.id } })
+      new GetCommand({ TableName: connectorsTable, Key: { id: body.id } })
     );
     const row = got.Item as Connector | undefined;
     if (!row) {
@@ -54,7 +54,12 @@ export async function POST(request: NextRequest) {
         FunctionName: fn,
         InvocationType: "Event",
         Payload: new TextEncoder().encode(
-          JSON.stringify({ connectorId: row.id })
+          JSON.stringify({
+            connectorId: row.id,
+            connectorsTable,
+            docsBucket,
+            brainId: r.brain.brain_id,
+          })
         ),
       })
     );
