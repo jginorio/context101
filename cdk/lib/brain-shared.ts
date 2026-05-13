@@ -92,11 +92,21 @@ export class BrainShared extends Construct {
         {
           bundling: {
             image: lambda.Runtime.NODEJS_20_X.bundlingImage,
+            // The bundler container runs as the host user (uid/gid
+            // forwarded from the developer's machine) but the default
+            // npm cache lives at /.npm which is root-owned in the
+            // sam/build-nodejs20.x image — npm errors out with EACCES
+            // mkdir /.npm. Point HOME at /tmp so npm caches under
+            // /tmp/.npm (always world-writable). Same trick for the
+            // npm config root via the env var override.
+            environment: {
+              HOME: "/tmp",
+              npm_config_cache: "/tmp/.npm",
+              npm_config_update_notifier: "false",
+            },
             command: [
               "bash",
               "-c",
-              // cp -au keeps perms; --omit=dev future-proofs the zip
-              // size in case anyone adds dev deps later.
               "cp -au . /asset-output && cd /asset-output && npm install --omit=dev --no-audit --no-fund --loglevel=error",
             ],
           },

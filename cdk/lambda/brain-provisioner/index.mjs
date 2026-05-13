@@ -65,7 +65,7 @@ import {
   CreateIndexCommand,
   DeleteIndexCommand,
   GetIndexCommand,
-} from "@aws-sdk/client-s3-vectors";
+} from "@aws-sdk/client-s3vectors";
 import {
   SecretsManagerClient,
   CreateSecretCommand,
