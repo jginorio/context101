@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { BrainSwitcher } from "@/components/brain-switcher";
 import { KnowledgeTree } from "@/components/knowledge-tree";
 import { KnowledgeViewer } from "@/components/knowledge-viewer";
 import { NewItemDialog } from "@/components/new-item-dialog";
@@ -29,11 +30,21 @@ import {
 } from "@/components/ui/sheet";
 
 import "@/utils/amplify-client-config";
+import { useBrain } from "@/lib/brain-context";
 
 export default function Home() {
+  const { currentBrainId } = useBrain();
   const [selected, setSelected] = React.useState<string | null>(null);
   const [refreshKey, setRefreshKey] = React.useState(0);
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
+
+  // Switching brain → clear the open file (it lives in the previous brain's
+  // bucket) and bump the tree refresh key so it re-fetches against the new
+  // brain. The cookie/URL update happens in `setBrain` inside BrainProvider.
+  React.useEffect(() => {
+    setSelected(null);
+    setRefreshKey((k) => k + 1);
+  }, [currentBrainId]);
 
   const [newItem, setNewItem] = React.useState<{
     mode: "file" | "folder";
@@ -122,6 +133,7 @@ export default function Home() {
               Shared team knowledge base
             </p>
           </div>
+          <BrainSwitcher />
         </div>
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <Button

@@ -2,31 +2,31 @@ import { ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { DOCS_BUCKET, s3 } from "@/utils/s3";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain, s3 } from "@/utils/s3";
 
 /**
- * GET /api/files/list?prefix=some/prefix/
+ * GET /api/files/list?prefix=some/prefix/[&brain=<id>]
  *
- * Returns the direct children of `prefix` in the docs bucket:
+ * Returns the direct children of `prefix` in the active brain's docs bucket:
  *   - folders: common prefixes (one "level" down)
  *   - files:   keys directly under the prefix
  *
  * The auth gate in proxy.ts has already verified the user is signed in.
+ * The brain is resolved via `?brain=` query → `x-brain-id` header →
+ * `ctx_brain` cookie → "default".
  */
 export async function GET(request: NextRequest) {
-  if (!DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "DOCS_BUCKET env var is not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const bucket = bucketForBrain(r.brain);
 
   const prefix = request.nextUrl.searchParams.get("prefix") ?? "";
 
   try {
     const res = await s3.send(
       new ListObjectsV2Command({
-        Bucket: DOCS_BUCKET,
+        Bucket: bucket,
         Prefix: prefix,
         Delimiter: "/",
       })

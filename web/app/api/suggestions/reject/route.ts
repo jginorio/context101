@@ -2,22 +2,21 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-import { SUGGESTIONS_TABLE, ddb } from "@/utils/suggestions";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { ddb, suggestionsTableForBrain } from "@/utils/suggestions";
 
 /**
- * POST /api/suggestions/reject
+ * POST /api/suggestions/reject[?brain=<id>]
  * Body: { id: string }
  *
- * Flips status to `rejected`. The suggestion stays in the table for
- * audit (we don't delete — easy to revisit later).
+ * Flips status to `rejected` on the active brain's suggestions table.
+ * The suggestion stays in the table for audit (we don't delete — easy
+ * to revisit later).
  */
 export async function POST(request: NextRequest) {
-  if (!SUGGESTIONS_TABLE) {
-    return NextResponse.json(
-      { error: "SUGGESTIONS_TABLE env var is not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const table = suggestionsTableForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.id !== "string") {
@@ -27,7 +26,7 @@ export async function POST(request: NextRequest) {
   try {
     await ddb.send(
       new UpdateCommand({
-        TableName: SUGGESTIONS_TABLE,
+        TableName: table,
         Key: { id: body.id },
         UpdateExpression: "SET #s = :s, reviewed_at = :rt",
         ConditionExpression: "#s = :pending",

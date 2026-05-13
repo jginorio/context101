@@ -6,26 +6,24 @@ import JSZip from "jszip";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { DOCS_BUCKET, s3 } from "@/utils/s3";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain, s3 } from "@/utils/s3";
 
 export const maxDuration = 60;
 
 /**
- * POST /api/files/zip
+ * POST /api/files/zip[?brain=<id>]
  * Body: { keys: string[] }
  *
  * `keys` can mix files (e.g. "general-knowledge.md") and folders
  * (keys ending with "/", e.g. "domain-knowledge/"). Folders get
  * expanded recursively on the server. Returns the archive as
- * Content-Type: application/zip.
+ * Content-Type: application/zip. Scoped to the active brain.
  */
 export async function POST(request: NextRequest) {
-  if (!DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "DOCS_BUCKET env var is not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const bucket = bucketForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
   if (
@@ -55,7 +53,7 @@ export async function POST(request: NextRequest) {
         do {
           const list = await s3.send(
             new ListObjectsV2Command({
-              Bucket: DOCS_BUCKET,
+              Bucket: bucket,
               Prefix: key,
               ContinuationToken: token,
             })
@@ -86,7 +84,7 @@ export async function POST(request: NextRequest) {
     const zip = new JSZip();
     for (const k of files) {
       const res = await s3.send(
-        new GetObjectCommand({ Bucket: DOCS_BUCKET, Key: k })
+        new GetObjectCommand({ Bucket: bucket, Key: k })
       );
       const bytes = (await res.Body?.transformToByteArray()) ?? new Uint8Array();
       zip.file(k, bytes);
@@ -95,7 +93,7 @@ export async function POST(request: NextRequest) {
     const buffer = await zip.generateAsync({ type: "nodebuffer" });
 
     const stamp = new Date().toISOString().slice(0, 10);
-    const filename = `context101-export-${stamp}.zip`;
+    const filename = `context101-${r.brain.brain_id}-export-${stamp}.zip`;
 
     // Node Buffer is compatible with the web Response body
     return new NextResponse(buffer as unknown as BodyInit, {

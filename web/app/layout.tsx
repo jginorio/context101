@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import "./globals.css";
 import { ThemeProvider } from "@/components/theme-provider";
 import { Toaster } from "@/components/ui/sonner";
+import { BrainProvider } from "@/lib/brain-context";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -42,7 +44,12 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          {children}
+          {/* BrainProvider reads `useSearchParams`, so it has to sit inside a
+              Suspense boundary in Next 16 to keep static pages out of forced
+              dynamic rendering. */}
+          <Suspense fallback={null}>
+            <BrainProvider>{children}</BrainProvider>
+          </Suspense>
           <Toaster />
         </ThemeProvider>
       </body>
