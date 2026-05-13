@@ -1,8 +1,8 @@
 # Context101 🧠
 
-A shared team knowledge base exposed via MCP, backed by **Amazon Bedrock Knowledge Bases** with S3 + S3 Vectors, and optionally hosted on **AWS App Runner** with bearer-token auth.
+A shared team knowledge base exposed via MCP, backed by **Amazon Bedrock Knowledge Bases** with S3 + S3 Vectors, and hosted on **AWS App Runner** with bearer-token auth.
 
-Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor, Claude Code, Devin) can semantically search them.
+Create **as many brains as you want from the web admin UI** — each brain is a fully isolated knowledge base (own S3 bucket, own Bedrock KB, own vector index, own suggestions queue, own bearer token). One MCP service serves every brain; clients reach a specific brain via `/brain/<brain_id>/mcp`.
 
 ## Architecture
 
@@ -10,25 +10,33 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 ┌──────────────┐  ┌──────────┐  ┌─────────────┐
 │ Claude       │  │  Cursor  │  │ Claude Code │  ...
 └──────┬───────┘  └────┬─────┘  └──────┬──────┘
-       │               │               │
-       └────────[Bearer token]─────────┘
+       │   /brain/<id>/mcp + per-brain bearer token
+       └───────────────┼───────────────┘
                        ▼
             ┌─────────────────────┐
-            │  App Runner         │  ← TLS, stable URL
-            │  FastMCP container  │
+            │  App Runner         │  ← one TLS URL, brain
+            │  FastMCP container  │    resolved from URL path
             └──────────┬──────────┘
-              IAM instance role
                        │
-          ┌────────────┼────────────┐
-          ▼                         ▼
-   Bedrock KB (Retrieve)     S3 docs bucket
-          │                        │
-    Titan embed v2        (markdown, versioned)
-          │                        │
-          ▼                        ▼
-     S3 Vectors            Lambda auto-ingest
-      (1024-dim)                on PutObject
+                       ▼
+            ┌─────────────────────┐
+            │  BrainsTable (DDB)  │  ← registry: per-brain
+            │  brain_id → handles │    KB id, bucket, token ARN, …
+            └──────────┬──────────┘
+                       │
+       ┌───────────────┼───────────────┐
+       ▼               ▼               ▼
+  Per-brain      Per-brain        Per-brain
+  Bedrock KB     S3 docs bucket   bearer token
+  (Titan v2)     (markdown, ver.) (Secrets Manager)
+       │               │
+       ▼               ▼
+  S3 Vectors      Lambda auto-
+  index/<brain>   ingest on PutObject
+                  (looks up brain from event bucket)
 ```
+
+The control plane (create / delete a brain from the **/brains** page) is a Lambda that calls `s3:CreateBucket`, `bedrock-agent:CreateKnowledgeBase`, `s3vectors:CreateIndex`, `dynamodb:CreateTable`, and `secretsmanager:CreateSecret` against a fixed `context101-brain-*` naming pattern. The existing single brain (pre-multi-brain) is registered as `brain_id="default"` on first deploy of this system — no data migration, no URL changes for existing clients (the legacy `/mcp` path remains as an alias for the default brain).
 
 ## Repo Layout
 
@@ -36,22 +44,24 @@ Drop markdown files in an S3 bucket, and any MCP client (Claude Desktop, Cursor,
 .
 ├── cdk/                          # TypeScript CDK — all AWS infra
 │   ├── bin/context101.ts
-│   ├── lib/context101-stack.ts
+│   ├── lib/
+│   │   ├── context101-stack.ts
+│   │   └── brain-shared.ts       # BrainsTable + BrainProvisionerFn + default-brain seed
 │   └── lambda/
-│       ├── auto-ingest/          # S3 event → Bedrock StartIngestionJob
-│       ├── start-wiki-gen/       # SSR → ecs:RunTask shim (bypasses the Amplify PassRole deny)
-│       ├── connector-dispatch/   # EventBridge 6h → fan-out to per-type sync Lambdas
-│       ├── connector-sync-sheets/
-│       ├── connector-sync-docs/
-│       ├── connector-sync-slides/
-│       └── connector-sync-notion/
-├── server.py                     # Python MCP server (FastMCP + boto3)
+│       ├── brain-provisioner/    # Web UI → create/delete a brain at runtime
+│       ├── auto-ingest/          # S3 event → look up brain → Bedrock StartIngestionJob
+│       ├── start-wiki-gen/       # SSR → ecs:RunTask shim (per-brain DOCS_BUCKET override)
+│       ├── connector-dispatch/   # EventBridge 6h → fan-out across every brain's connectors
+│       └── connector-sync-{sheets,docs,slides,notion,github}/
+├── server.py                     # Python MCP server (FastMCP + boto3 + brain routing)
 ├── Dockerfile                    # Used by App Runner
-├── knowledge/                    # Your markdown — source of truth
+├── knowledge/                    # Optional bootstrap seed for the default brain
 ├── web/                          # Next.js admin UI (Amplify Hosting)
-├── wiki-generator/               # Fargate task — synthesizes both the
-│                                 # team wiki (WIKI_MODE=main) and the
-│                                 # per-repo code wiki (WIKI_MODE=code)
+│   ├── app/brains/               # /brains admin page (create / delete brains)
+│   ├── app/api/brains/           # registry endpoints (list/create/get/delete/token)
+│   ├── lib/brains-server.ts      # resolveBrainFromRequest + registry helpers
+│   └── lib/brain-context.tsx     # client-side BrainProvider + useBrain()
+├── wiki-generator/               # Fargate task — per-brain DOCS_BUCKET via overrides
 └── requirements.txt
 ```
 
@@ -114,9 +124,9 @@ The seed flag is **off by default** so subsequent deploys never clobber whatever
 > **Source of truth:** At runtime, the **S3 docs bucket** is the source of truth. Content is managed through the web admin UI, agent `suggest_knowledge` proposals (reviewed in the Suggestions tab), and data connectors. The local `knowledge/` folder is just an **optional bootstrap seed** that's only uploaded when you pass `-c seed=true`. Avoid editing files in the S3 console directly — use the web UI so writes go through the app's auth, approval, and audit surfaces.
 
 **Key outputs** (you'll want to save these):
-- `DocsBucketName` — the S3 bucket holding your markdown
-- `KnowledgeBaseId` — set as `KB_ID` when running the MCP server locally
-- `ConnectorsTableName`, `Connector*FnName` — referenced by the web app at runtime
+- `BrainsTableName` — the DDB registry of brains; the MCP + web app both read this on every request
+- `BrainProvisionerFnName` — the Lambda the `/brains` page invokes to create/delete a brain
+- `DocsBucketName` / `KnowledgeBaseId` — the default brain's bucket + KB (registered into `BrainsTable` as `brain_id="default"` by a one-shot custom resource)
 
 The web admin UI and App Runner MCP service are **gated on two CDK context flags** (they only deploy if you pass them). See the next two sections.
 
@@ -185,22 +195,23 @@ CDK references both secrets by *name*, not value — so rotating the creds doesn
 
 ### 5a. Run locally for dev
 
-Without a bearer token — no auth, anyone on your machine can hit it:
+The container reads `BRAINS_TABLE` and resolves the rest (KB id, bucket, token) per request from the registry. Local dev points at the same table:
 
 ```bash
 pip install -r requirements.txt
 
 export AWS_PROFILE=<your-profile>
 export AWS_REGION=us-east-1
-export KB_ID=<KnowledgeBaseId>
-export DOCS_BUCKET=<DocsBucketName>
+export BRAINS_TABLE=context101-brains
 
-fastmcp run server.py:mcp --transport streamable-http --port 8787
+uvicorn server:app --port 8787 --host 0.0.0.0
 ```
+
+Hit `http://localhost:8787/brain/default/mcp` with the default brain's bearer token (look it up under **About → Connect your MCP client** in the web UI, or read `context101-brain-default-token` from Secrets Manager).
 
 ### 5b. Use the deployed App Runner service (team)
 
-Once deployed with `-c token=<value>`, teammates point their MCP client at `McpUrl` and add the `Authorization: Bearer <token>` header.
+Each brain gets its own URL and its own bearer token. Both come from the **About** page in the web admin UI — click "Copy" on the snippet for the brain you want to attach to.
 
 **Cursor** (`.cursor/mcp.json`):
 
@@ -208,9 +219,9 @@ Once deployed with `-c token=<value>`, teammates point their MCP client at `McpU
 {
   "mcpServers": {
     "context101": {
-      "url": "https://<McpUrl>/mcp",
+      "url": "https://<McpHost>/brain/<brain_id>/mcp",
       "headers": {
-        "Authorization": "Bearer <your-shared-token>"
+        "Authorization": "Bearer <per-brain-token>"
       }
     }
   }
@@ -227,9 +238,9 @@ Once deployed with `-c token=<value>`, teammates point their MCP client at `McpU
       "args": [
         "-y",
         "mcp-remote",
-        "https://<McpUrl>/mcp",
+        "https://<McpHost>/brain/<brain_id>/mcp",
         "--header",
-        "Authorization: Bearer <your-shared-token>"
+        "Authorization: Bearer <per-brain-token>"
       ]
     }
   }
@@ -237,6 +248,8 @@ Once deployed with `-c token=<value>`, teammates point their MCP client at `McpU
 ```
 
 Restart Claude Desktop and Context101 should appear in the tools list. The `-y` lets `npx` auto-install `mcp-remote` the first time.
+
+> **Multiple brains in one client.** Use a distinct `mcpServers` key per brain (e.g. `"context101-marketing"`, `"context101-engineering"`) so the client treats them as separate servers. The `/about` page does this automatically — it labels each snippet with the brain's display name.
 
 ## Onboarding teammates to the MCP servers
 
@@ -300,30 +313,72 @@ aws cognito-idp admin-delete-user \
   --region us-east-1
 ```
 
-### Separate from the MCP bearer token
+### Separate from the MCP bearer tokens
 
-Note: the Cognito accounts control access to the **web admin UI**. The **MCP endpoint** uses a separate shared bearer token (`CTX_TOKEN` in `cdk/.deploy-env`). Rotating one doesn't affect the other. To rotate the MCP token: edit `.deploy-env`, re-run `./cdk/deploy.sh`, and redistribute the new value to teammates' MCP client configs.
+Note: Cognito accounts control access to the **web admin UI**. The **MCP endpoints** use **per-brain bearer tokens** stored in Secrets Manager (one per brain, auto-generated at brain creation time). Rotating one doesn't affect the other.
+
+- **Default brain's token** — comes from `CTX_TOKEN` in `cdk/.deploy-env` and is stored in the `context101-bearer-token` secret. To rotate: edit `.deploy-env`, re-run `./cdk/deploy.sh`, redistribute.
+- **Other brains' tokens** — stored in `context101-brain-<brain_id>-token`. To rotate, update the secret value directly with `aws secretsmanager put-secret-value` (no redeploy). The MCP server's token cache picks up the new value within ~5 min.
+
+## Managing brains
+
+Every brain is a fully isolated silo: its own S3 docs bucket, Bedrock Knowledge Base, vector index, suggestions queue, connectors table, and bearer token. Brains share the App Runner MCP service, the wiki Fargate task, the Cognito user pool, and the connector OAuth client secrets.
+
+### Create a brain (web UI)
+
+1. Sign in to the admin UI, click **Brains** in the header.
+2. Click **+ New brain**, enter a display name (e.g. "Marketing") + optional description, submit.
+3. The row appears with `status=provisioning` and the dialog closes. Behind the scenes, `BrainProvisionerFn` creates the bucket, Bedrock KB, vector index, DDB tables, and bearer-token secret — typically 30–60 seconds.
+4. Status flips to `ready`; the header brain switcher gains the new brain. Click **Copy** next to the MCP URL on the brain's row (or visit **About**) to get a copy-pasteable client config.
+
+### Switch brain
+
+The brain switcher next to the "Context101" title shows every `ready` brain. Selecting one:
+
+- writes the `ctx_brain` cookie,
+- updates the URL with `?brain=<id>` so the page is shareable, and
+- causes every SSR route to read/write the selected brain's bucket and tables.
+
+API routes accept the brain id in this priority: `?brain=<id>` → `x-brain-id` header → `ctx_brain` cookie → `"default"`.
+
+### Delete a brain
+
+Click the trash icon on the brain's row on `/brains`, type the display name to confirm. The provisioner empties + deletes the S3 bucket (including all object versions), deletes the Bedrock KB + data source, the vector index, both DDB tables, the bearer-token secret, and finally removes the registry row. The default brain is refused.
+
+> **No per-brain RBAC yet.** Any signed-in Cognito user can create, switch, or delete any brain, just like they can edit any file today. Per-brain ACLs are a follow-up.
+
+### Idle cost per brain
+
+- S3 docs bucket: $0/mo idle (object-storage only)
+- Bedrock KB + S3 Vectors index: $0/mo idle (pay-per-query)
+- DDB suggestions + connectors tables: $0/mo idle (on-demand billing)
+- Bearer-token secret: ~$0.40/mo
+- App Runner MCP: **shared** across all brains, ~$5–15/mo total
+
+So a hundred brains cost about the same as one, plus ~$40/mo in extra secrets.
 
 ## Daily Workflow
 
-The docs bucket is the source of truth at runtime. Content flows in through three paths — none of them require a deploy:
+Each brain's docs bucket is its own source of truth. Pick a brain via the header switcher; the Files, Wiki, Suggestions, and Sources tabs are all scoped to whatever brain is active. Content flows in through three paths — none of them require a deploy:
 
 1. **Web admin UI** — the primary surface for humans. Create, edit, rename, move, or delete markdown files; use **Improve with AI** for Opus-assisted rewrites; review and approve incoming agent proposals from the Suggestions tab.
-2. **`suggest_knowledge` MCP tool** — agents (Cursor, Claude Desktop, Claude Code, Devin) propose new docs or updates as they work. Proposals land in the review queue; nothing reaches the brain until a human approves. See [Knowledge suggestions](#knowledge-suggestions-web-app).
-3. **Data connectors** — pull content automatically from where teams already write it. **Google Sheets, Google Docs, Google Slides, and Notion are live** (OAuth-based, managed from the [Sources tab](#data-source-connectors)); GitHub and chat are still on the roadmap. Each connector writes markdown + sidecars into the bucket on the same auto-ingest pipeline as the other two paths. The wiki then reconciles across sources.
+2. **`suggest_knowledge` MCP tool** — agents (Cursor, Claude Desktop, Claude Code, Devin) propose new docs or updates as they work. Proposals land in the **active brain's** review queue; nothing reaches the brain until a human approves. See [Knowledge suggestions](#knowledge-suggestions-web-app).
+3. **Data connectors** — pull content automatically from where teams already write it. **Google Sheets, Google Docs, Google Slides, Notion, and GitHub** all attach to **one brain** at create time and re-sync every 6 hours. See [Data source connectors](#data-source-connectors).
 
-Every S3 write — whichever path it came from — triggers the auto-ingest Lambda, which kicks a Bedrock ingestion job. New content is retrievable via `search_knowledge` within ~1 min once the canonical wiki catches up (next 10h regen, or hit **Refresh now** in the Wiki tab for an immediate re-synthesis).
+Every S3 write — whichever brain, whichever path — triggers the auto-ingest Lambda, which looks up the brain from the bucket name and kicks the right Bedrock ingestion job. New content is retrievable via `search_knowledge` within ~1 min once the canonical wiki catches up (manual **Refresh now** in the Wiki tab triggers an immediate re-synthesis).
 
-`cdk deploy` is reserved for **infra changes** (new tools, IAM tweaks, data-source reconfig) and the **initial seed** of the `knowledge/` folder on a fresh stack. It's not part of the content workflow anymore.
+`cdk deploy` is reserved for **infra changes** (new tools, IAM tweaks, etc.) and the **initial seed** of the `knowledge/` folder on a fresh stack. Brain create/delete and content management all run at runtime via the web UI.
 
 ## Tools
 
+All four MCP tools operate on the brain identified by the URL path (`/brain/<brain_id>/mcp`). Every tool's S3 reads, KB queries, and DDB writes are scoped to that brain's resources.
+
 | Tool | Purpose |
 |------|---------|
-| `search_knowledge(query, limit=5)` | Semantic search over the **canonical wiki** — returns ranked chunks from synthesized, deduplicated pages (never raw docs) |
-| `read_knowledge(s3_key)` | Full content of any document — raw or wiki. The escape hatch to ground truth when you need detail that was compressed out of the canonical view |
-| `list_sources()` | Enumerate all documents currently in the docs bucket |
-| `suggest_knowledge(title, content, target_path?, rationale?, trigger?)` | Propose a new doc or update an existing one; goes to the review queue — never writes to the brain directly |
+| `search_knowledge(query, limit=5)` | Semantic search over the active brain's **canonical wiki** — returns ranked chunks from synthesized, deduplicated pages (never raw docs) |
+| `read_knowledge(s3_key)` | Full content of any document in the active brain's docs bucket — raw or wiki. Escape hatch to ground truth when you need detail compressed out of the canonical view |
+| `list_sources()` | Enumerate all documents currently in the active brain's docs bucket |
+| `suggest_knowledge(title, content, target_path?, rationale?, trigger?)` | Propose a new doc or update for the active brain; goes to that brain's review queue — never writes directly |
 
 ### Two-tier retrieval: canonical vs. raw
 
@@ -354,25 +409,22 @@ Why this split:
 
 ## Knowledge suggestions (web app)
 
-Agents can propose knowledge via the MCP's `suggest_knowledge` tool. Proposals land in a DynamoDB review queue — **nothing is written to the brain until a human approves**.
+Agents propose knowledge via `suggest_knowledge`. Proposals land in the **active brain's** DynamoDB review queue — **nothing is written until a human approves**. Each brain has its own suggestions table (`context101-brain-<brain_id>-suggestions` for non-default brains; `context101-suggestions` for default), so the /suggestions tab only shows entries for the brain you're viewing.
 
 ```
-Agent (Cursor / Claude Desktop / Devin / RV agent)
-    │  suggest_knowledge(title, content, target_path?, rationale?, trigger?)
+Agent (Cursor / Claude Desktop / Devin / etc.)
+    │  suggest_knowledge(...)  →  /brain/<brain_id>/mcp
     ▼
-MCP (App Runner)
-    │  PutItem status=pending
+MCP (App Runner, brain resolved from URL path)
+    │  PutItem status=pending  →  that brain's suggestions table
     ▼
-DynamoDB: context101-suggestions
-    │
-    ▼
-Web admin UI → /suggestions tab
+Web admin UI → /suggestions tab (scoped to active brain)
     │
     ├─ filter by status: pending / accepted / rejected / all
     ├─ click a row → drawer:
     │     ├─ update case  →  side-by-side diff (existing vs proposed)
     │     └─ new doc case →  rendered preview + editable destination path
-    └─ ✓ Approve   → writes to S3 → Bedrock auto-ingests → queryable
+    └─ ✓ Approve   → writes to that brain's S3 bucket → auto-ingests → queryable
        ✗ Reject    → marks rejected (kept for audit)
 ```
 
@@ -399,7 +451,9 @@ Web admin UI → /suggestions tab
 
 ## Data source connectors
 
-Connect a **Google Sheet, Doc, Slides deck, Notion page/database, or GitHub repo** from the **Sources** tab. Each connection authenticates once (OAuth for Google/Notion, a Personal Access Token for GitHub) and the credential lives in its own Secrets Manager secret. Sources re-sync every 6 hours. Content lands as markdown under `sources/<type>/<slug>/…` in the docs bucket — same auto-ingest pipeline as everything else, so new/changed content is retrievable via `search_knowledge` within ~1 min of each sync.
+Connect a **Google Sheet, Doc, Slides deck, Notion page/database, or GitHub repo** from the **Sources** tab. A connector **belongs to one brain** — the brain that's active in the header when you click "Add new source". The connector row lives in that brain's connectors table and writes its files into that brain's docs bucket under `sources/<type>/<slug>/…`. Re-syncing happens every 6 hours.
+
+Each connection authenticates once (OAuth for Google/Notion, a Personal Access Token for GitHub) and the credential lives in its own Secrets Manager secret (per-connection, not per-brain). The OAuth `state` parameter encodes `<brain_id>:<connector_id>` so the callback lands back in the right brain's table.
 
 ### User flow
 
@@ -584,7 +638,9 @@ Cost: ~$0.02–0.05 per call on a typical 10KB doc. Nothing is written to S3 unl
 
 ## Auto-generated wiki (web app)
 
-Raw contributions to `knowledge/` don't need to be structured — people drop in whatever makes sense for them. A scheduled **Fargate task** reads the whole corpus and synthesizes a cross-referenced wiki (DeepWiki-style) under `wiki/` in the docs bucket. The admin UI's **Wiki** tab renders it read-only with Mermaid diagrams and source citations back to the original markdown.
+Raw contributions to a brain's bucket don't need to be structured — people drop in whatever makes sense for them. A **Fargate task** reads the active brain's corpus and synthesizes a cross-referenced wiki (DeepWiki-style) under `wiki/` in **that brain's** docs bucket. The admin UI's **Wiki** tab renders it read-only with Mermaid diagrams and source citations back to the original markdown.
+
+The same Fargate task definition handles every brain — `start-wiki-gen` reads the brain id from the request (the /wiki refresh button passes the active brain), looks up the brain's `docs_bucket` from `BrainsTable`, and injects it via `containerOverrides.environment`. Single-flight dedup keys on `(brain_id, mode, repo)` so a refresh on Brain A doesn't collide with a refresh on Brain B.
 
 **User flow:**
 1. Sign in and click **Wiki** in the header.
@@ -875,81 +931,43 @@ knowledge/databases.md                   (local markdown)
 
 ## Cleanup
 
+**Tear down a single brain:** click delete on its row in `/brains` and confirm by typing the display name. The provisioner empties the bucket, deletes the KB, vector index, DDB tables, and token secret. The default brain cannot be deleted this way.
+
+**Tear down the whole stack:**
+
 ```bash
 cd cdk
 ./deploy.sh destroy
 ```
 
-The S3 docs bucket and S3 Vectors bucket have `RETAIN` policies — you won't lose data. Empty them manually if you want them gone.
+The default brain's docs bucket and the shared S3 Vectors bucket have `RETAIN` policies, so `cdk destroy` leaves their data behind. Empty them manually if you want them gone. **Non-default brains created at runtime are NOT in CloudFormation** — they were provisioned by the brain-provisioner Lambda. `cdk destroy` does NOT clean them up; delete them from `/brains` first, or sweep the `context101-brain-*` buckets / KBs / secrets manually.
 
 ## Why this stack
 
-- **S3 Vectors** — cheapest vector store option; stays inside S3.
+- **S3 Vectors** — cheapest vector store option; stays inside S3. One index per brain inside a shared vector bucket.
 - **Titan embed v2, 1024-dim** — native to Bedrock, no third-party API keys.
-- **App Runner** — stable TLS URL, simple container hosting, ~$5-15/mo. No per-seat pricing.
-- **Shared bearer token** — honest threat model for a small team. Graduate to Cognito per-user auth later if needed.
-- **IAM instance role** — the MCP never holds AWS access keys; permissions flow through the App Runner role.
+- **App Runner** — one stable TLS URL serving every brain, ~$5–15/mo total (does not scale with brain count).
+- **Per-brain bearer tokens** — each brain has its own Secrets Manager secret. Compromise of one brain's token doesn't touch others.
+- **DDB on-demand** — per-brain tables cost ~$0 idle, so brain count drives ~zero fixed cost.
 
 ## Notes
 
-- `removalPolicy: RETAIN` on docs and vector buckets — accidental `cdk destroy` won't wipe your data.
-- The MCP server doesn't write to the KB directly — agents propose via `suggest_knowledge`, which lands in the review queue (see [Knowledge suggestions](#knowledge-suggestions-web-app)). Content flows into S3 through the web UI, approved suggestions, or the Google Workspace connectors.
-- Each S3 upload triggers a full ingestion job. Bedrock handles dedup/delta indexing internally.
-- To rotate the bearer token: edit `CTX_TOKEN` in `cdk/.deploy-env` (or `~/.context101/deploy-env`) and re-run `./cdk/deploy.sh`. Redeploys the App Runner service with the new secret.
-- The wiki generator writes one file per page on each run, so a full regen kicks N ingestion jobs in rapid succession. Bedrock dedups internally — it's safe, just noisy in the console.
+- `removalPolicy: RETAIN` on the default docs bucket and the shared vector bucket — accidental `cdk destroy` won't wipe your data. Runtime-created brain buckets follow the same convention.
+- The MCP server doesn't write to a KB directly — agents propose via `suggest_knowledge`, which lands in the active brain's review queue. Content flows into S3 through the web UI, approved suggestions, or the data connectors.
+- Each S3 upload triggers an ingestion job for the bucket's brain. The auto-ingest Lambda looks the brain up in `BrainsTable` by bucket name; one shared Lambda serves every brain.
+- To rotate the default brain's bearer token: edit `CTX_TOKEN` in `cdk/.deploy-env` and re-run `./cdk/deploy.sh`. For other brains: `aws secretsmanager put-secret-value --secret-id context101-brain-<id>-token --secret-string '<new-value>'`. The MCP cache picks up the new value within ~5 min.
+- The wiki generator writes one file per page per run, so a full regen kicks N ingestion jobs in rapid succession. Bedrock dedups internally — safe, just noisy in the console.
 
 ## Roadmap / TODO
 
-### Richer sidecar metadata for filtered retrieval
-
-Sidecar-based metadata filtering is already wired up — see [Two-tier retrieval](#two-tier-retrieval-canonical-vs-raw). Wiki pages get a `.metadata.json` sidecar with `source`, `generated_at`, `page_slug`, `source_files`, and `search_knowledge` pushes an equals filter on `source=wiki`.
-
-The next extension is opening the same mechanism to raw docs and exposing a `filter` arg on `search_knowledge`:
-
-```
-knowledge/
-├── databases.md
-├── databases.md.metadata.json          ← sidecar for a raw doc
-│     {
-│       "metadataAttributes": {
-│         "team":    "marketing",
-│         "origin":  "notion",
-│         "updated": "2026-04-18"
-│       }
-│     }
-├── domain-knowledge/example-product.md
-└── domain-knowledge/example-product.md.metadata.json
-```
-
-Query-time filter on the raw tier (hypothetical — requires extending `search_knowledge` with a `filter` param and/or a `tier: "raw" | "wiki"` arg):
-
-```
-search_knowledge(
-  query  = "pricing strategy",
-  tier   = "raw",
-  filter = { equals: { key: "team", value: "marketing" } }
-)
-```
-
-**To extend:**
-1. Decide on a sidecar-generation path for raw docs (commit alongside, auto-derive from frontmatter, or compute in a custom ingestion transformation Lambda).
-2. Add a `filter` (and possibly `tier`) arg on `search_knowledge`; compose it with the existing `source=wiki` filter via Bedrock's `andAll`/`orAll`.
-3. Custom attributes default to filterable, subject to the 2KB-per-vector cap — short strings only.
-
-**When it's worth adding:**
-- Multiple distinct knowledge domains in one KB and you want queries scoped to one.
-- Freshness filtering (e.g. "exclude anything older than 6 months").
-- Per-audience views (engineering-only docs vs shared team docs).
-- Hybrid retrieval that pulls recent raw docs alongside canonical wiki chunks when the wiki is stale vs. the source.
-
-### Other ideas
-
-- **GitHub OAuth flow** — today the GitHub connector takes a PAT (simple, but tied to the user who generated it). A GitHub App / OAuth flow would scope per-user, support per-repo install consent, and avoid the rotation footgun with `gho_` tokens issued via `gh auth token`.
+- **Per-brain RBAC** — today any signed-in Cognito user can create / switch / delete any brain. Add Cognito groups mapped to brains, then gate `resolveBrainFromRequest` on group membership.
+- **Per-user MCP auth via Cognito + JWT** — graduate from per-brain bearer tokens once you need per-person audit trails. Swap the bearer-token middleware in `server.py` for a JWT verifier pointing at the Cognito user pool, and put the brain claim in the token.
+- **Sub-brain metadata filters** — within one brain, scope queries with metadata sidecars (`team`, `freshness`, `audience`). Already partially wired up via the `source=wiki` sidecar filter. Extend `search_knowledge` with an optional `filter` arg and compose it via Bedrock's `andAll`.
+- **GitHub OAuth flow** — today the GitHub connector takes a PAT. A GitHub App / OAuth flow would scope per-user, support per-repo install consent, and avoid the rotation footgun with `gho_` tokens issued via `gh auth token`.
 - **Chat connector (Slack / Discord)** — ingest pinned messages + specific channel transcripts into `sources/chat/<channel>/<day>.md`. More interesting for "what did we decide last week" retrieval than for structured knowledge.
-- **Per-page code-wiki cache** — today the cost guard skips the *entire* code-wiki regen when the repo's tree SHA hasn't moved. A finer-grained version would cache each generated page by the hash of its `relevant_files` content so changes in one module don't re-Opus the whole repo's pages.
-- **Deep links to wiki pages** — `/wiki?repo=foo-bar&slug=architecture` to URL-restore selection across reloads + make pages shareable. Today selection is in component state only.
-- **Per-folder descriptions** — drop a `_about.md` in each folder that explains what the folder is for ("use knowledge in here when solving anything database-related"). Bedrock indexes it like any other markdown so semantic search picks it up naturally. The web UI would filter `_about.md` out of the normal list and show its content under the folder name, Devin-style. Stronger variant: wire `customTransformationConfiguration` on `CfnDataSource` to a Lambda that prepends the folder context to every file at ingestion time, so every chunk's vector carries the folder context.
-- **Hierarchical or semantic chunking** — better retrieval on long, structured docs. Higher ingestion cost. Swap the `chunkingConfiguration` on `CfnDataSource`.
-- **Per-user auth via Cognito + JWT** — graduate from the shared bearer token when you need per-person audit trails. Swap `StaticTokenVerifier` for FastMCP's `JWTVerifier` pointing at a Cognito user pool.
-- **Multimodal ingestion** — Bedrock KB supports images and tables via `SupplementalDataStorageLocation`. Worth it if team knowledge ever includes diagrams/screenshots.
-- **Migrate App Runner → ECS Express Mode** — AWS announced April 30, 2026 that App Runner is closed to new customers. Existing services (ours) keep working indefinitely, but no new features are planned. AWS's recommended successor is [ECS Express Mode](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html). Hold off until (a) AWS announces an actual App Runner EOL date, or (b) ECS Express Mode has been GA long enough to be battle-tested. At our scale the migration would also add ALB costs (~$16/mo minimum) on top of existing Fargate charges.
+- **Per-page code-wiki cache** — today the cost guard skips the *entire* code-wiki regen when the repo's tree SHA hasn't moved. A finer-grained version would cache each page by the hash of its `relevant_files`.
+- **Deep links to wiki pages** — `/wiki?repo=foo-bar&slug=architecture` to URL-restore selection across reloads.
+- **Per-folder descriptions** — drop a `_about.md` in each folder that explains what the folder is for. Bedrock indexes it like any other markdown so semantic search picks it up. Stronger variant: a custom ingestion-transformation Lambda that prepends folder context to every file.
+- **Hierarchical or semantic chunking** — better retrieval on long, structured docs. Higher ingestion cost.
+- **Multimodal ingestion** — Bedrock KB supports images and tables via `SupplementalDataStorageLocation`.
+- **Migrate App Runner → ECS Express Mode** — AWS announced (April 2026) that App Runner is closed to new customers. Existing services keep working but no new features. AWS's recommended successor is [ECS Express Mode](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html). Hold off until AWS announces an actual EOL date or ECS Express Mode is battle-tested. The migration adds ~$16/mo in ALB charges.
