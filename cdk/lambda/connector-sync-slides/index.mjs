@@ -32,8 +32,11 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
 const sm = new SecretsManagerClient({});
 
-const CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
-const DOCS_BUCKET = process.env.DOCS_BUCKET;
+// Per-brain values come from the invocation event (dispatcher injects
+// per-row). Env-var fallbacks keep legacy invokes against the default
+// brain working.
+let CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
+let DOCS_BUCKET = process.env.DOCS_BUCKET;
 const GOOGLE_OAUTH_CLIENT_SECRET_ID =
   process.env.GOOGLE_OAUTH_CLIENT_SECRET_ID;
 
@@ -225,6 +228,8 @@ async function markSuccess(connectorId, itemCount, deckTitle) {
 export const handler = async (event) => {
   const connectorId = event?.connectorId;
   if (!connectorId) throw new Error("connectorId is required");
+  if (event?.connectorsTable) CONNECTORS_TABLE = event.connectorsTable;
+  if (event?.docsBucket) DOCS_BUCKET = event.docsBucket;
   if (!CONNECTORS_TABLE || !DOCS_BUCKET || !GOOGLE_OAUTH_CLIENT_SECRET_ID) {
     throw new Error("required env vars missing");
   }

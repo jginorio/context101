@@ -316,14 +316,23 @@ export class Context101Stack extends cdk.Stack {
       new iam.PolicyStatement({
         sid: "ListDocsBucket",
         actions: ["s3:ListBucket"],
-        resources: [docsBucket.bucketArn],
+        resources: [
+          docsBucket.bucketArn,
+          // Per-brain buckets — the dispatcher injects DOCS_BUCKET via
+          // containerOverrides at RunTask time, so this role needs access
+          // to every brain's bucket.
+          `arn:aws:s3:::${namePrefix}-brain-*`,
+        ],
       })
     );
     wikiTaskRole.addToPolicy(
       new iam.PolicyStatement({
         sid: "RwDocsObjects",
         actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
-        resources: [`${docsBucket.bucketArn}/*`],
+        resources: [
+          `${docsBucket.bucketArn}/*`,
+          `arn:aws:s3:::${namePrefix}-brain-*/*`,
+        ],
       })
     );
     // Same Opus + marketplace grants as the SSR compute role. Wildcard
@@ -700,6 +709,68 @@ export class Context101Stack extends cdk.Stack {
     });
     ingestFn.addEnvironment("BRAINS_TABLE", brainShared.brainsTable.tableName);
     brainShared.brainsTable.grantReadData(ingestFn);
+
+    // Connector plane — read brain registry + widen IAM to any brain's
+    // connectors table + docs bucket. Sync Lambdas now take connectorsTable
+    // + docsBucket per invocation from the event payload, so they need
+    // wildcard access to context101-brain-* resources.
+    connectorDispatchFn.addEnvironment(
+      "BRAINS_TABLE",
+      brainShared.brainsTable.tableName
+    );
+    brainShared.brainsTable.grantReadData(connectorDispatchFn);
+
+    const allSyncFns = [
+      connectorSyncSheetsFn,
+      connectorSyncDocsFn,
+      connectorSyncSlidesFn,
+      connectorSyncNotionFn,
+      connectorSyncGithubFn,
+    ];
+    for (const fn of allSyncFns) {
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          sid: "RwBrainConnectorsTables",
+          actions: [
+            "dynamodb:GetItem",
+            "dynamodb:PutItem",
+            "dynamodb:UpdateItem",
+            "dynamodb:Query",
+            "dynamodb:Scan",
+          ],
+          resources: [
+            `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-connectors`,
+            `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-connectors/index/*`,
+          ],
+        })
+      );
+      fn.addToRolePolicy(
+        new iam.PolicyStatement({
+          sid: "RwBrainDocsBuckets",
+          actions: [
+            "s3:ListBucket",
+            "s3:GetObject",
+            "s3:PutObject",
+            "s3:DeleteObject",
+          ],
+          resources: [
+            `arn:aws:s3:::${namePrefix}-brain-*`,
+            `arn:aws:s3:::${namePrefix}-brain-*/*`,
+          ],
+        })
+      );
+    }
+    // Dispatcher needs to Query any brain's connectors table.
+    connectorDispatchFn.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "QueryBrainConnectorsTables",
+        actions: ["dynamodb:Query"],
+        resources: [
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-connectors`,
+          `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-connectors/index/*`,
+        ],
+      })
+    );
 
     new cdk.CfnOutput(this, "BrainsTableName", {
       value: brainShared.brainsTable.tableName,
@@ -1101,8 +1172,12 @@ export class Context101Stack extends cdk.Stack {
           WIKI_TASK_DEF_ARN: wikiTaskDef.taskDefinitionArn,
           WIKI_SUBNET_IDS: wikiVpc.publicSubnets.map((s) => s.subnetId).join(","),
           WIKI_SECURITY_GROUP_ID: wikiSg.securityGroupId,
+          // Resolves brain_id → docs_bucket at RunTask time so the
+          // generator reads from the right brain's bucket.
+          BRAINS_TABLE: brainShared.brainsTable.tableName,
         },
       });
+      brainShared.brainsTable.grantReadData(startWikiGenFn);
       startWikiGenFn.addToRolePolicy(
         new iam.PolicyStatement({
           sid: "RunWikiGenerator",

@@ -1,30 +1,28 @@
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
 import { ScanCommand } from "@aws-sdk/lib-dynamodb";
 
+import { resolveBrainFromRequest } from "@/lib/brains-server";
 import {
-  CONNECTORS_TABLE,
+  connectorsTableForBrain,
   ddbConnectors,
   type Connector,
 } from "@/utils/connectors";
 
 /**
- * GET /api/connectors/list
+ * GET /api/connectors/list[?brain=<id>]
  *
- * Returns every row in the connectors table, sorted by created_at desc.
- * At our volume (tens of rows) a Scan is fine — cheaper than a GSI per
- * status for a simple list view.
+ * Returns every row in the active brain's connectors table, sorted by
+ * created_at desc. At our volume (tens of rows) a Scan is fine.
  */
-export async function GET() {
-  if (!CONNECTORS_TABLE) {
-    return NextResponse.json(
-      { error: "CONNECTORS_TABLE env var is not set" },
-      { status: 500 }
-    );
-  }
+export async function GET(request: NextRequest) {
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const table = connectorsTableForBrain(r.brain);
 
   try {
     const res = await ddbConnectors.send(
-      new ScanCommand({ TableName: CONNECTORS_TABLE })
+      new ScanCommand({ TableName: table })
     );
     const items = ((res.Items ?? []) as Connector[]).sort((a, b) =>
       (b.created_at ?? "").localeCompare(a.created_at ?? "")

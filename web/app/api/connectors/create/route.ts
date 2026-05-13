@@ -10,7 +10,7 @@ import { InvokeCommand } from "@aws-sdk/client-lambda";
 
 import {
   CONNECTOR_TOKEN_SECRET_PREFIX,
-  CONNECTORS_TABLE,
+  connectorsTableForBrain,
   ddbConnectors,
   GOOGLE_OAUTH_CLIENT_SECRET_ID,
   isGoogleType,
@@ -23,6 +23,8 @@ import {
   type Connector,
   type ConnectorType,
 } from "@/utils/connectors";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain } from "@/utils/s3";
 import { getCurrentUserEmail } from "@/utils/amplify-server-utils";
 import { getPublicOrigin } from "@/utils/public-origin";
 
@@ -78,12 +80,11 @@ function resourceHint(type: ConnectorType): string {
 export async function POST(request: NextRequest) {
   const response = NextResponse.next();
 
-  if (!CONNECTORS_TABLE) {
-    return NextResponse.json(
-      { error: "CONNECTORS_TABLE not set — run cdk deploy" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const brain = r.brain;
+  const connectorsTable = connectorsTableForBrain(brain);
+  const docsBucket = bucketForBrain(brain);
 
   // The OAuth redirect URI must be whatever is registered in the provider
   // console. On Amplify SSR, request.nextUrl.origin returns
@@ -153,13 +154,14 @@ export async function POST(request: NextRequest) {
     label: body.label.trim().slice(0, 120) || defaultLabelFor(type),
     resource_url: body.resource_url.trim(),
     resource_id: resourceId,
+    brain_id: brain.brain_id,
     created_at: now,
     created_by: userEmail ?? undefined,
   };
 
   try {
     await ddbConnectors.send(
-      new PutCommand({ TableName: CONNECTORS_TABLE, Item: row })
+      new PutCommand({ TableName: connectorsTable, Item: row })
     );
 
     // ── GitHub short-circuit (no OAuth dance) ─────────────────────────
@@ -179,7 +181,7 @@ export async function POST(request: NextRequest) {
       );
       await ddbConnectors.send(
         new UpdateCommand({
-          TableName: CONNECTORS_TABLE,
+          TableName: connectorsTable,
           Key: { id },
           UpdateExpression: "SET #s = :s, token_secret_arn = :arn",
           ExpressionAttributeNames: { "#s": "status" },
@@ -197,7 +199,12 @@ export async function POST(request: NextRequest) {
               FunctionName: fn,
               InvocationType: "Event",
               Payload: new TextEncoder().encode(
-                JSON.stringify({ connectorId: id })
+                JSON.stringify({
+                  connectorId: id,
+                  connectorsTable,
+                  docsBucket,
+                  brainId: brain.brain_id,
+                })
               ),
             })
           )
@@ -206,9 +213,11 @@ export async function POST(request: NextRequest) {
       // Reuse the existing dialog flow: it does
       //   window.location.href = j.oauthUrl
       // so we hand back a relative URL that simply navigates back to /sources.
+      // Preserve the brain query param so the redirect lands on the right
+      // brain's sources view.
       return NextResponse.json({
         id,
-        oauthUrl: `/sources?connected=${id}`,
+        oauthUrl: `/sources?brain=${encodeURIComponent(brain.brain_id)}&connected=${id}`,
       });
     }
 
@@ -233,7 +242,9 @@ export async function POST(request: NextRequest) {
       oauthUrl.searchParams.set("access_type", "offline");
       oauthUrl.searchParams.set("prompt", "consent");
       oauthUrl.searchParams.set("include_granted_scopes", "true");
-      oauthUrl.searchParams.set("state", id);
+      // state = <brain_id>:<connector_id> — the OAuth callback splits on
+      // the first colon to route into the right brain's table.
+      oauthUrl.searchParams.set("state", `${brain.brain_id}:${id}`);
     } else {
       // Notion — public integration OAuth
       oauthUrl = new URL("https://api.notion.com/v1/oauth/authorize");
@@ -242,7 +253,9 @@ export async function POST(request: NextRequest) {
       oauthUrl.searchParams.set("response_type", "code");
       // "user" lets the user pick which pages/databases to grant access to
       oauthUrl.searchParams.set("owner", "user");
-      oauthUrl.searchParams.set("state", id);
+      // state = <brain_id>:<connector_id> — the OAuth callback splits on
+      // the first colon to route into the right brain's table.
+      oauthUrl.searchParams.set("state", `${brain.brain_id}:${id}`);
     }
 
     return NextResponse.json({ id, oauthUrl: oauthUrl.toString() });

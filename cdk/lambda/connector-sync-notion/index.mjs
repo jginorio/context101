@@ -35,8 +35,11 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 const s3 = new S3Client({});
 const sm = new SecretsManagerClient({});
 
-const CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
-const DOCS_BUCKET = process.env.DOCS_BUCKET;
+// Per-brain values come from the invocation event (dispatcher injects
+// per-row). Env-var fallbacks keep legacy invokes against the default
+// brain working.
+let CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
+let DOCS_BUCKET = process.env.DOCS_BUCKET;
 const NOTION_VERSION = "2022-06-28";
 
 const SOURCES_PREFIX = "sources/notion/";
@@ -376,6 +379,8 @@ async function resolveResource(token, id) {
 export const handler = async (event) => {
   const connectorId = event?.connectorId;
   if (!connectorId) throw new Error("connectorId is required");
+  if (event?.connectorsTable) CONNECTORS_TABLE = event.connectorsTable;
+  if (event?.docsBucket) DOCS_BUCKET = event.docsBucket;
   if (!CONNECTORS_TABLE || !DOCS_BUCKET) {
     throw new Error("required env vars missing");
   }

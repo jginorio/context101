@@ -12,7 +12,7 @@ import { InvokeCommand } from "@aws-sdk/client-lambda";
 
 import {
   CONNECTOR_TOKEN_SECRET_PREFIX,
-  CONNECTORS_TABLE,
+  connectorsTableForBrain,
   ddbConnectors,
   GOOGLE_OAUTH_CLIENT_SECRET_ID,
   isGoogleType,
@@ -22,15 +22,20 @@ import {
   syncFnNameFor,
   type Connector,
 } from "@/utils/connectors";
+import { getBrainById } from "@/lib/brains-server";
+import { bucketForBrain } from "@/utils/s3";
 import { getPublicOrigin } from "@/utils/public-origin";
 
 /**
- * GET /api/connectors/oauth/callback?code=...&state=<connectorId>
+ * GET /api/connectors/oauth/callback?code=...&state=<brainId>:<connectorId>
  *
  * Exchanges the OAuth code with the correct provider (Google or Notion),
  * stores the long-lived token (refresh_token for Google, access_token for
  * Notion) in a new Secrets Manager secret, flips the connector row to
- * `syncing`, and fires the first sync Lambda.
+ * `syncing`, and fires the first sync Lambda. The brain id comes from the
+ * opaque OAuth `state` param so the callback can land back in the right
+ * brain's connectors table without trusting cookies (the redirect
+ * may come from an unauthenticated context — provider → callback).
  */
 export async function GET(request: NextRequest) {
   const state = request.nextUrl.searchParams.get("state");
@@ -49,15 +54,31 @@ export async function GET(request: NextRequest) {
     baseRedirect.searchParams.set("oauth_error", "missing_state_or_code");
     return NextResponse.redirect(baseRedirect);
   }
-  if (!CONNECTORS_TABLE) {
-    baseRedirect.searchParams.set("oauth_error", "server_misconfigured");
+
+  // state = "<brain_id>:<connector_id>" (introduced in the multi-brain
+  // refactor). Legacy state values without a colon are treated as
+  // connector ids belonging to the default brain.
+  const firstColon = state.indexOf(":");
+  const brainId =
+    firstColon >= 0 ? state.slice(0, firstColon) : "default";
+  const connectorId = firstColon >= 0 ? state.slice(firstColon + 1) : state;
+
+  const brain = await getBrainById(brainId);
+  if (!brain || brain.status !== "ready") {
+    baseRedirect.searchParams.set(
+      "oauth_error",
+      `brain ${brainId} not found or not ready`
+    );
     return NextResponse.redirect(baseRedirect);
   }
+  baseRedirect.searchParams.set("brain", brainId);
+  const connectorsTable = connectorsTableForBrain(brain);
+  const docsBucket = bucketForBrain(brain);
 
   try {
     // Confirm the connector row exists + is still pending
     const got = await ddbConnectors.send(
-      new GetCommand({ TableName: CONNECTORS_TABLE, Key: { id: state } })
+      new GetCommand({ TableName: connectorsTable, Key: { id: connectorId } })
     );
     const row = got.Item as Connector | undefined;
     if (!row) throw new Error("connector row not found");
@@ -185,21 +206,24 @@ export async function GET(request: NextRequest) {
     // Flip the row to syncing + record token ARN + provider identity
     await ddbConnectors.send(
       new UpdateCommand({
-        TableName: CONNECTORS_TABLE,
+        TableName: connectorsTable,
         Key: { id: row.id },
         UpdateExpression:
-          "SET #s = :s, token_secret_arn = :arn, google_account_email = :ge, notion_workspace_name = :nw",
+          "SET #s = :s, token_secret_arn = :arn, google_account_email = :ge, notion_workspace_name = :nw, brain_id = :bid",
         ExpressionAttributeNames: { "#s": "status" },
         ExpressionAttributeValues: {
           ":s": "syncing",
           ":arn": created.ARN,
           ":ge": googleEmail ?? null,
           ":nw": workspaceName ?? null,
+          ":bid": brainId,
         },
       })
     );
 
-    // Fire the first sync (fire-and-forget)
+    // Fire the first sync (fire-and-forget). The payload carries the
+    // brain's table + bucket so the sync Lambda routes into the right
+    // brain without re-reading the registry.
     const syncFn = syncFnNameFor(row.type);
     if (syncFn) {
       await lambdaClient
@@ -208,7 +232,12 @@ export async function GET(request: NextRequest) {
             FunctionName: syncFn,
             InvocationType: "Event",
             Payload: new TextEncoder().encode(
-              JSON.stringify({ connectorId: row.id })
+              JSON.stringify({
+                connectorId: row.id,
+                connectorsTable,
+                docsBucket,
+                brainId,
+              })
             ),
           })
         )

@@ -11,29 +11,28 @@ import {
 } from "@aws-sdk/client-s3";
 
 import {
-  CONNECTORS_TABLE,
+  connectorsTableForBrain,
   ddbConnectors,
   sm,
   type Connector,
 } from "@/utils/connectors";
-import { DOCS_BUCKET, s3 } from "@/utils/s3";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { bucketForBrain, s3 } from "@/utils/s3";
 
 /**
- * POST /api/connectors/delete
+ * POST /api/connectors/delete[?brain=<id>]
  * Body: { id: string }
  *
- * Removes:
+ * Removes (in the active brain):
  *   - the connector row
  *   - the per-connection secret (force delete, no recovery window)
  *   - all S3 files under sources/<type>/<spreadsheet-slug>/
  */
 export async function POST(request: NextRequest) {
-  if (!CONNECTORS_TABLE || !DOCS_BUCKET) {
-    return NextResponse.json(
-      { error: "env vars not set" },
-      { status: 500 }
-    );
-  }
+  const r = await resolveBrainFromRequest(request);
+  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  const connectorsTable = connectorsTableForBrain(r.brain);
+  const docsBucket = bucketForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.id !== "string") {
@@ -42,7 +41,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const got = await ddbConnectors.send(
-      new GetCommand({ TableName: CONNECTORS_TABLE, Key: { id: body.id } })
+      new GetCommand({ TableName: connectorsTable, Key: { id: body.id } })
     );
     const row = got.Item as Connector | undefined;
     if (!row) {
@@ -62,7 +61,7 @@ export async function POST(request: NextRequest) {
       do {
         const list = await s3.send(
           new ListObjectsV2Command({
-            Bucket: DOCS_BUCKET,
+            Bucket: docsBucket,
             Prefix: prefix,
             ContinuationToken: token,
           })
@@ -73,7 +72,7 @@ export async function POST(request: NextRequest) {
         if (keys.length > 0) {
           await s3.send(
             new DeleteObjectsCommand({
-              Bucket: DOCS_BUCKET,
+              Bucket: docsBucket,
               Delete: {
                 Objects: keys.map((Key) => ({ Key })),
                 Quiet: true,
@@ -100,7 +99,7 @@ export async function POST(request: NextRequest) {
     // 3. Delete the connector row
     await ddbConnectors.send(
       new DeleteCommand({
-        TableName: CONNECTORS_TABLE,
+        TableName: connectorsTable,
         Key: { id: body.id },
       })
     );
