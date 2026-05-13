@@ -21,7 +21,7 @@
  * pattern (`context101-brain-*`) so this Lambda cannot touch anything
  * else in the account.
  */
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import {
   BedrockAgentClient,
   CreateKnowledgeBaseCommand,
@@ -114,12 +114,68 @@ function isNotFound(err) {
   );
 }
 
-function bucketName(brainId) {
-  return `context101-brain-${brainId}-${ACCOUNT}-${REGION}`;
+// S3 bucket names cap at 63 characters. The previous shape was
+//   context101-brain-<brainId>-<ACCOUNT>-<REGION>
+// which busts the cap easily — a 56-char brainId (max from the web
+// route's slugify(50) + nanoid(5)) on us-east-1 came out to ~87
+// chars, and CreateBucket would 400 with InvalidBucketName.
+//
+// New shape:
+//   context101-brain-<brainId[:32]>-<hash8>
+//
+// `hash8` is 8 hex chars of SHA-256 over the *full* brainId + account.
+// That keeps the bucket globally unique across both (a) brainId
+// collisions between two AWS accounts (different account → different
+// hash) and (b) the rare case where two different long brainIds share
+// the same 32-char prefix (different brainId → different hash).
+//
+// Budget: "context101-brain-" (17) + brainId[:32] (32) + "-" (1) +
+// hash8 (8) = max 58 chars. Comfortably under 63 with headroom.
+//
+// The bucket name is stored on the brain registry row (`docs_bucket`)
+// and read from there by every other component — nothing else
+// reconstructs the name, so we're free to change the formula.
+const BUCKET_BRAINID_MAX = 32;
+
+function shortHash(brainId) {
+  return createHash("sha256")
+    .update(`${brainId}\0${ACCOUNT}`)
+    .digest("hex")
+    .slice(0, 8);
 }
 
+function bucketName(brainId) {
+  const prefix = brainId.slice(0, BUCKET_BRAINID_MAX);
+  const name = `context101-brain-${prefix}-${shortHash(brainId)}`;
+  // Defensive guard: the math says we can't overflow, but if a future
+  // edit ever loosens the regex on brain_id (e.g. allows uppercase) or
+  // bumps the prefix budget, fail loudly here rather than during the
+  // S3 API call.
+  if (name.length < 3 || name.length > 63) {
+    throw new Error(
+      `bucket name out of range (${name.length} chars): ${name}`
+    );
+  }
+  return name;
+}
+
+// S3 Vectors index names cap at 63 characters — same constraint as
+// the S3 bucket. Use the same prefix-plus-hash shape so a long
+// brain_id can't blow it up. Index names live under a single
+// VECTOR_BUCKET, so collisions across accounts aren't possible —
+// the account-mixing hash is still useful as a tie-breaker between
+// two long brain_ids that share a 32-char prefix.
+const INDEX_BRAINID_MAX = 32;
+
 function indexName(brainId) {
-  return `context101-brain-${brainId}`;
+  const prefix = brainId.slice(0, INDEX_BRAINID_MAX);
+  const name = `context101-brain-${prefix}-${shortHash(brainId)}`;
+  if (name.length > 63) {
+    throw new Error(
+      `index name out of range (${name.length} chars): ${name}`
+    );
+  }
+  return name;
 }
 
 function indexArn(brainId) {
