@@ -9,6 +9,8 @@ import {
   Check,
   CheckCircle2,
   Copy,
+  Eye,
+  EyeOff,
   Loader2,
   Plus,
   Trash2,
@@ -90,6 +92,127 @@ function CopyButton({ value, label }: { value: string; label: string }) {
       {copied ? <Check className="mr-1 h-3.5 w-3.5" /> : <Copy className="mr-1 h-3.5 w-3.5" />}
       {copied ? "Copied" : "Copy"}
     </Button>
+  );
+}
+
+/**
+ * Reveal-on-demand panel for a brain's bearer token + a ready-to-paste
+ * MCP client config snippet. Token isn't fetched until the user clicks
+ * "Show token" — it stays in Secrets Manager + SSR until then.
+ */
+function BrainCredentials({ brain }: { brain: ClientBrain }) {
+  const url = brainMcpUrl(brain.brain_id);
+  const [token, setToken] = React.useState<string | null>(null);
+  const [shown, setShown] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
+
+  async function loadToken() {
+    if (token) {
+      setShown((v) => !v);
+      return;
+    }
+    setLoading(true);
+    try {
+      const r = await fetch(
+        `/api/brains/${encodeURIComponent(brain.brain_id)}/token`
+      );
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      setToken(j.token ?? "");
+      setShown(true);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : String(e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  // Claude Desktop only speaks stdio — wrap the HTTP URL in mcp-remote.
+  // Cursor / Claude Code accept the bare URL+headers shape directly.
+  const snippetHttp = `"${brain.brain_id}": {
+  "url": "${url}",
+  "headers": {
+    "Authorization": "Bearer ${token ?? "<bearer-token>"}"
+  }
+}`;
+  const snippetStdio = `"${brain.brain_id}": {
+  "command": "npx",
+  "args": [
+    "-y",
+    "mcp-remote",
+    "${url}",
+    "--header",
+    "Authorization: Bearer ${token ?? "<bearer-token>"}"
+  ]
+}`;
+
+  return (
+    <div className="space-y-2 rounded-md border bg-muted/20 p-3">
+      <div className="flex items-center gap-2">
+        <code className="flex-1 truncate rounded-md border bg-background px-2 py-1.5 font-mono text-xs">
+          {url}
+        </code>
+        <CopyButton value={url} label="MCP URL" />
+      </div>
+
+      <div className="flex items-center gap-2">
+        <code className="flex-1 truncate rounded-md border bg-background px-2 py-1.5 font-mono text-xs">
+          {!token
+            ? "Bearer token — click Show to reveal"
+            : shown
+              ? token
+              : "•".repeat(Math.min(40, token.length))}
+        </code>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={loadToken}
+          disabled={loading}
+        >
+          {loading ? (
+            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+          ) : shown ? (
+            <EyeOff className="mr-1 h-3.5 w-3.5" />
+          ) : (
+            <Eye className="mr-1 h-3.5 w-3.5" />
+          )}
+          {shown ? "Hide" : "Show"}
+        </Button>
+        {token ? (
+          <CopyButton value={token} label="Bearer token" />
+        ) : null}
+      </div>
+
+      {token ? (
+        <details className="text-xs">
+          <summary className="cursor-pointer select-none text-muted-foreground hover:text-foreground">
+            Copy as MCP client config
+          </summary>
+          <div className="mt-2 space-y-3">
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium">
+                  Cursor / Claude Code / Devin
+                </span>
+                <CopyButton value={snippetHttp} label="HTTP config" />
+              </div>
+              <pre className="overflow-x-auto rounded-md border bg-background p-2 font-mono text-[11px] leading-relaxed">
+                {snippetHttp}
+              </pre>
+            </div>
+            <div>
+              <div className="mb-1 flex items-center justify-between">
+                <span className="text-xs font-medium">Claude Desktop</span>
+                <CopyButton value={snippetStdio} label="stdio config" />
+              </div>
+              <pre className="overflow-x-auto rounded-md border bg-background p-2 font-mono text-[11px] leading-relaxed">
+                {snippetStdio}
+              </pre>
+            </div>
+          </div>
+        </details>
+      ) : null}
+    </div>
   );
 }
 
@@ -307,7 +430,6 @@ function BrainRow({
   brain: ClientBrain;
   onDelete: () => void;
 }) {
-  const url = brainMcpUrl(brain.brain_id);
   return (
     <Card>
       <CardContent className="pt-4 space-y-3">
@@ -334,7 +456,12 @@ function BrainRow({
               </p>
             ) : null}
           </div>
-          {brain.brain_id !== "default" && brain.status === "ready" ? (
+          {brain.brain_id !== "default" && brain.status !== "deleting" ? (
+            // Errored brains must be deletable too — that's the only way
+            // to clean up the half-created S3/KB/secret resources from a
+            // failed provision. (The provisioner's delete handler tolerates
+            // already-gone resources.) Previously gated on status==="ready"
+            // which left users stranded on errored rows.
             <Button
               variant="ghost"
               size="icon-sm"
@@ -345,14 +472,7 @@ function BrainRow({
             </Button>
           ) : null}
         </div>
-        {brain.status === "ready" ? (
-          <div className="flex items-center gap-2">
-            <code className="text-xs font-mono flex-1 truncate rounded-md border bg-muted/30 px-2 py-1.5">
-              {url}
-            </code>
-            <CopyButton value={url} label="MCP URL" />
-          </div>
-        ) : null}
+        {brain.status === "ready" ? <BrainCredentials brain={brain} /> : null}
         <div className="flex items-center justify-between text-xs text-muted-foreground">
           <span>
             Created{" "}

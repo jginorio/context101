@@ -2,7 +2,7 @@ import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { getBrainById, publicBrain } from "@/lib/brains-server";
+import { publicBrain } from "@/lib/brains-server";
 import { getCurrentUserEmail } from "@/utils/amplify-server-utils";
 
 const PROVISIONER_FN_NAME = process.env.BRAIN_PROVISIONER_FN_NAME ?? "";
@@ -87,10 +87,18 @@ export async function POST(request: NextRequest) {
   const createdBy = await getCurrentUserEmail(request, new NextResponse());
 
   try {
-    const resp = await lambdaClient.send(
+    // Fire-and-forget. The provisioner's first step is to insert a row
+    // with status="provisioning"; once Lambda accepts the Event invoke
+    // we can return immediately and let the client poll the registry.
+    // RequestResponse would hold this connection for 30-90s while the
+    // provisioner walked S3 + KB + index + tables + secret, which
+    // Amplify SSR's ~29s timeout would kill — the exact "timeout but
+    // the brain was actually provisioned" confusion that prompted the
+    // switch.
+    await lambdaClient.send(
       new InvokeCommand({
         FunctionName: PROVISIONER_FN_NAME,
-        InvocationType: "RequestResponse",
+        InvocationType: "Event",
         Payload: new TextEncoder().encode(
           JSON.stringify({
             action: "create",
@@ -102,24 +110,24 @@ export async function POST(request: NextRequest) {
         ),
       })
     );
-    if (resp.FunctionError) {
-      const raw = new TextDecoder().decode(resp.Payload ?? new Uint8Array());
-      console.error("provisioner returned error:", raw);
-      return NextResponse.json(
-        { error: `provisioner failed: ${raw}` },
-        { status: 500 }
-      );
-    }
-    // Read back the freshly-provisioned row so the client gets the
-    // resolved handles in the response (without exposing tokens).
-    const row = await getBrainById(brainId);
-    if (!row) {
-      return NextResponse.json(
-        { error: "provisioner ran but registry row not found" },
-        { status: 500 }
-      );
-    }
-    return NextResponse.json({ brain: publicBrain(row) }, { status: 201 });
+
+    // Synthetic provisioning row so the client has something to render
+    // and start polling against immediately. The provisioner will write
+    // the canonical row to DDB within seconds; the page's next refresh
+    // surfaces the real one (and eventually flips to ready/error).
+    return NextResponse.json(
+      {
+        brain: publicBrain({
+          brain_id: brainId,
+          display_name: displayName,
+          description: description ?? null,
+          status: "provisioning",
+          created_at: new Date().toISOString(),
+          created_by_email: createdBy ?? null,
+        }),
+      },
+      { status: 202 }
+    );
   } catch (err) {
     console.error("brains/create failed:", err);
     return NextResponse.json(
