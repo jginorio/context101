@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
+  Brain,
   Cloud,
   ExternalLink,
   Layers,
@@ -231,6 +232,11 @@ const FEATURES = [
     title: "Connectors that don't lock you in",
     body: "Google Sheets, Docs, Slides, Notion, and GitHub all re-sync into the same retrieval surface every 6h. Source data stays in its home tool.",
   },
+  {
+    Icon: Brain,
+    title: "Parallel brains, one MCP service",
+    body: "Create as many brains as you want from the /brains page — each isolated (own S3 bucket, KB, vector index, tables, bearer token). One App Runner service serves all of them; clients pick a brain via /brain/<id>/mcp or the URL switcher in the admin UI.",
+  },
 ];
 
 function FeaturesSection() {
@@ -243,7 +249,7 @@ function FeaturesSection() {
             What you actually get
           </h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-            Four choices that make Context101 distinct from a vanilla RAG
+            Five choices that make Context101 distinct from a vanilla RAG
             server.
           </p>
         </FadeIn>
@@ -469,20 +475,50 @@ const NOT_INCLUDED: Array<{ tag: string; title: string; body: React.ReactNode }>
     body: "Titan v2 (1024-dim) is the default because it's native to Bedrock. Swappable when retrieval quality becomes the bottleneck.",
   },
   {
+    tag: "SCALE",
+    title: "We haven't run this at large-corpus sizes.",
+    body: (
+      <>
+        Bedrock KB + S3 Vectors scale to millions of chunks in principle.
+        The bottleneck we know about is the wiki generator: it feeds the
+        whole raw corpus into Opus to plan the structure, then full source
+        files per page — prompt cost grows roughly linearly with documents.
+        We&apos;ve exercised it on a few hundred docs per brain; behaviour
+        beyond a few thousand isn&apos;t something we can vouch for yet.
+        If you push past that, please tell us what broke.
+      </>
+    ),
+  },
+  {
+    tag: "MULTI-BRAIN",
+    title: "Brains are fresh.",
+    body: (
+      <>
+        The /brains page provisions a fully isolated brain (own S3 bucket,
+        Bedrock KB, vector index, tables, bearer token) in 30–60s. It
+        works, but it&apos;s the newest surface in the codebase. Cross-brain
+        analytics, brain-level audit trails, and import/export between
+        brains are not built yet. Start with one brain; spin a second to
+        feel out the workflow before betting on it.
+      </>
+    ),
+  },
+  {
     tag: "TIMELINE",
     title: "PoC, not 1.0.",
     body: (
       <>
-        The architecture is working end-to-end and in daily use, but we&apos;re
-        currently leveling it up: multi-org, multi-brain, per-user JWT on the
-        MCP. Track the README and{" "}
+        The architecture is in daily use end-to-end, and multi-brain just
+        landed. What&apos;s still ahead: per-user JWT on the MCP (replacing
+        the shared bearer per brain), per-doc ACLs, and a Notion / GitHub
+        OAuth migration off PATs. Track the README and{" "}
         <Link
           href="/about"
           className="text-foreground underline-offset-4 hover:underline"
         >
           About
         </Link>{" "}
-        page for status.
+        page for what&apos;s actually shipped.
       </>
     ),
   },
