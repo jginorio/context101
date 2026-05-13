@@ -70,6 +70,7 @@ import {
   SecretsManagerClient,
   CreateSecretCommand,
   DeleteSecretCommand,
+  DescribeSecretCommand,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
 
@@ -382,8 +383,23 @@ async function createBrainToken(brainId) {
     return res.ARN;
   } catch (err) {
     if (!isAlreadyExists(err)) throw err;
-    // Already there from a partial run — return ARN deterministically.
-    return `arn:aws:secretsmanager:${REGION}:${ACCOUNT}:secret:${tokenSecretName(brainId)}`;
+    // Already there from a partial run — fetch the real ARN via Describe.
+    // We can't reconstruct it ourselves because Secrets Manager appends
+    // a 6-char random suffix (e.g. `-AbCdEf`) at create time. A partial
+    // ARN without that suffix works as a SecretId for most calls (AWS
+    // resolves partial ARNs server-side), but storing the partial form
+    // in the BrainsTable would be misleading when debugging or auditing
+    // — the registry row would show an ARN that doesn't actually exist
+    // verbatim in Secrets Manager. DescribeSecret returns the full ARN.
+    const desc = await secrets.send(
+      new DescribeSecretCommand({ SecretId: tokenSecretName(brainId) })
+    );
+    if (!desc.ARN) {
+      throw new Error(
+        `DescribeSecret returned no ARN for ${tokenSecretName(brainId)}`
+      );
+    }
+    return desc.ARN;
   }
 }
 
