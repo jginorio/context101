@@ -31,6 +31,7 @@ import {
 } from "@/components/ui/sheet";
 
 import "@/utils/amplify-client-config";
+import { BrainStatusGate } from "@/components/brain-status-gate";
 import { useBrain } from "@/lib/brain-context";
 
 export default function Home() {
@@ -213,6 +214,7 @@ export default function Home() {
         </div>
       </header>
 
+      <BrainStatusGate>
       <div className="flex flex-1 min-h-0">
         <aside className="hidden md:block w-72 border-r overflow-y-auto p-2 shrink-0">
           {tree}
@@ -250,6 +252,7 @@ export default function Home() {
           }}
         />
       )}
+      </BrainStatusGate>
     </main>
   );
 }

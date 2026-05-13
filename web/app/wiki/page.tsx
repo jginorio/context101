@@ -24,6 +24,7 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { BrainStatusGate } from "@/components/brain-status-gate";
 import { WikiMarkdown } from "@/components/previews/wiki-markdown";
 import { cn } from "@/lib/utils";
 
@@ -537,6 +538,7 @@ export default function WikiPage() {
         </div>
       </header>
 
+      <BrainStatusGate>
       <div className="flex min-h-0 flex-1">
         {/* Nav sidebar — desktop only; mobile uses Sheet from header */}
         <aside className="hidden md:block w-72 shrink-0 overflow-y-auto border-r p-3">
@@ -585,6 +587,7 @@ export default function WikiPage() {
           </aside>
         </section>
       </div>
+      </BrainStatusGate>
     </main>
   );
 }

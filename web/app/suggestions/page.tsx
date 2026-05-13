@@ -24,6 +24,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { BrainStatusGate } from "@/components/brain-status-gate";
 import { SuggestionReviewSheet } from "@/components/suggestion-review-sheet";
 import { cn } from "@/lib/utils";
 
@@ -146,6 +147,7 @@ export default function SuggestionsPage() {
         <ThemeToggle />
       </header>
 
+      <BrainStatusGate>
       <div className="mx-auto w-full max-w-6xl px-3 sm:px-6 py-4 sm:py-6 space-y-4 flex-1 min-h-0 flex flex-col">
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
           <div className="flex items-center gap-1 overflow-x-auto -mx-1 px-1">
@@ -330,6 +332,7 @@ export default function SuggestionsPage() {
         onOpenChange={setSheetOpen}
         onActioned={load}
       />
+      </BrainStatusGate>
     </main>
   );
 }

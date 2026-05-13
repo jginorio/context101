@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AddSourceDialog } from "@/components/add-source-dialog";
+import { BrainStatusGate } from "@/components/brain-status-gate";
 import { cn } from "@/lib/utils";
 
 import "@/utils/amplify-client-config";
@@ -249,6 +250,7 @@ function SourcesContent() {
         </div>
       </header>
 
+      <BrainStatusGate>
       <article className="mx-auto w-full max-w-4xl px-3 sm:px-6 py-4 sm:py-6 space-y-4">
         {error && (
           <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
@@ -401,6 +403,7 @@ function SourcesContent() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </BrainStatusGate>
     </main>
   );
 }
