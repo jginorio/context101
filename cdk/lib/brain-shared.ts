@@ -146,7 +146,15 @@ export class BrainShared extends Construct {
           "s3:GetEncryptionConfiguration",
           "s3:PutBucketPublicAccessBlock",
           "s3:GetBucketPublicAccessBlock",
+          // Bucket-notification has both legacy and new IAM spellings;
+          // S3 server-side authorizes against s3:PutBucketNotification
+          // (the legacy name) even when the SDK calls the modern
+          // PutBucketNotificationConfiguration API. Grant both so the
+          // authz check is satisfied regardless of which name AWS uses
+          // at the time.
+          "s3:PutBucketNotification",
           "s3:PutBucketNotificationConfiguration",
+          "s3:GetBucketNotification",
           "s3:GetBucketNotificationConfiguration",
           "s3:ListBucket",
           "s3:ListBucketVersions",
