@@ -37,7 +37,21 @@ const DEFAULT_BRAIN_ID = "default";
 
 type BrainContextValue = {
   currentBrainId: string;
+  /**
+   * The registry row for the currently-selected brain, **regardless of
+   * status**. Populated from the ready-list when possible (fast path), else
+   * via a direct `/api/brains/<id>` fetch. Components that only want to
+   * act when the brain is usable should check `currentBrain.status ===
+   * "ready"`.
+   *
+   * `undefined` while we're resolving (initial mount, switching brain).
+   * Combined with `currentBrainNotFound` lets the UI distinguish loading
+   * from a missing/deleted brain.
+   */
   currentBrain: ClientBrain | undefined;
+  /** True once we've confirmed the selected id doesn't exist in the registry. */
+  currentBrainNotFound: boolean;
+  /** Ready brains only — what the header switcher dropdown shows. */
   brains: ClientBrain[];
   loading: boolean;
   error: string | null;
@@ -90,7 +104,12 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
   const refreshBrains = React.useCallback(async () => {
     try {
       setLoading(true);
-      const res = await fetch("/api/brains/list", { cache: "no-store" });
+      // `status=all` so the switcher can render in-flight provisioning
+      // / errored rows in their own sections AND so a deep-linked
+      // `?brain=<provisioning-id>` resolves from the fast path. The
+      // switcher does its own client-side filter to show only ready
+      // brains in the main pickable list.
+      const res = await fetch("/api/brains/list?status=all", { cache: "no-store" });
       if (!res.ok) {
         setError(`brains/list failed: ${res.status}`);
         setBrains([]);
@@ -138,22 +157,98 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
     [pathname, router, searchParams]
   );
 
-  const currentBrain = React.useMemo(
+  // `currentBrain` resolution has two paths:
+  //
+  //   Fast path  — the selected brain is in `brains` (the ready-list).
+  //                Common case, no extra fetch.
+  //   Slow path  — the selected id is *not* in the list. Could be a
+  //                still-provisioning brain (shared link to a freshly-
+  //                created brain), an errored one, a deleting one, or
+  //                a non-existent one. Fetch `/api/brains/<id>` so we
+  //                can render the right state instead of letting every
+  //                downstream call 409 ("brain not ready") or 404.
+  //
+  // The slow-path lookup is keyed on (currentBrainId, brains.length) so
+  // it re-fires whenever the user switches brain OR the ready-list
+  // refreshes (a provisioning brain becoming ready should populate
+  // currentBrain from the fast path on the next refresh).
+  const [fetchedBrain, setFetchedBrain] = React.useState<ClientBrain | null | undefined>(
+    undefined
+  );
+
+  // Fast-path match (memoized) — pulled out so the slow-path effect can
+  // depend on it without resolving the whole brains[] identity.
+  const fastMatch = React.useMemo(
     () => brains.find((b) => b.brain_id === currentBrainId),
     [brains, currentBrainId]
   );
+
+  React.useEffect(() => {
+    // Don't fire while the initial ready-list is still loading — the
+    // fast path may resolve in a few ms and save a roundtrip.
+    if (loading) return;
+
+    // If the ready-list matches, no by-id fetch needed.
+    if (fastMatch) {
+      setFetchedBrain(undefined);
+      return;
+    }
+
+    let cancelled = false;
+    setFetchedBrain(undefined); // mark as "resolving" while we fetch
+    (async () => {
+      try {
+        const res = await fetch(
+          `/api/brains/${encodeURIComponent(currentBrainId)}`,
+          { cache: "no-store" }
+        );
+        if (cancelled) return;
+        if (res.status === 404) {
+          setFetchedBrain(null);
+          return;
+        }
+        if (!res.ok) {
+          // Treat other failures as "we don't know" — better than
+          // claiming the brain is gone. Surface via the existing `error`
+          // state separately.
+          setFetchedBrain(null);
+          return;
+        }
+        const data = (await res.json()) as { brain?: ClientBrain };
+        setFetchedBrain(data.brain ?? null);
+      } catch {
+        if (!cancelled) setFetchedBrain(null);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [currentBrainId, fastMatch, loading]);
+
+  const currentBrain: ClientBrain | undefined = fastMatch ?? fetchedBrain ?? undefined;
+  const currentBrainNotFound = !fastMatch && fetchedBrain === null;
 
   const value: BrainContextValue = React.useMemo(
     () => ({
       currentBrainId,
       currentBrain,
+      currentBrainNotFound,
       brains,
       loading,
       error,
       setBrain,
       refreshBrains,
     }),
-    [currentBrainId, currentBrain, brains, loading, error, setBrain, refreshBrains]
+    [
+      currentBrainId,
+      currentBrain,
+      currentBrainNotFound,
+      brains,
+      loading,
+      error,
+      setBrain,
+      refreshBrains,
+    ]
   );
 
   return <BrainContext.Provider value={value}>{children}</BrainContext.Provider>;
