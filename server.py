@@ -487,4 +487,15 @@ async def _dispatch(scope, receive, send):
 # routing ourselves (path templates with variable segments aren't expressible
 # in Starlette's basic router without regex routes, and rolling our own
 # dispatch keeps the surface area small).
-app = Starlette(routes=[Mount("/", app=_dispatch)])
+#
+# CRITICAL: pass through FastMCP's `lifespan`. FastMCP's streamable-http
+# transport initializes a StreamableHTTPSessionManager task group inside
+# its own ASGI app's startup event. When that ASGI app is mounted inside
+# a parent (us), the *parent's* lifespan is the one that fires startup —
+# so we have to forward it. Without this, every MCP request crashes with
+# "FastMCP's StreamableHTTPSessionManager task group was not initialized"
+# the first time we delegate to _mcp_app(...).
+app = Starlette(
+    routes=[Mount("/", app=_dispatch)],
+    lifespan=_mcp_app.lifespan,
+)
