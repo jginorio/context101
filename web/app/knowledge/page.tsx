@@ -6,6 +6,7 @@ import { signOut } from "aws-amplify/auth";
 import Link from "next/link";
 import {
   BookOpen,
+  Brain,
   FilePlus,
   FolderPlus,
   Info,
@@ -101,6 +102,11 @@ export default function Home() {
                 <SheetTitle>Context101</SheetTitle>
               </SheetHeader>
               <nav className="flex flex-col gap-1 px-2 pb-2 border-b">
+                <Link href="/brains" onClick={() => setMobileNavOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start">
+                    <Brain className="mr-2 h-3.5 w-3.5" /> Brains
+                  </Button>
+                </Link>
                 <Link href="/wiki" onClick={() => setMobileNavOpen(false)}>
                   <Button variant="ghost" size="sm" className="w-full justify-start">
                     <BookOpen className="mr-2 h-3.5 w-3.5" /> Wiki
@@ -168,6 +174,11 @@ export default function Home() {
           >
             <FilePlus className="h-3.5 w-3.5" />
           </Button>
+          <Link href="/brains" className="hidden md:inline-flex">
+            <Button variant="ghost" size="sm">
+              <Brain className="mr-1 h-3.5 w-3.5" /> Brains
+            </Button>
+          </Link>
           <Link href="/wiki" className="hidden md:inline-flex">
             <Button variant="ghost" size="sm">
               <BookOpen className="mr-1 h-3.5 w-3.5" /> Wiki
