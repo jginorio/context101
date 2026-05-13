@@ -301,8 +301,13 @@ async function markSuccess(connectorId, itemCount, docTitle) {
 export const handler = async (event) => {
   const connectorId = event?.connectorId;
   if (!connectorId) throw new Error("connectorId is required");
-  if (event?.connectorsTable) CONNECTORS_TABLE = event.connectorsTable;
-  if (event?.docsBucket) DOCS_BUCKET = event.docsBucket;
+  // Reset on every invocation — Lambda containers are reused across
+  // invocations, so a conditional `if (event.X) X = …` would leave the
+  // previous invocation's brain-scoped value in place when the next one
+  // omits the field. Always pick from event ?? env, never from the
+  // module-level state set by a prior call.
+  CONNECTORS_TABLE = event?.connectorsTable || process.env.CONNECTORS_TABLE;
+  DOCS_BUCKET = event?.docsBucket || process.env.DOCS_BUCKET;
   if (!CONNECTORS_TABLE || !DOCS_BUCKET || !GOOGLE_OAUTH_CLIENT_SECRET_ID) {
     throw new Error("required env vars missing");
   }
