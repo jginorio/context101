@@ -5,9 +5,15 @@ import {
   Bot,
   Brain,
   Code2,
-  Database,
-  HardDrive,
+  FileCode,
+  FileSpreadsheet,
+  FileText,
+  FileType2,
+  GitBranch,
+  Layers,
   MessageSquare,
+  Notebook,
+  Presentation,
   Terminal,
   TerminalSquare,
 } from "lucide-react";
@@ -15,23 +21,26 @@ import {
 import { cn } from "@/lib/utils";
 
 /**
- * The "many tools, one brain, your cloud" diagram.
+ * The "many sources, one brain, many tools" diagram.
+ *
+ * Reads left-to-right matching the actual data flow: sources feed
+ * Context101, which serves any MCP-compatible agent.
  *
  * Two layouts share the same node data:
  *
- *   sm and up: a horizontal schematic. 5 tools on the left, the
- *   Context101 hub in the middle, 2 backends on the right; cubic
+ *   sm and up: a horizontal schematic. 8 data sources on the left,
+ *   the Context101 hub in the middle, 5 agents on the right; cubic
  *   Bezier beams travel between them with an animated dashed stroke.
+ *   "Soon" sources get a faint dashed rail but no animated beam —
+ *   they're in the topology, just not connected yet.
  *
  *   below sm: a vertical schematic. Full-width chips stack top to
- *   bottom, separated by short vertical beams. Chosen because chip
- *   labels do not fit at 20% of a phone-width viewport.
- *
- * Both layouts share the beam-flow animation; only the dash geometry
- * differs to suit horizontal vs vertical paths.
+ *   bottom — sources, hub, then agents — preserving the data-flow
+ *   narrative.
  */
 
 type Side = "left" | "right";
+type Status = "ready" | "soon";
 
 type Node = {
   id: string;
@@ -41,22 +50,98 @@ type Node = {
   x: number;
   y: number;
   side: Side;
+  status?: Status; // default "ready"
 };
 
 const VIEW_W = 800;
 const VIEW_H = 440;
 
+// Left column: data sources Context101 ingests from. Live connectors
+// (and plain markdown) get animated beams; "soon" entries appear in the
+// topology to signal the roadmap but don't pulse yet.
 const LEFT_NODES: Node[] = [
-  { id: "cursor",   label: "Cursor",          Icon: Code2,          x: 4,  y: 8,  side: "left" },
-  { id: "code",     label: "Claude Code",     Icon: Terminal,       x: 4,  y: 28, side: "left" },
-  { id: "desktop",  label: "Claude Desktop",  Icon: MessageSquare,  x: 4,  y: 48, side: "left" },
-  { id: "devin",    label: "Devin",           Icon: Bot,            x: 4,  y: 68, side: "left" },
-  { id: "custom",   label: "Your agent",      Icon: TerminalSquare, x: 4,  y: 88, side: "left" },
+  {
+    id: "sheets",
+    label: "Google Sheets",
+    Icon: FileSpreadsheet,
+    x: 4,
+    y: 4,
+    side: "left",
+  },
+  {
+    id: "docs",
+    label: "Google Docs",
+    Icon: FileText,
+    x: 4,
+    y: 16,
+    side: "left",
+  },
+  {
+    id: "slides",
+    label: "Google Slides",
+    Icon: Presentation,
+    x: 4,
+    y: 28,
+    side: "left",
+  },
+  { id: "notion", label: "Notion", Icon: Notebook, x: 4, y: 40, side: "left" },
+  { id: "github", label: "GitHub", Icon: GitBranch, x: 4, y: 52, side: "left" },
+  {
+    id: "markdown",
+    label: "Markdown",
+    Icon: FileCode,
+    x: 4,
+    y: 64,
+    side: "left",
+  },
+  {
+    id: "confluence",
+    label: "Confluence",
+    Icon: Layers,
+    x: 4,
+    y: 76,
+    side: "left",
+    status: "soon",
+  },
+  {
+    id: "pdf",
+    label: "PDFs",
+    Icon: FileType2,
+    x: 4,
+    y: 88,
+    side: "left",
+    status: "soon",
+  },
 ];
 
+// Right column: MCP-compatible agents that retrieve from the brain.
 const RIGHT_NODES: Node[] = [
-  { id: "kb",   label: "Bedrock KB",  Icon: Database,  x: 76, y: 30, side: "right" },
-  { id: "s3",   label: "S3 + sources", Icon: HardDrive, x: 76, y: 66, side: "right" },
+  { id: "cursor", label: "Cursor", Icon: Code2, x: 76, y: 8, side: "right" },
+  {
+    id: "code",
+    label: "Claude Code",
+    Icon: Terminal,
+    x: 76,
+    y: 28,
+    side: "right",
+  },
+  {
+    id: "desktop",
+    label: "Claude Desktop",
+    Icon: MessageSquare,
+    x: 76,
+    y: 48,
+    side: "right",
+  },
+  { id: "devin", label: "Devin", Icon: Bot, x: 76, y: 68, side: "right" },
+  {
+    id: "custom",
+    label: "Your agent",
+    Icon: TerminalSquare,
+    x: 76,
+    y: 88,
+    side: "right",
+  },
 ];
 
 const HUB = { x: 38, y: 48, w: 24, h: 22 }; // percent
@@ -79,10 +164,7 @@ function hubAnchor(side: Side) {
   return { x: (x / 100) * VIEW_W, y: (y / 100) * VIEW_H };
 }
 
-function bezier(
-  from: { x: number; y: number },
-  to: { x: number; y: number }
-) {
+function bezier(from: { x: number; y: number }, to: { x: number; y: number }) {
   const dx = (to.x - from.x) * 0.55;
   return `M ${from.x} ${from.y} C ${from.x + dx} ${from.y}, ${to.x - dx} ${to.y}, ${to.x} ${to.y}`;
 }
@@ -102,16 +184,26 @@ export function ConnectionDiagram({ className }: { className?: string }) {
 /* ── Horizontal (sm and up) ───────────────────────────────────────── */
 
 function ConnectionDiagramHorizontal({ className }: { className?: string }) {
+  // Pre-compute paths once: each entry remembers whether it should pulse
+  // so the render loop below stays declarative.
   const leftPaths = React.useMemo(
     () =>
-      LEFT_NODES.map((n) => bezier(rightEdgeOf(n), hubAnchor("left"))),
-    []
+      LEFT_NODES.map((n) => ({
+        d: bezier(rightEdgeOf(n), hubAnchor("left")),
+        animated: true,
+      })),
+    [],
   );
   const rightPaths = React.useMemo(
     () =>
-      RIGHT_NODES.map((n) => bezier(hubAnchor("right"), leftEdgeOf(n))),
-    []
+      RIGHT_NODES.map((n) => ({
+        d: bezier(hubAnchor("right"), leftEdgeOf(n)),
+        animated: (n.status ?? "ready") === "ready",
+      })),
+    [],
   );
+  const allPaths = [...leftPaths, ...rightPaths];
+  const animatedPaths = allPaths.filter((p) => p.animated);
 
   return (
     <div
@@ -119,7 +211,7 @@ function ConnectionDiagramHorizontal({ className }: { className?: string }) {
         "relative w-full",
         // Lock aspect ratio so the SVG and the HTML nodes share coordinates.
         "[aspect-ratio:800/440]",
-        className
+        className,
       )}
     >
       <svg
@@ -137,23 +229,25 @@ function ConnectionDiagramHorizontal({ className }: { className?: string }) {
         </defs>
 
         {/* Faint always-on rails so the topology reads even before motion starts. */}
-        {[...leftPaths, ...rightPaths].map((d, i) => (
+        {allPaths.map((p, i) => (
           <path
             key={`rail-${i}`}
-            d={d}
+            d={p.d}
             fill="none"
             stroke="currentColor"
-            strokeOpacity={0.12}
+            strokeOpacity={p.animated ? 0.12 : 0.07}
             strokeWidth={1.5}
+            strokeDasharray={p.animated ? undefined : "3 5"}
             className="text-foreground"
           />
         ))}
 
-        {/* Animated dash overlay: a short dash travels the otherwise-invisible stroke. */}
-        {[...leftPaths, ...rightPaths].map((d, i) => (
+        {/* Animated dash overlay — only for "ready" connections so the
+            "soon" sources visually read as not-yet-live. */}
+        {animatedPaths.map((p, i) => (
           <path
             key={`beam-${i}`}
-            d={d}
+            d={p.d}
             fill="none"
             stroke="currentColor"
             strokeWidth={2}
@@ -169,7 +263,7 @@ function ConnectionDiagramHorizontal({ className }: { className?: string }) {
         <NodeChipAbsolute key={n.id} node={n} align="left" />
       ))}
 
-      {/* Right column: backends */}
+      {/* Right column: data sources */}
       {RIGHT_NODES.map((n) => (
         <NodeChipAbsolute key={n.id} node={n} align="right" />
       ))}
@@ -189,7 +283,7 @@ function ConnectionDiagramHorizontal({ className }: { className?: string }) {
           <span className="font-semibold text-sm">Context101</span>
         </div>
         <span className="mt-1 text-[10px] text-muted-foreground font-mono">
-          MCP · Bedrock KB
+          MCP · Semantic search
         </span>
       </div>
     </div>
@@ -204,19 +298,34 @@ function NodeChipAbsolute({
   align: "left" | "right";
 }) {
   const { Icon, label } = node;
+  const isSoon = node.status === "soon";
   return (
     <div
       className={cn(
         "absolute flex items-center gap-2 rounded-lg border bg-background/80 px-2.5 py-1.5 text-xs shadow-sm backdrop-blur-sm",
         // ~20% wide so SVG endpoints line up; height auto.
-        "w-[20%] min-w-0"
+        "w-[20%] min-w-0",
+        isSoon && "opacity-60",
       )}
       style={{ left: `${node.x}%`, top: `${node.y}%` }}
+      title={isSoon ? `${label} (coming soon)` : label}
     >
       <Icon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className={cn("truncate", align === "right" ? "text-right" : "")}>
+      <span
+        className={cn("truncate flex-1", align === "right" ? "text-right" : "")}
+      >
         {label}
       </span>
+      {isSoon ? (
+        <span
+          className={cn(
+            "shrink-0 rounded-sm border border-dashed px-1 py-px text-[8px] font-medium uppercase tracking-wider text-muted-foreground",
+            "leading-none",
+          )}
+        >
+          Soon
+        </span>
+      ) : null}
     </div>
   );
 }
@@ -240,13 +349,22 @@ function NodeColumn({ nodes }: { nodes: Node[] }) {
     <ul className="flex flex-col gap-2">
       {nodes.map((n) => {
         const { Icon, label } = n;
+        const isSoon = n.status === "soon";
         return (
           <li
             key={n.id}
-            className="flex items-center gap-2.5 rounded-lg border bg-background/80 px-3 py-2 text-sm shadow-sm"
+            className={cn(
+              "flex items-center gap-2.5 rounded-lg border bg-background/80 px-3 py-2 text-sm shadow-sm",
+              isSoon && "opacity-60",
+            )}
           >
             <Icon className="size-4 shrink-0 text-muted-foreground" />
-            <span className="truncate">{label}</span>
+            <span className="truncate flex-1">{label}</span>
+            {isSoon ? (
+              <span className="shrink-0 rounded-sm border border-dashed px-1.5 py-px text-[9px] font-medium uppercase tracking-wider text-muted-foreground leading-none">
+                Soon
+              </span>
+            ) : null}
           </li>
         );
       })}
@@ -262,7 +380,7 @@ function Hub() {
         <span className="font-semibold text-sm">Context101</span>
       </div>
       <span className="mt-1 text-[10px] text-muted-foreground font-mono">
-        MCP · Bedrock KB
+        MCP · Semantic search
       </span>
     </div>
   );
