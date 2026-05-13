@@ -132,12 +132,20 @@ export class BrainShared extends Construct {
     this.provisionerFn.addToRolePolicy(
       new iam.PolicyStatement({
         sid: "ManageBrainBuckets",
+        // S3 has a handful of API↔IAM-action name divergences. The S3
+        // SDK calls PutBucketEncryption / GetBucketEncryption, but the
+        // IAM permissions are s3:PutEncryptionConfiguration /
+        // s3:GetEncryptionConfiguration. Granted both forms here so the
+        // provisioner doesn't get a cryptic AccessDenied when it tries
+        // to turn on bucket encryption on a fresh brain bucket.
         actions: [
           "s3:CreateBucket",
           "s3:DeleteBucket",
           "s3:PutBucketVersioning",
-          "s3:PutBucketEncryption",
+          "s3:PutEncryptionConfiguration",
+          "s3:GetEncryptionConfiguration",
           "s3:PutBucketPublicAccessBlock",
+          "s3:GetBucketPublicAccessBlock",
           "s3:PutBucketNotificationConfiguration",
           "s3:GetBucketNotificationConfiguration",
           "s3:ListBucket",
