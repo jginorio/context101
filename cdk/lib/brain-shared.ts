@@ -72,11 +72,35 @@ export class BrainShared extends Construct {
     });
 
     // ── BrainProvisionerFn — runtime create/delete handler ─────────────
+    //
+    // The Lambda Node 20 runtime preinstalls a curated subset of
+    // @aws-sdk/* v3 clients (s3, dynamodb, secrets-manager, etc.) but
+    // NOT newer ones — @aws-sdk/client-s3-vectors isn't in the set.
+    // Without bundling, the deploy artifact is just index.mjs +
+    // package.json and the function crashes on cold start with
+    // ERR_MODULE_NOT_FOUND ("Cannot find package '@aws-sdk/client-s3-vectors'").
+    //
+    // Bundling runs `npm install --omit=dev` inside the Lambda's own
+    // Node 20 image so the resulting node_modules is binary-compatible
+    // with the runtime. Requires Docker at synth time — already a
+    // prereq for the wiki-generator image asset, so no new dependency.
     this.provisionerFn = new lambda.Function(this, "BrainProvisionerFn", {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "index.handler",
       code: lambda.Code.fromAsset(
-        path.resolve(__dirname, "..", "lambda", "brain-provisioner")
+        path.resolve(__dirname, "..", "lambda", "brain-provisioner"),
+        {
+          bundling: {
+            image: lambda.Runtime.NODEJS_20_X.bundlingImage,
+            command: [
+              "bash",
+              "-c",
+              // cp -au keeps perms; --omit=dev future-proofs the zip
+              // size in case anyone adds dev deps later.
+              "cp -au . /asset-output && cd /asset-output && npm install --omit=dev --no-audit --no-fund --loglevel=error",
+            ],
+          },
+        }
       ),
       functionName: `${props.namePrefix}-brain-provisioner`,
       timeout: cdk.Duration.minutes(5),
