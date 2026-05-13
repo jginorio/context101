@@ -25,6 +25,7 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { BrainStatusGate } from "@/components/brain-status-gate";
+import { OpenInChat } from "@/components/open-in-chat";
 import { WikiMarkdown } from "@/components/previews/wiki-markdown";
 import { cn } from "@/lib/utils";
 
@@ -554,12 +555,17 @@ export default function WikiPage() {
               <p className="text-sm text-muted-foreground">Loading page…</p>
             ) : activePage && content ? (
               <>
-                {activeSelection?.repo && (
-                  <p className="mb-4 inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-[11px] font-mono text-muted-foreground">
-                    <Code2 className="h-3 w-3" />
-                    code wiki · {activeSelection.repo}
-                  </p>
-                )}
+                <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+                  {activeSelection?.repo ? (
+                    <p className="inline-flex items-center gap-1 rounded-md bg-muted px-2 py-1 text-[11px] font-mono text-muted-foreground">
+                      <Code2 className="h-3 w-3" />
+                      code wiki · {activeSelection.repo}
+                    </p>
+                  ) : (
+                    <span />
+                  )}
+                  <OpenInChat content={content} title={activePage.title} />
+                </div>
                 <WikiMarkdown content={content} />
                 {activePage.sources.length > 0 && (
                   <div className="mt-10 border-t pt-4 text-xs text-muted-foreground">

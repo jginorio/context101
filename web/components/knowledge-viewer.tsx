@@ -11,6 +11,7 @@ import { MarkdownPreview } from "@/components/previews/markdown-preview";
 import { CsvPreview } from "@/components/previews/csv-preview";
 import { JsonPreview } from "@/components/previews/json-preview";
 import { ImproveDialog } from "@/components/improve-dialog";
+import { OpenInChat } from "@/components/open-in-chat";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -183,11 +184,19 @@ export function KnowledgeViewer({
               </Button>
             </div>
           ) : isConnectorManaged ? (
-            <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium px-2 py-0.5 rounded border bg-muted/30">
-              Managed by connector · read-only
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-medium px-2 py-0.5 rounded border bg-muted/30">
+                Managed by connector · read-only
+              </span>
+              {ext === "md" && text ? (
+                <OpenInChat content={text} title={fileKey} />
+              ) : null}
+            </div>
           ) : (
             <div className="flex items-center gap-2">
+              {ext === "md" && text ? (
+                <OpenInChat content={text} title={fileKey} />
+              ) : null}
               {ext === "md" && (
                 <Button
                   variant="outline"
