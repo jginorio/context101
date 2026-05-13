@@ -663,20 +663,56 @@ export class Context101Stack extends cdk.Stack {
       value: connectorSyncGithubFn.functionName,
     });
 
-    // ── 8. Optional: App Runner service hosting the MCP server ────────
-    //      Only provisioned if -c token=<value> is passed at deploy time.
+    // ── 7b. Multi-brain control plane ─────────────────────────────────
+    //   Declared BEFORE the optional App Runner block so the MCP service
+    //   can wire BRAINS_TABLE into its container env, and the App Runner
+    //   instance role can grant cross-brain access. The default brain's
+    //   token_secret_arn is resolved via cdk.Lazy because the secret
+    //   itself is conditional on `-c token=<value>` being passed.
     const teamToken = this.node.tryGetContext("token") as string | undefined;
-
-    // Public-safe env vars exposed to the Amplify build (read by the
-    // /about page so teammates can copy a working MCP config out of the
-    // UI). Populated only when the App Runner service is in the stack.
-    const mcpEnvVars: Array<{ name: string; value: string }> = [];
-
-    // The default brain's bearer-token secret. Declared up here (not inside
-    // the if-block) so BrainShared.registerDefaultBrain can record its ARN
-    // in the brains registry. Only constructed when teamToken is present.
     let defaultBrainTokenSecret: secretsmanager.Secret | undefined;
     let mcpServiceUrl: string | undefined;
+    const mcpEnvVars: Array<{ name: string; value: string }> = [];
+
+    const brainShared = new BrainShared(this, "BrainShared", {
+      namePrefix,
+      embedModelArn,
+      embedDim,
+      vectorBucketName,
+      vectorBucketArn,
+      sharedKbRoleArn: kbRole.roleArn,
+      autoIngestFn: ingestFn,
+      defaultBrain: {
+        docsBucket: docsBucket.bucketName,
+        kbId: kb.attrKnowledgeBaseId,
+        dsId: dataSource.attrDataSourceId,
+        vectorIndexArn,
+        suggestionsTable: suggestionsTable.tableName,
+        connectorsTable: connectorsTable.tableName,
+        // Resolved at synth-end — the App Runner block below may set
+        // defaultBrainTokenSecret. Empty string when teamToken wasn't
+        // passed on this deploy; web/MCP code treats that as "no token
+        // configured" and replies 503.
+        tokenSecretArn: cdk.Lazy.string({
+          produce: () => defaultBrainTokenSecret?.secretArn ?? "",
+        }),
+      },
+    });
+    ingestFn.addEnvironment("BRAINS_TABLE", brainShared.brainsTable.tableName);
+    brainShared.brainsTable.grantReadData(ingestFn);
+
+    new cdk.CfnOutput(this, "BrainsTableName", {
+      value: brainShared.brainsTable.tableName,
+      description: "Registry of all brains. Web UI + MCP both read from this.",
+    });
+    new cdk.CfnOutput(this, "BrainProvisionerFnName", {
+      value: brainShared.provisionerFn.functionName,
+      description:
+        "Lambda invoked by /api/brains/{create,delete} to provision per-brain resources.",
+    });
+
+    // ── 8. Optional: App Runner service hosting the MCP server ────────
+    //      Only provisioned if -c token=<value> is passed at deploy time.
 
     if (teamToken) {
       // a) Store the bearer token in Secrets Manager
@@ -694,22 +730,65 @@ export class Context101Stack extends cdk.Stack {
         file: "Dockerfile",
       });
 
-      // c) App Runner instance role — runtime perms (what the MCP can do)
+      // c) App Runner instance role — runtime perms (what the MCP can do).
+      //   The MCP server resolves the active brain on each request from
+      //   BrainsTable + the per-brain token secret, then reads/writes that
+      //   brain's KB, bucket, and suggestions table. Permissions are
+      //   wildcarded across context101-brain-* so newly-provisioned brains
+      //   work without redeploying.
       const instanceRole = new iam.Role(this, "AppRunnerInstanceRole", {
         assumedBy: new iam.ServicePrincipal("tasks.apprunner.amazonaws.com"),
         description: "Runtime role for the Context101 MCP App Runner service",
       });
+      // Bedrock Retrieve on any brain's KB. KB ARNs aren't known at synth
+      // for runtime-provisioned brains; the role-level wildcard is the gate.
       instanceRole.addToPolicy(
         new iam.PolicyStatement({
-          sid: "RetrieveFromKb",
+          sid: "RetrieveAnyBrainKb",
           actions: ["bedrock:Retrieve"],
-          resources: [kb.attrKnowledgeBaseArn],
+          resources: [
+            `arn:aws:bedrock:${this.region}:${this.account}:knowledge-base/*`,
+          ],
         })
       );
+      // Default brain bucket + every future brain bucket.
       docsBucket.grantRead(instanceRole);
+      instanceRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "ReadBrainBuckets",
+          actions: ["s3:GetObject", "s3:ListBucket"],
+          resources: [
+            `arn:aws:s3:::${namePrefix}-brain-*`,
+            `arn:aws:s3:::${namePrefix}-brain-*/*`,
+          ],
+        })
+      );
+      // BrainsTable registry — read on every request to resolve the brain.
+      brainShared.brainsTable.grantReadData(instanceRole);
+      // Default brain bearer-token secret + every future brain's token.
       tokenSecret.grantRead(instanceRole);
-      // MCP's `suggest_knowledge` tool writes to the Suggestions table.
+      instanceRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "ReadBrainTokenSecrets",
+          actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
+          resources: [
+            `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-brain-*`,
+          ],
+        })
+      );
+      // MCP's `suggest_knowledge` tool writes to the active brain's
+      // suggestions table — default brain's table plus any future
+      // per-brain table.
       suggestionsTable.grantWriteData(instanceRole);
+      instanceRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "WriteBrainSuggestions",
+          actions: ["dynamodb:PutItem", "dynamodb:UpdateItem"],
+          resources: [
+            `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-suggestions`,
+          ],
+        })
+      );
 
       // d) App Runner access role — permission to pull from ECR
       const accessRole = new iam.Role(this, "AppRunnerAccessRole", {
@@ -734,12 +813,9 @@ export class Context101Stack extends cdk.Stack {
               port: "8787",
               runtimeEnvironmentVariables: [
                 { name: "AWS_REGION", value: this.region },
-                { name: "KB_ID", value: kb.attrKnowledgeBaseId },
-                { name: "DOCS_BUCKET", value: docsBucket.bucketName },
-                { name: "SUGGESTIONS_TABLE", value: suggestionsTable.tableName },
-              ],
-              runtimeEnvironmentSecrets: [
-                { name: "CONTEXT101_TOKEN", value: tokenSecret.secretArn },
+                // The MCP server resolves the active brain per-request from
+                // BrainsTable; no per-brain env baked into the container.
+                { name: "BRAINS_TABLE", value: brainShared.brainsTable.tableName },
               ],
             },
           },
@@ -772,49 +848,6 @@ export class Context101Stack extends cdk.Stack {
         { name: "NEXT_PUBLIC_MCP_TOKEN", value: teamToken }
       );
     }
-
-    // ── 8b. Multi-brain control plane ─────────────────────────────────
-    //   Always provisioned (independent of teamToken / githubToken). The
-    //   BrainsTable registry, the BrainProvisionerFn that creates/deletes
-    //   per-brain resources at runtime, and the RegisterDefaultBrain
-    //   custom resource that seeds the registry with the existing brain
-    //   on first deploy.
-    const brainShared = new BrainShared(this, "BrainShared", {
-      namePrefix,
-      embedModelArn,
-      embedDim,
-      vectorBucketName,
-      vectorBucketArn,
-      sharedKbRoleArn: kbRole.roleArn,
-      autoIngestFn: ingestFn,
-      defaultBrain: {
-        docsBucket: docsBucket.bucketName,
-        kbId: kb.attrKnowledgeBaseId,
-        dsId: dataSource.attrDataSourceId,
-        vectorIndexArn,
-        suggestionsTable: suggestionsTable.tableName,
-        connectorsTable: connectorsTable.tableName,
-        // Empty string when teamToken isn't set on this deploy. The web /
-        // MCP layer treats an empty arn as "no token configured" → callers
-        // get a clean 401 rather than a runtime crash.
-        tokenSecretArn: defaultBrainTokenSecret?.secretArn ?? "",
-      },
-    });
-
-    // Wire BRAINS_TABLE into the auto-ingest Lambda + grant read access.
-    // Done here so the construct's own dependency graph stays clean.
-    ingestFn.addEnvironment("BRAINS_TABLE", brainShared.brainsTable.tableName);
-    brainShared.brainsTable.grantReadData(ingestFn);
-
-    new cdk.CfnOutput(this, "BrainsTableName", {
-      value: brainShared.brainsTable.tableName,
-      description: "Registry of all brains. Web UI + MCP both read from this.",
-    });
-    new cdk.CfnOutput(this, "BrainProvisionerFnName", {
-      value: brainShared.provisionerFn.functionName,
-      description:
-        "Lambda invoked by /api/brains/{create,delete} to provision per-brain resources.",
-    });
 
     // ── 9. Optional: Amplify Hosting for the web admin UI ─────────────
     //      Only provisioned if -c githubToken=<pat> is passed.

@@ -2,44 +2,53 @@
 Context101 — Shared team knowledge base via MCP, backed by Amazon Bedrock Knowledge Bases.
 
 Tools:
-  - search_knowledge:   Semantic search against the KB (wraps bedrock-agent-runtime:Retrieve)
+  - search_knowledge:   Semantic search against the active brain's KB
   - read_knowledge:     Fetch the full content of a source document by S3 key
-  - list_sources:       List available documents in the S3 docs bucket
-  - suggest_knowledge:  Propose a new doc or an improvement — queued for human review
+  - list_sources:       List available documents in the active brain's S3 bucket
+  - suggest_knowledge:  Propose a new doc or improvement — queued for human review
 
-Stack:
-  - FastMCP (Python) for MCP protocol
-  - boto3 for Bedrock Agent Runtime + S3 + DynamoDB
-  - Knowledge Base (Titan embed v2 + S3 Vectors) provisioned via CDK
-  - Suggestions queue in DynamoDB (context101-suggestions)
+Multi-brain routing:
+  The same MCP service serves every brain. Clients reach a specific brain via:
+
+    https://<mcp-host>/brain/<brain_id>/mcp     (preferred — explicit)
+    https://<mcp-host>/mcp                       (legacy alias — default brain)
+
+  Brain identity, the KB/bucket/table handles, and the bearer-token secret
+  ARN come from the BRAINS_TABLE DDB registry (populated by the web admin
+  UI's "Create brain" flow + the RegisterDefaultBrain CDK custom resource).
+  Token values are read on-demand from Secrets Manager and cached.
 
 Auth:
-  - If CONTEXT101_TOKEN env var is set, the server requires
-    `Authorization: Bearer <token>` on every request.
-  - If unset (e.g. local dev), the server runs without auth.
+  Each brain has its own bearer token in Secrets Manager. The middleware
+  resolves the brain from the URL path, fetches that brain's token, and
+  validates `Authorization: Bearer <token>`. Path mismatch → 404; token
+  mismatch → 401. Tools never see the token.
 """
 
 import os
+import time
 import uuid
+from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
 
 import boto3
 from botocore.config import Config
 from fastmcp import FastMCP
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Mount
 
 # ── Config ────────────────────────────────────────────────────────────
 
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
-KB_ID = os.environ.get("KB_ID")
-DOCS_BUCKET = os.environ.get("DOCS_BUCKET")  # Needed for read_knowledge / list_sources
-SUGGESTIONS_TABLE = os.environ.get("SUGGESTIONS_TABLE")  # Needed for suggest_knowledge
+BRAINS_TABLE = os.environ.get("BRAINS_TABLE")
 AWS_PROFILE = os.environ.get("AWS_PROFILE")
-TOKEN = os.environ.get("CONTEXT101_TOKEN")  # Optional bearer token
 
-if not KB_ID:
+if not BRAINS_TABLE:
     raise RuntimeError(
-        "KB_ID env var is required. Set it to the Bedrock Knowledge Base ID "
+        "BRAINS_TABLE env var is required. Set it to the DDB table name "
         "output by `cdk deploy`."
     )
 
@@ -49,24 +58,76 @@ _session = boto3.Session(region_name=AWS_REGION, profile_name=AWS_PROFILE)
 _boto_cfg = Config(retries={"max_attempts": 3, "mode": "standard"})
 
 bedrock_runtime = _session.client("bedrock-agent-runtime", config=_boto_cfg)
-s3 = _session.client("s3", config=_boto_cfg)
+s3_client = _session.client("s3", config=_boto_cfg)
 ddb = _session.resource("dynamodb", config=_boto_cfg)
+secrets_client = _session.client("secretsmanager", config=_boto_cfg)
+
+_brains_table = ddb.Table(BRAINS_TABLE)
 
 
-# ── Auth ──────────────────────────────────────────────────────────────
+# ── Brain context — propagated through asyncio via ContextVar ─────────
 
-def _build_auth():
-    """Return a StaticTokenVerifier if CONTEXT101_TOKEN is set, else None."""
-    if not TOKEN:
+_current_brain: ContextVar[dict[str, Any] | None] = ContextVar(
+    "current_brain", default=None
+)
+
+
+def _brain() -> dict[str, Any]:
+    """Return the brain config the current request is scoped to.
+
+    Raises if no brain is in context — tools should never be called outside
+    a request, so this should never happen in practice.
+    """
+    b = _current_brain.get()
+    if b is None:
+        raise RuntimeError("no brain in context (called outside a request?)")
+    return b
+
+
+# ── Caches (process-local; TTL'd so updates propagate without redeploy) ─
+
+_BRAIN_TTL = 60.0   # seconds — re-read the registry row this often
+_TOKEN_TTL = 300.0  # seconds — re-read the token secret this often
+
+_brain_cache: dict[str, tuple[dict[str, Any], float]] = {}
+_token_cache: dict[str, tuple[str, float]] = {}
+
+
+def _load_brain(brain_id: str) -> dict[str, Any] | None:
+    """Fetch a brain row from BRAINS_TABLE; None if missing or not ready."""
+    cached = _brain_cache.get(brain_id)
+    if cached and time.monotonic() - cached[1] < _BRAIN_TTL:
+        return cached[0]
+    try:
+        resp = _brains_table.get_item(Key={"brain_id": brain_id})
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp] failed to load brain {brain_id}: {e}")
         return None
-    from fastmcp.server.auth.providers.jwt import StaticTokenVerifier
+    item = resp.get("Item")
+    if not item or item.get("status") != "ready":
+        return None
+    _brain_cache[brain_id] = (item, time.monotonic())
+    return item
 
-    return StaticTokenVerifier(
-        tokens={TOKEN: {"client_id": "context101-team", "scopes": ["read"]}},
-    )
+
+def _load_token(secret_arn: str) -> str | None:
+    """Fetch a brain's bearer token from Secrets Manager."""
+    cached = _token_cache.get(secret_arn)
+    if cached and time.monotonic() - cached[1] < _TOKEN_TTL:
+        return cached[0]
+    try:
+        resp = secrets_client.get_secret_value(SecretId=secret_arn)
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp] failed to read token secret {secret_arn}: {e}")
+        return None
+    value = resp.get("SecretString")
+    if not value:
+        return None
+    _token_cache[secret_arn] = (value, time.monotonic())
+    return value
 
 
-# ── MCP Server ────────────────────────────────────────────────────────
+# ── MCP Server (single FastMCP, brain comes from contextvar) ──────────
 
 mcp = FastMCP(
     "Context101",
@@ -103,7 +164,9 @@ Available tools:
 - suggest_knowledge(title, content, target_path?, rationale?, trigger?):
     propose a new doc or update an existing one; goes to the review queue
 """,
-    auth=_build_auth(),
+    # Auth is handled in the brain-routing middleware below — FastMCP-level
+    # auth would only see one token, and we need per-brain validation.
+    auth=None,
 )
 
 
@@ -126,7 +189,7 @@ def _source_key_from_retrieval(result: dict[str, Any]) -> str:
 
 @mcp.tool()
 def search_knowledge(query: str, limit: int = 5) -> str:
-    """Semantic search against the canonical wiki.
+    """Semantic search against the active brain's canonical wiki.
 
     Retrieval is scoped to wiki chunks — synthesized pages the generator
     produces from the raw corpus, tagged `source=wiki` via .metadata.json
@@ -140,10 +203,11 @@ def search_knowledge(query: str, limit: int = 5) -> str:
     Returns:
         Markdown-formatted list of chunks with source + score + text.
     """
+    brain = _brain()
     limit = max(1, min(limit, 20))
 
     resp = bedrock_runtime.retrieve(
-        knowledgeBaseId=KB_ID,
+        knowledgeBaseId=brain["kb_id"],
         retrievalQuery={"text": query},
         retrievalConfiguration={
             "vectorSearchConfiguration": {
@@ -155,9 +219,11 @@ def search_knowledge(query: str, limit: int = 5) -> str:
 
     results = resp.get("retrievalResults", [])
     if not results:
-        return f'No results for "{query}".'
+        return f'No results for "{query}" in brain `{brain["brain_id"]}`.'
 
-    blocks = [f'Found {len(results)} result(s) for "{query}".\n']
+    blocks = [
+        f'Found {len(results)} result(s) for "{query}" in brain `{brain["brain_id"]}`.\n'
+    ]
     for i, r in enumerate(results, 1):
         content = (r.get("content") or {}).get("text", "").strip()
         score = r.get("score", 0.0)
@@ -170,7 +236,7 @@ def search_knowledge(query: str, limit: int = 5) -> str:
 
 @mcp.tool()
 def read_knowledge(s3_key: str) -> str:
-    """Read the full content of any document in the docs bucket by S3 key.
+    """Read the full content of any document in the active brain's bucket.
 
     This is the escape hatch to ground-truth content. search_knowledge only
     returns canonical wiki chunks, which are synthesized and may compress or
@@ -184,42 +250,42 @@ def read_knowledge(s3_key: str) -> str:
     Args:
         s3_key: Object key inside the docs bucket, e.g. "domain-knowledge/amplia.md"
     """
-    if not DOCS_BUCKET:
-        return (
-            "DOCS_BUCKET env var is not set. This tool needs to know which "
-            "S3 bucket to read from. Set it to the bucket name output by `cdk deploy`."
-        )
+    brain = _brain()
+    bucket = brain["docs_bucket"]
     try:
-        obj = s3.get_object(Bucket=DOCS_BUCKET, Key=s3_key)
+        obj = s3_client.get_object(Bucket=bucket, Key=s3_key)
         body = obj["Body"].read().decode("utf-8", errors="replace")
         return f"# {s3_key}\n\n{body}"
-    except s3.exceptions.NoSuchKey:
-        return f"Not found in docs bucket: {s3_key}"
+    except s3_client.exceptions.NoSuchKey:
+        return f"Not found in brain `{brain['brain_id']}` docs bucket: {s3_key}"
     except Exception as e:  # noqa: BLE001
         return f"Error reading {s3_key}: {e}"
 
 
 @mcp.tool()
 def list_sources() -> str:
-    """List all documents available in the knowledge base."""
-    if not DOCS_BUCKET:
-        return (
-            "DOCS_BUCKET env var is not set. This tool needs to know which "
-            "S3 bucket to list. Set it to the bucket name output by `cdk deploy`."
-        )
+    """List all documents available in the active brain's knowledge base."""
+    brain = _brain()
+    bucket = brain["docs_bucket"]
 
     keys: list[str] = []
-    paginator = s3.get_paginator("list_objects_v2")
-    for page in paginator.paginate(Bucket=DOCS_BUCKET):
+    paginator = s3_client.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=bucket):
         for obj in page.get("Contents", []):
             if obj["Key"].endswith(".metadata.json") or obj["Key"].endswith("/"):
                 continue
             keys.append(obj["Key"])
 
     if not keys:
-        return "The docs bucket is empty. Upload markdown files to populate the knowledge base."
+        return (
+            f"Brain `{brain['brain_id']}` docs bucket is empty. "
+            "Upload markdown files to populate the knowledge base."
+        )
 
-    lines = [f"**{len(keys)} document(s) in the knowledge base:**", ""]
+    lines = [
+        f"**{len(keys)} document(s) in brain `{brain['brain_id']}`:**",
+        "",
+    ]
     lines.extend(f"- `{k}`" for k in sorted(keys))
     return "\n".join(lines)
 
@@ -232,11 +298,12 @@ def suggest_knowledge(
     rationale: str | None = None,
     trigger: str | None = None,
 ) -> str:
-    """Suggest new knowledge or an improvement to an existing doc.
+    """Suggest new knowledge or an improvement to an existing doc in the
+    active brain.
 
-    The suggestion lands in the review queue — it is NOT written to the brain
-    automatically. A human reviews it in the Context101 admin UI and either
-    approves (it becomes part of the brain) or rejects it.
+    The suggestion lands in the brain's review queue — it is NOT written to
+    the brain automatically. A human reviews it in the Context101 admin UI
+    and either approves (it becomes part of the brain) or rejects it.
 
     Use this when you discover:
       - A new fact, pattern, or convention worth preserving
@@ -258,10 +325,12 @@ def suggest_knowledge(
     Returns:
         The suggestion's ID (for audit/traceability).
     """
-    if not SUGGESTIONS_TABLE:
+    brain = _brain()
+    suggestions_table_name = brain.get("suggestions_table")
+    if not suggestions_table_name:
         return (
-            "Suggestions are disabled: SUGGESTIONS_TABLE env var is not set. "
-            "Deploy the CDK stack with the Suggestions table, or ask an admin."
+            f"Suggestions are disabled for brain `{brain['brain_id']}` "
+            "(no suggestions table on the registry row)."
         )
     if not title.strip() or not content.strip():
         return "Both `title` and `content` are required."
@@ -270,7 +339,7 @@ def suggest_knowledge(
     if len(content) > 200_000:
         return "Content too large (>200KB). Split into a smaller suggestion."
 
-    table = ddb.Table(SUGGESTIONS_TABLE)
+    table = ddb.Table(suggestions_table_name)
     suggestion_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
 
@@ -292,9 +361,130 @@ def suggest_knowledge(
 
     kind = f"update to `{target_path}`" if target_path else "new document"
     return (
-        f"✅ Suggestion submitted ({kind}).\n\n"
+        f"✅ Suggestion submitted to brain `{brain['brain_id']}` ({kind}).\n\n"
         f"**ID:** `{suggestion_id}`\n"
         f"**Title:** {title}\n"
         f"**Status:** pending — a human will review it in the Context101 admin UI. "
         f"The change will not be part of the brain until approved."
     )
+
+
+# ── ASGI plumbing: brain-routing + token validation ───────────────────
+
+
+def _extract_bearer(scope: dict) -> str | None:
+    """Pull the Authorization: Bearer <token> value from an ASGI scope."""
+    for name, value in scope.get("headers", []) or []:
+        if name == b"authorization":
+            decoded = value.decode("latin-1", errors="replace")
+            if decoded.lower().startswith("bearer "):
+                return decoded[7:].strip()
+    return None
+
+
+def _json_response(status: int, body: dict[str, Any]):
+    """Build a minimal ASGI JSON response."""
+    return JSONResponse(body, status_code=status)
+
+
+# FastMCP exposes its HTTP transport as a Starlette ASGI app. Depending on
+# the FastMCP version the accessor is `streamable_http_app()` (preferred)
+# or `http_app()`. We support both so this server runs on either.
+def _build_mcp_asgi():
+    for attr in ("streamable_http_app", "http_app"):
+        fn = getattr(mcp, attr, None)
+        if callable(fn):
+            return fn()
+    raise RuntimeError(
+        "FastMCP instance has no HTTP ASGI app accessor "
+        "(expected `streamable_http_app` or `http_app`)."
+    )
+
+
+_mcp_app = _build_mcp_asgi()
+
+
+async def _dispatch(scope, receive, send):
+    """ASGI entrypoint — resolves the brain from the URL path, validates the
+    bearer token against that brain's secret, and delegates to FastMCP.
+
+    Path shapes:
+      /brain/<brain_id>/mcp[/...]     → that brain
+      /mcp[/...]                       → "default" brain (legacy)
+      anything else                    → 404
+    """
+    if scope["type"] != "http":
+        # Defensive: streamable_http_app supports streaming responses but
+        # we only proxy http. Pass through unknown types unchanged.
+        return await _mcp_app(scope, receive, send)
+
+    path: str = scope["path"]
+    if path.startswith("/brain/"):
+        # /brain/<id>/mcp[/...]
+        parts = path.split("/", 4)
+        # parts = ["", "brain", "<id>", "mcp", "<rest>"]
+        if len(parts) < 4 or parts[3] != "mcp":
+            return await _json_response(
+                404, {"error": "not found"}
+            )(scope, receive, send)
+        brain_id = parts[2]
+        rest = "/" + parts[4] if len(parts) >= 5 else ""
+        new_path = "/mcp" + rest
+    elif path == "/mcp" or path.startswith("/mcp/"):
+        brain_id = "default"
+        new_path = path
+    elif path == "/healthz" or path == "/":
+        return await _json_response(
+            200, {"status": "ok", "service": "context101-mcp"}
+        )(scope, receive, send)
+    else:
+        return await _json_response(
+            404, {"error": f"unknown path {path}"}
+        )(scope, receive, send)
+
+    brain = _load_brain(brain_id)
+    if brain is None:
+        return await _json_response(
+            404, {"error": f"brain `{brain_id}` not found or not ready"}
+        )(scope, receive, send)
+
+    secret_arn = brain.get("token_secret_arn")
+    if not secret_arn:
+        return await _json_response(
+            503,
+            {"error": f"brain `{brain_id}` has no token configured"},
+        )(scope, receive, send)
+
+    expected = _load_token(secret_arn)
+    if not expected:
+        return await _json_response(
+            503,
+            {"error": f"brain `{brain_id}` token unavailable"},
+        )(scope, receive, send)
+
+    presented = _extract_bearer(scope)
+    if not presented or presented != expected:
+        return await _json_response(
+            401,
+            {"error": "invalid or missing bearer token"},
+        )(scope, receive, send)
+
+    # Rewrite the scope's path so FastMCP's own router matches /mcp routes
+    # regardless of whether the client called /mcp or /brain/<id>/mcp.
+    new_scope = {**scope, "path": new_path, "raw_path": new_path.encode("latin-1")}
+
+    # Bind the brain into the contextvar for the duration of this request
+    # so the tool functions can read it without threading kwargs through
+    # FastMCP's tool dispatch machinery.
+    token = _current_brain.set(brain)
+    try:
+        await _mcp_app(new_scope, receive, send)
+    finally:
+        _current_brain.reset(token)
+
+
+# Top-level Starlette app — single catch-all mount because we do the
+# routing ourselves (path templates with variable segments aren't expressible
+# in Starlette's basic router without regex routes, and rolling our own
+# dispatch keeps the surface area small).
+app = Starlette(routes=[Mount("/", app=_dispatch)])
