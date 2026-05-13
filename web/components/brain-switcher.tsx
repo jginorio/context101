@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
@@ -44,39 +45,48 @@ export function BrainSwitcher() {
         }
       />
       <DropdownMenuContent align="start" className="min-w-[14rem]">
-        <DropdownMenuLabel>
-          {loading ? "Loading brains…" : "Switch brain"}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {ready.length === 0 && !loading ? (
-          <DropdownMenuItem disabled>No brains available</DropdownMenuItem>
-        ) : (
-          ready.map((b) => (
-            <DropdownMenuItem
-              key={b.brain_id}
-              onClick={() => setBrain(b.brain_id)}
-              className="justify-between"
-            >
-              <span className="truncate">{b.display_name}</span>
-              {b.brain_id === currentBrainId ? (
-                <Check className="h-3.5 w-3.5 ml-2 shrink-0" />
-              ) : null}
-            </DropdownMenuItem>
-          ))
-        )}
+        {/* DropdownMenuLabel wraps Base UI's Menu.GroupLabel, which now
+            requires a Menu.Group parent (Base UI #31) — bare labels crash
+            on open. Each label + its following items is wrapped in a
+            DropdownMenuGroup. */}
+        <DropdownMenuGroup>
+          <DropdownMenuLabel>
+            {loading ? "Loading brains…" : "Switch brain"}
+          </DropdownMenuLabel>
+          {ready.length === 0 && !loading ? (
+            <DropdownMenuItem disabled>No brains available</DropdownMenuItem>
+          ) : (
+            ready.map((b) => (
+              <DropdownMenuItem
+                key={b.brain_id}
+                onClick={() => setBrain(b.brain_id)}
+                className="justify-between"
+              >
+                <span className="truncate">{b.display_name}</span>
+                {b.brain_id === currentBrainId ? (
+                  <Check className="h-3.5 w-3.5 ml-2 shrink-0" />
+                ) : null}
+              </DropdownMenuItem>
+            ))
+          )}
+        </DropdownMenuGroup>
+
         {provisioning.length > 0 ? (
           <>
             <DropdownMenuSeparator />
-            <DropdownMenuLabel className="text-muted-foreground text-xs">
-              Provisioning…
-            </DropdownMenuLabel>
-            {provisioning.map((b) => (
-              <DropdownMenuItem key={b.brain_id} disabled>
-                <span className="truncate">{b.display_name}</span>
-              </DropdownMenuItem>
-            ))}
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="text-muted-foreground text-xs">
+                Provisioning…
+              </DropdownMenuLabel>
+              {provisioning.map((b) => (
+                <DropdownMenuItem key={b.brain_id} disabled>
+                  <span className="truncate">{b.display_name}</span>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuGroup>
           </>
         ) : null}
+
         <DropdownMenuSeparator />
         <DropdownMenuItem render={<Link href="/brains" />}>
           <Plus className="mr-2 h-3.5 w-3.5" />
