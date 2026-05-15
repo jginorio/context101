@@ -12,16 +12,11 @@ import {
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { ConnectionDiagram } from "@/components/landing/connection-diagram";
+import { Counter } from "@/components/landing/counter";
 import { FadeIn } from "@/components/landing/fade-in";
-import { TextReveal } from "@/components/landing/text-reveal";
+import { LogoCloud } from "@/components/landing/logo-cloud";
 import { TypingRotate } from "@/components/landing/typing-rotate";
 
 export const metadata: Metadata = {
@@ -37,10 +32,12 @@ export default function LandingPage() {
     <main className="flex min-h-screen flex-col">
       <SiteHeader />
       <Hero />
+      <LogoCloudStrip />
       <ProblemSection />
       <DiagramSection />
       <FeaturesSection />
       <AnatomySection />
+      <StatsSection />
       <ArchitectureSection />
       <ScopeSection />
       <FinalCTA />
@@ -53,10 +50,10 @@ export default function LandingPage() {
 
 function SiteHeader() {
   return (
-    <header className="sticky top-0 z-30 border-b bg-background/80 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-      <div className="mx-auto flex h-14 w-full max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center gap-2">
-          <span className="inline-block size-2 rounded-full bg-primary" />
+    <header className="pointer-events-none sticky top-3 z-30 flex justify-center px-3 sm:top-4">
+      <div className="pointer-events-auto flex h-12 w-full max-w-3xl items-center justify-between gap-2 rounded-full border bg-background/85 px-3 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-background/70 sm:h-13 sm:px-4">
+        <Link href="/" className="flex items-center gap-2 pl-1">
+          <span className="inline-block size-2 rounded-full bg-[var(--notio-orange)]" />
           <span className="text-sm font-semibold tracking-tight">
             Context101
           </span>
@@ -78,7 +75,7 @@ function SiteHeader() {
           </Link>
           <ThemeToggle />
           <Link href="/login?next=/knowledge">
-            <Button size="sm">
+            <Button size="sm" className="rounded-full">
               Open app
               <ArrowRight className="ml-1 h-3.5 w-3.5" />
             </Button>
@@ -94,29 +91,42 @@ function SiteHeader() {
 function Hero() {
   return (
     <section className="relative overflow-hidden">
-      {/* Subtle background grid + radial glow. Pure CSS, no deps. */}
       <div
         aria-hidden
-        className="absolute inset-0 -z-10 [background-image:linear-gradient(to_right,oklch(var(--foreground)/.04)_1px,transparent_1px),linear-gradient(to_bottom,oklch(var(--foreground)/.04)_1px,transparent_1px)] [background-size:48px_48px] [mask-image:radial-gradient(ellipse_at_center,black,transparent_70%)]"
+        className="notio-radial-hero absolute inset-0 -z-10"
       />
-      <div className="mx-auto w-full max-w-6xl px-4 pt-16 pb-12 sm:px-6 sm:pt-24 sm:pb-20">
+      <div className="mx-auto w-full max-w-6xl px-4 pt-24 pb-12 sm:px-6 sm:pt-32 sm:pb-20">
         <div className="mx-auto max-w-3xl text-center">
-          <div className="mb-5 inline-flex items-center gap-2 rounded-full border bg-background/60 px-3 py-1 text-xs text-muted-foreground">
+          <div
+            className="notio-rise mb-6 inline-flex items-center gap-2 rounded-full border bg-background/70 px-3 py-1 text-xs text-muted-foreground backdrop-blur-sm"
+            style={{ "--notio-delay": "0ms" } as React.CSSProperties}
+          >
             <span className="inline-block size-1.5 rounded-full bg-emerald-500" />
             Open source · MCP-native · Self-hosted on AWS
           </div>
 
-          <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
-            One brain. Every AI tool.
+          <h1
+            className="notio-display notio-rise text-balance text-5xl leading-[1.05] sm:text-7xl"
+            style={{ "--notio-delay": "80ms" } as React.CSSProperties}
+          >
+            One brain.
+            <br />
+            <span className="notio-accent">Every AI tool.</span>
           </h1>
 
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg">
+          <p
+            className="notio-rise mx-auto mt-6 max-w-2xl text-base leading-relaxed text-muted-foreground sm:text-lg"
+            style={{ "--notio-delay": "200ms" } as React.CSSProperties}
+          >
             A self-hosted knowledge base your team writes into once. Every
             MCP-compatible agent retrieves from the same brain. No per-tool
             integrations, no copy-pasted context.
           </p>
 
-          <div className="mx-auto mt-7 flex max-w-md flex-col items-center justify-center gap-2 text-sm text-muted-foreground sm:flex-row sm:gap-3">
+          <div
+            className="notio-rise mx-auto mt-7 flex max-w-md flex-col items-center justify-center gap-2 text-sm text-muted-foreground sm:flex-row sm:gap-3"
+            style={{ "--notio-delay": "320ms" } as React.CSSProperties}
+          >
             <span>So now</span>
             <TypingRotate
               className="text-foreground"
@@ -130,15 +140,18 @@ function Hero() {
             />
           </div>
 
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-3">
+          <div
+            className="notio-rise mt-10 flex flex-wrap items-center justify-center gap-3"
+            style={{ "--notio-delay": "440ms" } as React.CSSProperties}
+          >
             <Link href={REPO_URL} target="_blank" rel="noreferrer">
-              <Button size="lg">
+              <Button size="lg" className="rounded-full">
                 <Star className="mr-1.5 h-4 w-4" />
                 View on GitHub
               </Button>
             </Link>
             <Link href={REPO_URL} target="_blank" rel="noreferrer">
-              <Button size="lg" variant="outline">
+              <Button size="lg" variant="outline" className="rounded-full">
                 Read the docs
                 <ExternalLink className="ml-1 h-4 w-4" />
               </Button>
@@ -150,29 +163,45 @@ function Hero() {
   );
 }
 
+/* ── Logo cloud strip ─────────────────────────────────────────────── */
+
+function LogoCloudStrip() {
+  return (
+    <section className="border-y">
+      <div className="mx-auto w-full max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+        <FadeIn>
+          <p className="mb-7 text-center text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            Works with the agents you already use
+          </p>
+          <LogoCloud />
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
 /* ── §01 The problem ──────────────────────────────────────────────── */
 
 function ProblemSection() {
   return (
-    <section className="border-y bg-muted/30">
-      <div className="mx-auto w-full max-w-3xl px-4 py-16 sm:px-6 sm:py-24">
-        <SectionLabel n="01">The problem</SectionLabel>
-        <TextReveal
-          as="h2"
-          className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl"
-        >
-          Knowledge gets stuck in chat sessions.
-        </TextReveal>
-        <p className="mt-5 text-base leading-relaxed text-muted-foreground sm:text-lg">
-          Every teammate&apos;s AI only knows what that person has told it. The
-          analyst&apos;s findings stay inside their Claude Desktop. The PM asks
-          their own AI and gets a generic answer. The engineer in Cursor
-          restarts from zero context.
-        </p>
-        <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
-          Decisions get made on fragmented memory, and the chain of
-          understanding breaks at every handoff.
-        </p>
+    <section>
+      <div className="mx-auto w-full max-w-3xl px-4 py-20 sm:px-6 sm:py-28">
+        <FadeIn>
+          <SectionLabel n="01">The problem</SectionLabel>
+          <h2 className="notio-display mt-3 text-balance text-4xl leading-[1.1] sm:text-5xl">
+            Knowledge gets stuck in chat sessions.
+          </h2>
+          <p className="mt-6 text-base leading-relaxed text-muted-foreground sm:text-lg">
+            Every teammate&apos;s AI only knows what that person has told it.
+            The analyst&apos;s findings stay inside their Claude Desktop. The
+            PM asks their own AI and gets a generic answer. The engineer in
+            Cursor restarts from zero context.
+          </p>
+          <p className="mt-4 text-base leading-relaxed text-muted-foreground sm:text-lg">
+            Decisions get made on fragmented memory, and the chain of
+            understanding breaks at every handoff.
+          </p>
+        </FadeIn>
       </div>
     </section>
   );
@@ -182,25 +211,27 @@ function ProblemSection() {
 
 function DiagramSection() {
   return (
-    <section>
+    <section className="border-y bg-muted/30">
       <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-        <FadeIn className="mb-12 max-w-2xl sm:mb-16">
+        <FadeIn className="mx-auto mb-12 max-w-2xl text-center sm:mb-16">
           <SectionLabel n="02">The protocol</SectionLabel>
-          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h2 className="notio-display mt-3 text-balance text-4xl leading-[1.1] sm:text-5xl">
             Write once. Retrieve from everywhere.
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+          <p className="mt-5 text-base leading-relaxed text-muted-foreground">
             MCP is the open protocol Anthropic defined for exactly this. Any
             MCP-compatible client plugs into the same brain with zero custom
             work. No SDK lock-in, no per-tool wiring.
           </p>
         </FadeIn>
 
-        <div className="mx-auto max-w-5xl">
-          <ConnectionDiagram />
-        </div>
+        <FadeIn className="mx-auto max-w-5xl">
+          <div className="overflow-hidden rounded-3xl border bg-card p-4 shadow-sm sm:rounded-[2rem] sm:p-8">
+            <ConnectionDiagram />
+          </div>
+        </FadeIn>
 
-        <p className="mt-10 max-w-xl text-sm text-muted-foreground">
+        <p className="mx-auto mt-10 max-w-xl text-center text-sm text-muted-foreground">
           One source of truth. Many consumers. The brain lives in your AWS
           account, not someone else&apos;s SaaS.
         </p>
@@ -241,14 +272,14 @@ const FEATURES = [
 
 function FeaturesSection() {
   return (
-    <section className="border-y bg-muted/30">
+    <section>
       <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
-        <FadeIn className="mx-auto mb-12 max-w-2xl text-center">
+        <FadeIn className="mx-auto mb-12 max-w-2xl text-center sm:mb-16">
           <SectionLabel n="03">Design decisions</SectionLabel>
-          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
-            What you actually get
+          <h2 className="notio-display mt-3 text-balance text-4xl leading-[1.1] sm:text-5xl">
+            What you actually get.
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+          <p className="mt-5 text-base leading-relaxed text-muted-foreground">
             Five choices that make Context101 distinct from a vanilla RAG
             server.
           </p>
@@ -256,19 +287,20 @@ function FeaturesSection() {
 
         <div className="grid gap-4 sm:grid-cols-2">
           {FEATURES.map(({ Icon, title, body }) => (
-            <Card key={title}>
-              <CardHeader>
-                <div className="mb-2 flex size-8 items-center justify-center rounded-lg bg-primary/10 text-primary ring-1 ring-primary/20">
-                  <Icon className="size-4" />
-                </div>
-                <CardTitle className="text-base sm:text-lg">{title}</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm leading-relaxed text-muted-foreground">
-                  {body}
-                </p>
-              </CardContent>
-            </Card>
+            <FadeIn
+              key={title}
+              className="group rounded-3xl border bg-card p-6 transition-colors hover:border-[var(--notio-orange-soft)]/40 sm:p-7"
+            >
+              <div className="mb-4 inline-flex size-10 items-center justify-center rounded-2xl bg-[var(--notio-orange)]/8 text-[var(--notio-orange)] ring-1 ring-[var(--notio-orange)]/20 dark:text-[var(--notio-orange-soft)] dark:ring-[var(--notio-orange-soft)]/30">
+                <Icon className="size-5" />
+              </div>
+              <h3 className="notio-display text-lg leading-snug sm:text-xl">
+                {title}
+              </h3>
+              <p className="mt-3 text-sm leading-relaxed text-muted-foreground">
+                {body}
+              </p>
+            </FadeIn>
           ))}
         </div>
       </div>
@@ -299,21 +331,21 @@ const ANATOMY_CALLOUTS: Array<{ title: string; body: string }> = [
 
 function AnatomySection() {
   return (
-    <section>
+    <section className="border-y bg-muted/30">
       <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
         <FadeIn className="mx-auto mb-10 max-w-2xl text-center sm:mb-14">
           <SectionLabel n="04">Anatomy of an answer</SectionLabel>
-          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h2 className="notio-display mt-3 text-balance text-4xl leading-[1.1] sm:text-5xl">
             What the brain actually looks like.
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+          <p className="mt-5 text-base leading-relaxed text-muted-foreground">
             Every retrieval lands on a synthesized wiki page with citations
             back to raw sources. Here is a page from a running deployment.
           </p>
         </FadeIn>
 
         <FadeIn as="figure" className="mx-auto max-w-5xl">
-          <div className="overflow-hidden rounded-xl border bg-card">
+          <div className="overflow-hidden rounded-3xl border bg-card shadow-sm sm:rounded-[2rem]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src="/wiki-preview.png"
@@ -345,6 +377,81 @@ function AnatomySection() {
         </FadeIn>
       </div>
     </section>
+  );
+}
+
+/* ── Stats ────────────────────────────────────────────────────────── */
+
+function StatsSection() {
+  return (
+    <section>
+      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
+        <FadeIn className="mx-auto mb-12 max-w-2xl text-center sm:mb-16">
+          <p className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
+            By the numbers
+          </p>
+          <h2 className="notio-display mt-3 text-balance text-4xl leading-[1.1] sm:text-5xl">
+            The proof is in the receipts.
+          </h2>
+        </FadeIn>
+
+        <FadeIn>
+          <dl className="grid divide-y rounded-3xl border bg-card sm:grid-cols-4 sm:divide-x sm:divide-y-0">
+            <Stat
+              value={
+                <>
+                  <span className="text-muted-foreground/70">~$</span>
+                  <Counter to={5} />
+                  <span className="text-muted-foreground/70">-</span>
+                  <Counter to={15} />
+                </>
+              }
+              unit="/ month"
+              label="AWS cost at PoC scale"
+            />
+            <Stat
+              value={<Counter to={1} />}
+              unit="cdk deploy"
+              label="From clone to a live MCP URL"
+            />
+            <Stat
+              value={<Counter to={5} suffix="+" />}
+              unit="MCP clients"
+              label="Cursor, Claude Code, Desktop, Devin, custom"
+            />
+            <Stat
+              value={<Counter to={0} />}
+              unit="lock-in"
+              label="Self-hosted in your own AWS account"
+            />
+          </dl>
+        </FadeIn>
+      </div>
+    </section>
+  );
+}
+
+function Stat({
+  value,
+  unit,
+  label,
+}: {
+  value: React.ReactNode;
+  unit: string;
+  label: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2 px-6 py-8 text-center sm:px-4 sm:py-10">
+      <div className="notio-display text-4xl leading-none sm:text-5xl">
+        {value}
+      </div>
+      <div className="font-mono text-xs uppercase tracking-wider text-muted-foreground">
+        {unit}
+      </div>
+      <p className="mx-auto mt-1 max-w-[14rem] text-sm leading-relaxed text-muted-foreground">
+        {label}
+      </p>
+    </div>
   );
 }
 
@@ -391,27 +498,26 @@ function ArchitectureSection() {
       <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
         <FadeIn className="mb-12 max-w-2xl sm:mb-16">
           <SectionLabel n="05">Architecture</SectionLabel>
-          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h2 className="notio-display mt-3 text-balance text-4xl leading-[1.1] sm:text-5xl">
             Boring managed primitives, wired up by CDK.
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+          <p className="mt-5 text-base leading-relaxed text-muted-foreground">
             Nothing exotic. Each layer is one AWS primitive you can read about
             in the docs, picked because it had the smallest footprint for the
             job.
           </p>
         </FadeIn>
 
-        <div className="grid gap-8 lg:grid-cols-[1.15fr_1fr] lg:gap-10">
-          {/* Stack table */}
-          <div className="overflow-hidden rounded-xl border bg-card">
-            <div className="border-b bg-muted/40 px-4 py-3 font-mono text-xs uppercase tracking-wider text-muted-foreground sm:px-5">
+        <div className="grid gap-6 lg:grid-cols-[1.15fr_1fr] lg:gap-8">
+          <div className="overflow-hidden rounded-3xl border bg-card">
+            <div className="border-b bg-muted/40 px-5 py-3 font-mono text-xs uppercase tracking-wider text-muted-foreground">
               {"// The stack"}
             </div>
             <dl className="divide-y">
               {STACK_ROWS.map(({ name, role }) => (
                 <div
                   key={name}
-                  className="grid gap-1 px-4 py-3.5 sm:grid-cols-[9rem_1fr] sm:items-baseline sm:gap-5 sm:px-5"
+                  className="grid gap-1 px-5 py-3.5 sm:grid-cols-[9rem_1fr] sm:items-baseline sm:gap-5"
                 >
                   <dt className="font-mono text-sm font-medium text-card-foreground">
                     {name}
@@ -424,8 +530,7 @@ function ArchitectureSection() {
             </dl>
           </div>
 
-          {/* Deploy block */}
-          <div className="rounded-xl border bg-card p-5 font-mono text-xs leading-relaxed text-card-foreground sm:p-6">
+          <div className="rounded-3xl border bg-card p-6 font-mono text-xs leading-relaxed text-card-foreground sm:p-7">
             <div className="text-muted-foreground"># 1. clone + deploy</div>
             <pre className="mt-1 whitespace-pre-wrap break-words">
 {`git clone ${REPO_URL}.git
@@ -530,24 +635,24 @@ function ScopeSection() {
       <div className="mx-auto w-full max-w-3xl px-4 py-20 sm:px-6 sm:py-24">
         <FadeIn className="mb-10">
           <SectionLabel n="06">Scope</SectionLabel>
-          <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+          <h2 className="notio-display mt-3 text-balance text-4xl leading-[1.1] sm:text-5xl">
             What&apos;s not in the box.
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+          <p className="mt-5 text-base leading-relaxed text-muted-foreground">
             The things we&apos;d rather you read here than be surprised by
             later.
           </p>
         </FadeIn>
 
-        <div className="overflow-hidden rounded-xl border bg-card">
-          <div className="border-b bg-muted/40 px-4 py-3 font-mono text-xs uppercase tracking-wider text-muted-foreground sm:px-5">
+        <div className="overflow-hidden rounded-3xl border bg-card">
+          <div className="border-b bg-muted/40 px-5 py-3 font-mono text-xs uppercase tracking-wider text-muted-foreground">
             {"// Not included"}
           </div>
           <ul className="divide-y">
             {NOT_INCLUDED.map(({ tag, title, body }) => (
               <li
                 key={tag}
-                className="grid gap-2 px-4 py-4 sm:grid-cols-[5.5rem_1fr] sm:gap-5 sm:px-5 sm:py-5"
+                className="grid gap-2 px-5 py-5 sm:grid-cols-[5.5rem_1fr] sm:gap-5"
               >
                 <span className="font-mono text-xs uppercase tracking-wider text-muted-foreground sm:pt-1">
                   {tag}
@@ -573,15 +678,19 @@ function ScopeSection() {
 
 function FinalCTA() {
   return (
-    <section className="border-y bg-muted/30">
-      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-24">
+    <section className="relative overflow-hidden border-t">
+      <div
+        aria-hidden
+        className="notio-radial-footer absolute inset-0 -z-10"
+      />
+      <div className="mx-auto w-full max-w-6xl px-4 py-20 sm:px-6 sm:py-28">
         <div className="grid gap-10 lg:grid-cols-[1.1fr_1fr] lg:items-end lg:gap-16">
           <FadeIn>
             <SectionLabel n="07">Get started</SectionLabel>
-            <h2 className="mt-3 text-balance text-3xl font-semibold tracking-tight sm:text-4xl">
+            <h2 className="notio-display mt-3 text-balance text-4xl leading-[1.1] sm:text-5xl">
               Five minutes from clone to first search.
             </h2>
-            <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+            <p className="mt-5 text-base leading-relaxed text-muted-foreground">
               Prereqs: an AWS account, Node 20+, Docker, and Bedrock model
               access enabled for Titan and Claude Opus 4.7 in{" "}
               <code className="rounded bg-muted px-1 py-0.5 font-mono text-[0.85em]">
@@ -589,15 +698,15 @@ function FinalCTA() {
               </code>
               .
             </p>
-            <div className="mt-7 flex flex-wrap items-center gap-3">
+            <div className="mt-8 flex flex-wrap items-center gap-3">
               <Link href={REPO_URL} target="_blank" rel="noreferrer">
-                <Button size="lg">
+                <Button size="lg" className="rounded-full">
                   <Star className="mr-1.5 h-4 w-4" />
                   View on GitHub
                 </Button>
               </Link>
               <Link href={REPO_URL} target="_blank" rel="noreferrer">
-                <Button size="lg" variant="outline">
+                <Button size="lg" variant="outline" className="rounded-full">
                   Full walkthrough
                   <ExternalLink className="ml-1 h-4 w-4" />
                 </Button>
@@ -605,7 +714,7 @@ function FinalCTA() {
             </div>
           </FadeIn>
 
-          <div className="rounded-xl border bg-card p-5 font-mono text-xs leading-relaxed text-card-foreground sm:p-6">
+          <div className="rounded-3xl border bg-card p-6 font-mono text-xs leading-relaxed text-card-foreground shadow-sm sm:p-7">
             <div className="text-muted-foreground"># clone</div>
             <pre className="mt-1 whitespace-pre-wrap break-words">
 {`git clone ${REPO_URL}.git
@@ -635,7 +744,7 @@ function SiteFooter() {
     <footer className="border-t">
       <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-4 py-6 text-xs text-muted-foreground sm:flex-row sm:px-6">
         <div className="flex items-center gap-2">
-          <span className="inline-block size-1.5 rounded-full bg-primary" />
+          <span className="inline-block size-1.5 rounded-full bg-[var(--notio-orange)]" />
           <span className="font-medium text-foreground">Context101</span>
           <span>· Open source</span>
         </div>
