@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import {
   ArrowRight,
-  Brain,
   Cloud,
   ExternalLink,
   Layers,
@@ -255,18 +254,13 @@ const FEATURES = [
   },
   {
     Icon: Cloud,
-    title: "Your AWS account. No per-seat pricing.",
-    body: "Runs on managed AWS primitives at ~$5-15/mo at PoC scale. Cost scales with content, not headcount. Data never leaves your perimeter.",
+    title: "Your AWS account. As many brains as you want.",
+    body: "Runs on managed AWS primitives at ~$5-15/mo at PoC scale — cost scales with content, not headcount. Spin up fully isolated brains (own S3 bucket, KB, vector index, bearer token) from the /brains page; one App Runner service serves them all, and data never leaves your perimeter.",
   },
   {
     Icon: Plug,
     title: "Connectors that don't lock you in",
     body: "Google Sheets, Docs, Slides, Notion, and GitHub all re-sync into the same retrieval surface every 6h. Source data stays in its home tool.",
-  },
-  {
-    Icon: Brain,
-    title: "Parallel brains, one MCP service",
-    body: "Create as many brains as you want from the /brains page — each isolated (own S3 bucket, KB, vector index, tables, bearer token). One App Runner service serves all of them; clients pick a brain via /brain/<id>/mcp or the URL switcher in the admin UI.",
   },
 ];
 
@@ -280,7 +274,7 @@ function FeaturesSection() {
             What you actually get.
           </h2>
           <p className="mt-5 text-base leading-relaxed text-muted-foreground">
-            Five choices that make Context101 distinct from a vanilla RAG
+            Four choices that make Context101 distinct from a vanilla RAG
             server.
           </p>
         </FadeIn>
