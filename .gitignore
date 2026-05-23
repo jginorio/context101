@@ -18,3 +18,12 @@ cdk/*.js
 cdk/*.d.ts
 cdk/lambda/**/node_modules/
 backups/
+.claude/
+
+# Standalone public site
+site/node_modules/
+site/.next/
+site/out/
+site/.env*
+site/next-env.d.ts
+site/*.tsbuildinfo

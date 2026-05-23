@@ -28,7 +28,11 @@ export async function GET(request: NextRequest) {
       (b.created_at ?? "").localeCompare(a.created_at ?? "")
     );
     // Don't leak the secret ARN to the client
-    const safe = items.map(({ token_secret_arn: _, ...rest }) => rest);
+    const safe = items.map((item) => {
+      const rest = { ...item };
+      delete rest.token_secret_arn;
+      return rest;
+    });
     return NextResponse.json({ items: safe });
   } catch (err) {
     console.error("connectors list failed:", err);

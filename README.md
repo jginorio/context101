@@ -1,8 +1,10 @@
-# Context101 🧠
+# Context101
 
-A shared team knowledge base exposed via MCP, backed by **Amazon Bedrock Knowledge Bases** with S3 + S3 Vectors, and hosted on **AWS App Runner** with bearer-token auth.
+An open-source alpha MCP knowledge base for trusted internal teams, backed by **Amazon Bedrock Knowledge Bases** with S3 + S3 Vectors, and hosted on AWS with bearer-token auth.
 
 Create **as many brains as you want from the web admin UI** — each brain is a fully isolated knowledge base (own S3 bucket, own Bedrock KB, own vector index, own suggestions queue, own bearer token). One MCP service serves every brain; clients reach a specific brain via `/brain/<brain_id>/mcp`.
+
+> **Alpha status:** Context101 started as an internal proof of concept. It is useful today for self-hosted, trusted-team deployments, but it is not production-ready SaaS infrastructure and it is not ready for public multi-tenant hosting. Read [ALPHA.md](./ALPHA.md) before deploying with sensitive data.
 
 ## Architecture
 
@@ -56,7 +58,8 @@ The control plane (create / delete a brain from the **/brains** page) is a Lambd
 ├── server.py                     # Python MCP server (FastMCP + boto3 + brain routing)
 ├── Dockerfile                    # Used by App Runner
 ├── knowledge/                    # Optional bootstrap seed for the default brain
-├── web/                          # Next.js admin UI (Amplify Hosting)
+├── site/                         # Standalone public website / marketing page
+├── web/                          # Deployable Next.js admin app (Amplify Hosting)
 │   ├── app/brains/               # /brains admin page (create / delete brains)
 │   ├── app/api/brains/           # registry endpoints (list/create/get/delete/token)
 │   ├── lib/brains-server.ts      # resolveBrainFromRequest + registry helpers
@@ -64,6 +67,21 @@ The control plane (create / delete a brain from the **/brains** page) is a Lambd
 ├── wiki-generator/               # Fargate task — per-brain DOCS_BUCKET via overrides
 └── requirements.txt
 ```
+
+The public homepage is deliberately separate from the deployable app. Self-hosters deploy `web/`; `site/` exists for the project website and can be hosted independently. The `web/` root route redirects into the authenticated app instead of shipping marketing copy into every internal deployment.
+
+## Public Alpha Caveats
+
+Context101 is designed to be easy to try in an AWS account, not to be a hardened hosted platform yet.
+
+- **Trusted users only:** any signed-in Cognito user can currently create, switch, and delete brains, and can reveal ready brain bearer tokens.
+- **No per-brain RBAC yet:** brains are isolated at the AWS resource level, but web-app authorization does not restrict users to specific brains.
+- **MCP auth is bearer-token based:** per-brain tokens are stored in Secrets Manager and cached by the MCP server. Per-user JWT auth is a roadmap item.
+- **Connectors are alpha:** Google Workspace, Notion, and GitHub sync content into markdown, but the flows are intentionally simple. GitHub currently uses a pasted PAT.
+- **AWS-first deployment:** the smooth path assumes `us-east-1`, CDK bootstrap, Docker, Bedrock model access, and connector OAuth secrets if you use connectors.
+- **Runtime brains live outside CloudFormation:** delete non-default brains from `/brains` before stack teardown, or manually sweep retained resources.
+
+See [SECURITY.md](./SECURITY.md) for the current security model and [CONTRIBUTING.md](./CONTRIBUTING.md) for contribution guidance.
 
 ## Prerequisites
 
@@ -251,28 +269,11 @@ Restart Claude Desktop and Context101 should appear in the tools list. The `-y` 
 
 > **Multiple brains in one client.** Use a distinct `mcpServers` key per brain (e.g. `"context101-marketing"`, `"context101-engineering"`) so the client treats them as separate servers. The `/about` page does this automatically — it labels each snippet with the brain's display name.
 
-## Onboarding teammates to the MCP servers
+## Optional MCP client bootstrap
 
-The team uses several MCP servers from Claude Desktop / Cursor / Devin: **Context101** (this knowledge base), **Metabase**, **Google Analytics**, **Contentful**, **Iterable**, and **Sprout Social**. Each one has its own toolchain (`uv`/`uvx`, `pipx`, `gcloud`, `nvm`/Node, etc.) and a Claude Desktop config block. AWS Docs and Sentry can be added back to the catalog in `scripts/install-mcps.sh` if your sub-team wants them.
+The web app's **About** page shows copy-paste snippets for each ready brain. That is the recommended open-source path.
 
-To save teammates 30 minutes of fiddling, there's an interactive installer:
-
-```bash
-./scripts/install-mcps.sh        # walks through everything
-./scripts/install-mcps.sh --dry-run   # show what would happen, change nothing
-./scripts/install-mcps.sh --yes       # accept brew/pipx/etc. installs without confirming
-```
-
-It will:
-
-1. Install Homebrew (if missing) → `jq`, `uv`, `pipx`, `gcloud`, `nvm` + Node 20 — only what's missing.
-2. Ask, per MCP, whether you want it; collect any tokens / URLs / project IDs needed.
-3. Run `gcloud auth application-default login` for the Google Analytics ADC if you opt in.
-4. Merge the resulting `mcpServers` blocks into `~/Library/Application Support/Claude/claude_desktop_config.json` (with a timestamped backup of any existing file).
-
-Re-running the script is safe — answer "n" to anything you don't want to touch and it stays untouched. macOS only for v1.
-
-The MCP catalog inside the script (`scripts/install-mcps.sh`) is meant to be edited per team — drop in the MCPs you actually use, remove the ones you don't, and tweak the prompts.
+There is also a local helper script at `scripts/install-mcps.sh` that was originally built for one internal team to merge several MCP servers into Claude Desktop. Treat it as a starting point, not a product feature: edit its catalog before sharing it with your own team, and do not serve it publicly without review.
 
 ## Inviting teammates to the web app
 

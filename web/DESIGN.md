@@ -174,7 +174,7 @@ The palette is an OKLCH monochrome scale tinted toward zero chroma, with one rat
 **Character:** A single sans family carries the entire system, with mono reserved for labels, code, and small status badges. The pairing is technical without being terminal-cosplay: Geist's near-neutral grotesque hides until you read it, then disappears again. Tracking is tight on display sizes (-0.02em) so headlines feel set, not arranged.
 
 ### Hierarchy
-- **Display** (600, `clamp(2.25rem, 6vw, 3.75rem)`, `1.05`): Hero only. "One brain. Every AI tool." Tracking `-0.02em`. Never used twice on a page.
+- **Display** (600, `clamp(2.25rem, 6vw, 3.75rem)`, `1.05`): Reserved for large product moments. The public marketing homepage now lives in `../site`; admin pages should usually start at Headline.
 - **Headline** (600, `clamp(1.875rem, 4vw, 2.25rem)`, `1.15`): Section headers. `text-balance` is mandatory so the last line never widows. Tracking `-0.015em`.
 - **Title** (500, `1.125rem`, `1.35`): Card titles, list-item titles, small section heads. Sentence case, never uppercase.
 - **Body** (400, `1rem`, `1.65`): Default paragraph. Line length capped at 65-75ch via `max-w-3xl` for prose sections. `leading-relaxed` (`1.625`) for marketing copy; `leading-normal` for dense UI.
@@ -184,16 +184,15 @@ The palette is an OKLCH monochrome scale tinted toward zero chroma, with one rat
 
 **The Two-Weight Rule.** The system uses exactly two weights of Geist on the page: 400 for body, 500 for titles, 600 for headlines. Italics are permitted; semi-condensed, expanded, or weights between are not. Hierarchy comes from size and weight contrast, never from font swaps.
 
-**The Mono Restraint Rule.** Geist Mono is for labels, code, status pills, and the typing-rotate cursor. It is not a brand voice. Headlines are never set in mono. Body copy is never set in mono. If the impulse is to "make it feel technical", reach for tighter tracking and better content first.
+**The Mono Restraint Rule.** Geist Mono is for labels, code, and status pills. It is not a brand voice. Headlines are never set in mono. Body copy is never set in mono. If the impulse is to "make it feel technical", reach for tighter tracking and better content first.
 
 ## 4. Elevation
 
 The system is flat by default. Depth is communicated through 1-pixel rings, background tonality (Drafting Paper vs Paper Tint vs Carbon Card), and the order of stacking, not through shadow. Surfaces rest on the page; they do not float over it.
 
-Shadows exist, but they are rare and earn their place. The marketing landing uses `shadow-sm` on two elements only: the floating tool chips on the MCP connection diagram (because they conceptually hover above the SVG beams) and the central hub of that same diagram. Toasts (Sonner), dialogs, and dropdown menus inherit shadcn's `shadow-md` because they genuinely detach from the page; outside those, shadow is forbidden.
+Shadows exist, but they are rare and earn their place. Toasts (Sonner), dialogs, and dropdown menus inherit shadcn's `shadow-md` because they genuinely detach from the page; outside those, shadow is forbidden.
 
 ### Shadow Vocabulary
-- **Chip lift** (`box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05)`): The diagram's tool chips and central hub. Communicates "this floats above the schematic plane".
 - **Overlay** (`box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1)`): Toasts, dropdowns, popovers. Only on elements that escape the document flow.
 
 ### Named Rules

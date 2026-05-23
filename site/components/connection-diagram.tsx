@@ -319,7 +319,7 @@ function NodeChipAbsolute({
       {isSoon ? (
         <span
           className={cn(
-            "shrink-0 rounded-sm border border-dashed px-1 py-px text-[8px] font-medium uppercase tracking-wider text-muted-foreground",
+            "shrink-0 rounded-sm border border-dashed px-1 py-px text-[8px] font-medium text-muted-foreground",
             "leading-none",
           )}
         >
@@ -361,7 +361,7 @@ function NodeColumn({ nodes }: { nodes: Node[] }) {
             <Icon className="size-4 shrink-0 text-muted-foreground" />
             <span className="truncate flex-1">{label}</span>
             {isSoon ? (
-              <span className="shrink-0 rounded-sm border border-dashed px-1.5 py-px text-[9px] font-medium uppercase tracking-wider text-muted-foreground leading-none">
+              <span className="shrink-0 rounded-sm border border-dashed px-1.5 py-px text-[9px] font-medium text-muted-foreground leading-none">
                 Soon
               </span>
             ) : null}

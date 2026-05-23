@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+
+const appRoot = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
+  turbopack: {
+    root: appRoot,
+  },
   // Amplify Hosting's SSR runtime doesn't forward app-level env vars to the
   // compute Lambda by default. Bake DOCS_BUCKET into the build so
   // process.env.DOCS_BUCKET works at runtime.

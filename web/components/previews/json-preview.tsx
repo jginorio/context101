@@ -6,7 +6,7 @@ export function JsonPreview({ content }: { content: string }) {
   const pretty = React.useMemo(() => {
     try {
       return JSON.stringify(JSON.parse(content), null, 2);
-    } catch (e) {
+    } catch {
       return null;
     }
   }, [content]);

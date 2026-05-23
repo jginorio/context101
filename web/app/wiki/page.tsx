@@ -125,9 +125,12 @@ export default function WikiPage() {
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   // Default selection: first team-wiki page if user hasn't picked anything.
-  const activeSelection: Selection | null =
-    userSelection ??
-    (index?.pages[0] ? { repo: null, slug: index.pages[0].slug } : null);
+  const activeSelection: Selection | null = React.useMemo(
+    () =>
+      userSelection ??
+      (index?.pages[0] ? { repo: null, slug: index.pages[0].slug } : null),
+    [userSelection, index]
+  );
   const contentLoading =
     activeSelection !== null && !selectionEq(loadedSelection, activeSelection);
 

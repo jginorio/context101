@@ -1,0 +1,97 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--card);
+  --color-card-foreground: var(--fg);
+  --color-muted: #141c26;
+  --color-muted-foreground: var(--muted);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #090807;
+  --color-border: var(--line);
+  --color-ring: var(--accent-2);
+}
+
+:root {
+  color-scheme: dark;
+  --bg: #07090c;
+  --bg-2: #0b1016;
+  --fg: #f0ede4;
+  --muted: #87919b;
+  --line: #26313c;
+  --card: #101720;
+  --card-2: #0d131a;
+  --accent: #c48a42;
+  --accent-2: #5f7484;
+  --accent-soft: #1d1710;
+  --code: #0a0f15;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  min-height: 100%;
+}
+
+body {
+  background:
+    radial-gradient(
+      ellipse 90% 50% at 50% -10%,
+      rgba(127, 155, 173, 0.18),
+      transparent 62%
+    ),
+    radial-gradient(
+      ellipse 70% 45% at 80% 18%,
+      rgba(196, 138, 66, 0.13),
+      transparent 58%
+    ),
+    linear-gradient(180deg, var(--bg-2), var(--bg) 32%, #050608),
+    var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}
+
+.fade-in {
+  animation: fade-rise 0.7s cubic-bezier(0.25, 1, 0.5, 1) both;
+  animation-delay: var(--delay, 0ms);
+}
+
+.typing-cursor {
+  animation: cursor-blink 1s steps(2, start) infinite;
+  color: var(--accent);
+  margin-left: 2px;
+}
+
+@keyframes fade-rise {
+  from {
+    opacity: 0;
+    transform: translateY(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes cursor-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .fade-in,
+  .typing-cursor {
+    animation: none;
+  }
+}

@@ -119,7 +119,7 @@ export function parseGithubRepo(url: string): string | null {
   // raw owner/repo form
   if (/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(trimmed)) return trimmed;
   // https
-  let m = trimmed.match(
+  const m = trimmed.match(
     /github\.com[:/]([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?(?:[/?#]|$)/
   );
   if (m) return `${m[1]}/${m[2]}`;

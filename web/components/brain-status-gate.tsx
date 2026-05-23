@@ -100,7 +100,7 @@ export function BrainStatusGate({ children }: { children: React.ReactNode }) {
             <code className="font-mono">{currentBrain?.display_name}</code> was
             created moments ago — its S3 bucket, Bedrock KB, vector index, and
             tables are being created. This usually takes 30–60 seconds; the
-            page auto-refreshes when it's ready.
+            page auto-refreshes when it&apos;s ready.
           </>
         }
         actions={
@@ -154,7 +154,7 @@ export function BrainStatusGate({ children }: { children: React.ReactNode }) {
           <>
             <code className="font-mono">{currentBrain?.display_name}</code> is
             being torn down — bucket, KB, vector index, tables, and bearer
-            token are being removed. The page auto-refreshes when it's done.
+            token are being removed. The page auto-refreshes when it&apos;s done.
           </>
         }
       />
