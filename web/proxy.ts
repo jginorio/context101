@@ -24,12 +24,14 @@ export const config = {
   // Match everything except:
   //  - / (a tiny server redirect into the authenticated app)
   //  - /login and /setup
+  //  - /accept-invitation (invited users may not have an account/session yet)
   //  - /api/auth and /api/setup
+  //  - /api/invitation (public invite lookup + invite-scoped signup)
   //  - /_next (Next.js internals)
   //  - static files (svg/png/etc.)
   // Using `.+` instead of `.*` so the empty path (i.e. `/`) doesn't match
   // and is served as the public landing without an auth round-trip.
   matcher: [
-    "/((?!login|setup|api/auth|api/setup|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).+)",
+    "/((?!login|setup|accept-invitation|api/auth|api/setup|api/invitation|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).+)",
   ],
 };

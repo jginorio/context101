@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   BookOpen,
   Brain,
+  Building2,
   FilePlus,
   FolderPlus,
   Info,
@@ -132,6 +133,11 @@ export default function Home() {
                     <Settings className="mr-2 h-3.5 w-3.5" /> Settings
                   </Button>
                 </Link>
+                <Link href="/orgs" onClick={() => setMobileNavOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start">
+                    <Building2 className="mr-2 h-3.5 w-3.5" /> Switch org
+                  </Button>
+                </Link>
               </nav>
               <div className="flex-1 min-h-0 overflow-y-auto p-2">{tree}</div>
             </SheetContent>
@@ -207,6 +213,11 @@ export default function Home() {
           <Link href="/settings" className="hidden md:inline-flex">
             <Button variant="ghost" size="sm">
               <Settings className="mr-1 h-3.5 w-3.5" /> Settings
+            </Button>
+          </Link>
+          <Link href="/orgs" className="hidden md:inline-flex">
+            <Button variant="ghost" size="sm">
+              <Building2 className="mr-1 h-3.5 w-3.5" /> Switch org
             </Button>
           </Link>
           <ThemeToggle />

@@ -62,6 +62,10 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
     plugins: [
       organization({
         creatorRole: "admin",
+        // We surface invite links manually (no email infra) and have no email
+        // verification flow, so don't block invitation accept on a verified
+        // email — this plugin option defaults to `true`.
+        requireEmailVerificationOnInvitation: false,
         // No transactional email infra yet. We still implement this so
         // inviteMember succeeds and the accept link is captured in logs;
         // the Settings UI surfaces a copyable link per pending invitation
@@ -100,6 +104,20 @@ export function getSetupAuth(): AuthRuntime {
   if (setupAuthInstance) return setupAuthInstance;
   setupAuthInstance = createAuthRuntime({ disableSignUp: false });
   return setupAuthInstance;
+}
+
+/**
+ * Hash a password with the same hasher Better Auth uses for sign-in, so a
+ * value written directly to the `account` table verifies correctly. Used by
+ * the admin "reset member password" flow (Better Auth has no built-in API to
+ * set another user's password without the admin plugin).
+ */
+export async function hashPassword(password: string): Promise<string> {
+  const instance = getAuth() as unknown as {
+    $context: Promise<{ password: { hash: (p: string) => Promise<string> } }>;
+  };
+  const ctx = await instance.$context;
+  return ctx.password.hash(password);
 }
 
 export type Auth = ReturnType<typeof getAuth>;

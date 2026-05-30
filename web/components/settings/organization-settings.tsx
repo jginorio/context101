@@ -4,6 +4,7 @@ import * as React from "react";
 import {
   Check,
   Copy,
+  KeyRound,
   Loader2,
   Mail,
   ShieldCheck,
@@ -16,6 +17,7 @@ import { authClient } from "@/lib/auth/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
@@ -27,6 +29,13 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -90,10 +99,14 @@ export function OrganizationSettings() {
   const [inviting, setInviting] = React.useState(false);
   const [busyMemberId, setBusyMemberId] = React.useState<string | null>(null);
   const [toRemove, setToRemove] = React.useState<Member | null>(null);
+  const [toReset, setToReset] = React.useState<Member | null>(null);
+  const [newPassword, setNewPassword] = React.useState("");
+  const [resetting, setResetting] = React.useState(false);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
 
   const currentRole = members?.find((m) => m.userId === currentUserId)?.role;
   const canManage = isPrivileged(currentRole);
+  const isOwner = currentRole === "owner";
   const adminCount = (members ?? []).filter((m) => isPrivileged(m.role)).length;
 
   const loadMembers = React.useCallback(async () => {
@@ -203,6 +216,34 @@ export function OrganizationSettings() {
     } finally {
       setBusyMemberId(null);
       setToRemove(null);
+    }
+  }
+
+  async function handleReset(e: React.FormEvent) {
+    e.preventDefault();
+    if (!toReset) return;
+    if (newPassword.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    setResetting(true);
+    try {
+      const res = await fetch("/api/org/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ memberId: toReset.id, password: newPassword }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data?.error ?? `Reset failed (${res.status})`);
+      toast.success(
+        `Password reset for ${toReset.user?.email ?? "member"}. They'll need to sign in again.`
+      );
+      setToReset(null);
+      setNewPassword("");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -416,26 +457,45 @@ export function OrganizationSettings() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        {canManage && !isSelf && m.role !== "owner" ? (
-                          <Button
-                            size="icon-sm"
-                            variant="ghost"
-                            onClick={() => setToRemove(m)}
-                            disabled={busy || isLastAdmin}
-                            title={
-                              isLastAdmin
-                                ? "Promote another member before removing the last admin"
-                                : undefined
-                            }
-                            aria-label="Remove member"
-                          >
-                            {busy ? (
-                              <Loader2 className="h-4 w-4 animate-spin" />
-                            ) : (
-                              <Trash2 className="h-4 w-4" />
-                            )}
-                          </Button>
-                        ) : null}
+                        <div className="flex items-center justify-end gap-1">
+                          {canManage &&
+                          !isSelf &&
+                          (m.role !== "owner" || isOwner) ? (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              onClick={() => {
+                                setNewPassword("");
+                                setToReset(m);
+                              }}
+                              disabled={busy}
+                              title="Reset password"
+                              aria-label="Reset password"
+                            >
+                              <KeyRound className="h-4 w-4" />
+                            </Button>
+                          ) : null}
+                          {canManage && !isSelf && m.role !== "owner" ? (
+                            <Button
+                              size="icon-sm"
+                              variant="ghost"
+                              onClick={() => setToRemove(m)}
+                              disabled={busy || isLastAdmin}
+                              title={
+                                isLastAdmin
+                                  ? "Promote another member before removing the last admin"
+                                  : undefined
+                              }
+                              aria-label="Remove member"
+                            >
+                              {busy ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="h-4 w-4" />
+                              )}
+                            </Button>
+                          ) : null}
+                        </div>
                       </TableCell>
                     </TableRow>
                   );
@@ -474,6 +534,62 @@ export function OrganizationSettings() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <Dialog
+        open={!!toReset}
+        onOpenChange={(v) => {
+          if (!v) {
+            setToReset(null);
+            setNewPassword("");
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Reset password</DialogTitle>
+            <DialogDescription>
+              Set a new password for{" "}
+              <span className="font-medium text-foreground">
+                {toReset?.user?.email ?? toReset?.user?.name ?? "this member"}
+              </span>
+              . They&apos;ll be signed out and must use the new password. Share
+              it with them securely.
+            </DialogDescription>
+          </DialogHeader>
+          <form className="space-y-3" onSubmit={handleReset}>
+            <PasswordInput
+              autoComplete="new-password"
+              minLength={8}
+              placeholder="New password (min 8 characters)"
+              required
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+            <div className="flex justify-end gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setToReset(null);
+                  setNewPassword("");
+                }}
+                disabled={resetting}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="submit"
+                disabled={resetting || newPassword.length < 8}
+              >
+                {resetting ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : null}
+                Reset password
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

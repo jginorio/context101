@@ -8,6 +8,7 @@ import { deploymentConfig } from "@/lib/deployment/config";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
   const router = useRouter();
@@ -44,7 +45,9 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
         });
         if (result.error) throw new Error(result.error.message);
       }
-      router.replace(next);
+      // Everyone lands on the org chooser after auth — pick (or create) the
+      // workspace to open. It carries `next` through for deep links.
+      router.replace(`/orgs?next=${encodeURIComponent(next)}`);
       router.refresh();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -77,13 +80,12 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
             type="email"
             value={email}
           />
-          <Input
+          <PasswordInput
             autoComplete={mode === "sign-up" ? "new-password" : "current-password"}
             minLength={8}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Password"
             required
-            type="password"
             value={password}
           />
           {error ? <p className="text-sm text-destructive">{error}</p> : null}

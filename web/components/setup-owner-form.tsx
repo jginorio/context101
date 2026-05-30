@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 
 export function SetupOwnerForm() {
   const router = useRouter();
@@ -60,13 +61,12 @@ export function SetupOwnerForm() {
             type="email"
             value={email}
           />
-          <Input
+          <PasswordInput
             autoComplete="new-password"
             minLength={8}
             onChange={(event) => setPassword(event.target.value)}
             placeholder="Password"
             required
-            type="password"
             value={password}
           />
           <Input
