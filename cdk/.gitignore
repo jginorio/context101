@@ -7,3 +7,10 @@ cdk.out/
 
 # Deploy wrapper local creds (cdk/deploy.sh)
 .deploy-env
+
+# Shared Lambda layer sources. These live under a `nodejs/node_modules/<pkg>`
+# path because that's how the Lambda runtime resolves layer modules — but they
+# are hand-written source, not installed dependencies, so keep them tracked
+# (override the node_modules/ and *.js rules above).
+!layers/
+!layers/**

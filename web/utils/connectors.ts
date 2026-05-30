@@ -1,34 +1,17 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
 import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 import { LambdaClient } from "@aws-sdk/client-lambda";
+import { and, desc, eq } from "drizzle-orm";
 
-import type { BrainConfig } from "@/lib/brains-server";
+import { db } from "@/lib/db/client";
+import { connectors as connectorsSchema } from "@/lib/db/schema";
 
 const region = process.env.AWS_REGION ?? "us-east-1";
 
-export const ddbConnectors = DynamoDBDocumentClient.from(
-  new DynamoDBClient({ region }),
-  { marshallOptions: { removeUndefinedValues: true } }
-);
 export const sm = new SecretsManagerClient({ region });
 export const lambdaClient = new LambdaClient({ region });
 
-/** Default brain's connectors table — fallback for unmigrated callers. */
-export const CONNECTORS_TABLE = process.env.CONNECTORS_TABLE ?? "";
-
-/** Pull the connectors table name out of a resolved brain row. */
-export function connectorsTableForBrain(brain: BrainConfig): string {
-  const t = brain.connectors_table;
-  if (!t) {
-    throw new Error(
-      `brain \`${brain.brain_id}\` has no connectors_table on its registry row`
-    );
-  }
-  return t;
-}
 export const CONNECTOR_SYNC_SHEETS_FN_NAME =
   process.env.CONNECTOR_SYNC_SHEETS_FN_NAME ?? "";
 export const CONNECTOR_SYNC_DOCS_FN_NAME =
@@ -51,7 +34,8 @@ export type ConnectorStatus =
   | "connecting"
   | "syncing"
   | "connected"
-  | "error";
+  | "error"
+  | "paused";
 
 export type ConnectorType =
   | "sheets"
@@ -212,4 +196,182 @@ export function syncFnNameFor(type: ConnectorType): string {
 // Is this type authenticated via Google OAuth (vs Notion OAuth vs other)?
 export function isGoogleType(type: ConnectorType): boolean {
   return type === "sheets" || type === "docs" || type === "slides";
+}
+
+// ── Postgres connector store ─────────────────────────────────────────
+// Connectors live in the `connectors` table (control-plane source of
+// truth shared with the sync Lambdas). Rows are addressed by (org_id,
+// brain_id); provider-specific identity (resource_title, account email,
+// workspace name, github login) lives in the `metadata` jsonb.
+
+type ConnectorRow = typeof connectorsSchema.$inferSelect;
+type ConnectorMetadata = Record<string, unknown>;
+
+function requireDb() {
+  if (!db) throw new Error("DATABASE_URL is not configured");
+  return db;
+}
+
+function metaString(meta: ConnectorMetadata, key: string): string | undefined {
+  const v = meta[key];
+  return typeof v === "string" ? v : undefined;
+}
+
+/** Map a Postgres connectors row into the client-facing Connector shape. */
+export function toClientConnector(row: ConnectorRow): Connector {
+  const meta = (row.metadata ?? {}) as ConnectorMetadata;
+  return {
+    id: row.id,
+    type: row.type as ConnectorType,
+    status: row.status as ConnectorStatus,
+    label: row.label,
+    resource_url: row.externalUrl ?? "",
+    resource_id: row.externalId ?? "",
+    resource_title: metaString(meta, "resource_title"),
+    token_secret_arn: row.tokenSecretArn ?? undefined,
+    google_account_email: metaString(meta, "google_account_email"),
+    notion_workspace_name: metaString(meta, "notion_workspace_name"),
+    github_account_login: metaString(meta, "github_account_login"),
+    item_count: row.itemCount ?? undefined,
+    last_synced_at: row.lastSyncedAt
+      ? row.lastSyncedAt.toISOString()
+      : undefined,
+    last_error: row.lastError ?? undefined,
+    created_at: row.createdAt.toISOString(),
+    created_by: row.createdBy ?? undefined,
+    brain_id: row.brainId,
+  };
+}
+
+export async function pgListConnectors(
+  orgId: string,
+  brainId: string
+): Promise<ConnectorRow[]> {
+  return requireDb()
+    .select()
+    .from(connectorsSchema)
+    .where(
+      and(
+        eq(connectorsSchema.orgId, orgId),
+        eq(connectorsSchema.brainId, brainId)
+      )
+    )
+    .orderBy(desc(connectorsSchema.createdAt));
+}
+
+/**
+ * Fetch a connector by id alone (no org/brain filter). Used by the OAuth
+ * callback, which routes via the opaque `state` param and has no reliable
+ * org context. Connector ids are UUIDs and the connection role bypasses
+ * RLS, so an id lookup is safe here.
+ */
+export async function pgGetConnectorById(
+  id: string
+): Promise<ConnectorRow | null> {
+  const [row] = await requireDb()
+    .select()
+    .from(connectorsSchema)
+    .where(eq(connectorsSchema.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
+export async function pgGetConnector(
+  orgId: string,
+  brainId: string,
+  id: string
+): Promise<ConnectorRow | null> {
+  const [row] = await requireDb()
+    .select()
+    .from(connectorsSchema)
+    .where(
+      and(
+        eq(connectorsSchema.orgId, orgId),
+        eq(connectorsSchema.brainId, brainId),
+        eq(connectorsSchema.id, id)
+      )
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function pgInsertConnector(input: {
+  orgId: string;
+  brainId: string;
+  type: ConnectorType;
+  label: string;
+  externalUrl: string;
+  externalId: string;
+  createdBy: string;
+}): Promise<ConnectorRow> {
+  const [row] = await requireDb()
+    .insert(connectorsSchema)
+    .values({
+      orgId: input.orgId,
+      brainId: input.brainId,
+      type: input.type,
+      label: input.label,
+      externalUrl: input.externalUrl,
+      externalId: input.externalId,
+      status: "pending_auth",
+      createdBy: input.createdBy,
+    })
+    .returning();
+  return row;
+}
+
+// The persisted status values (the `source_status` Postgres enum). The
+// client-facing ConnectorStatus also has a transient "connecting" state
+// that is never written to the database.
+type DbConnectorStatus =
+  | "pending_auth"
+  | "syncing"
+  | "connected"
+  | "error"
+  | "paused";
+
+/** Patch a connector row by id (org/brain scoped). */
+export async function pgUpdateConnector(
+  orgId: string,
+  brainId: string,
+  id: string,
+  patch: Partial<{
+    status: DbConnectorStatus;
+    tokenSecretArn: string;
+    metadata: ConnectorMetadata;
+  }>
+): Promise<void> {
+  await requireDb()
+    .update(connectorsSchema)
+    .set({
+      ...(patch.status ? { status: patch.status } : {}),
+      ...(patch.tokenSecretArn
+        ? { tokenSecretArn: patch.tokenSecretArn }
+        : {}),
+      ...(patch.metadata ? { metadata: patch.metadata } : {}),
+      updatedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(connectorsSchema.orgId, orgId),
+        eq(connectorsSchema.brainId, brainId),
+        eq(connectorsSchema.id, id)
+      )
+    );
+}
+
+export async function pgDeleteConnector(
+  orgId: string,
+  brainId: string,
+  id: string
+): Promise<void> {
+  await requireDb()
+    .delete(connectorsSchema)
+    .where(
+      and(
+        eq(connectorsSchema.orgId, orgId),
+        eq(connectorsSchema.brainId, brainId),
+        eq(connectorsSchema.id, id)
+      )
+    );
 }

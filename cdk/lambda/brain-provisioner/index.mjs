@@ -4,14 +4,17 @@
  * Control-plane handler invoked by SSR /api/brains/{create,delete}.
  *
  * Event shape:
- *   { action: "create", brain_id, display_name, description?, created_by_email? }
+ *   { action: "create", brain_id, display_name, description?,
+ *     org_id, created_by, created_by_email? }
  *   { action: "delete", brain_id }
  *
- * Provisioning is run inline (SSR awaits the response). For "create" the
- * row is written with status=provisioning first, then resource creation
- * happens, then status flips to "ready" (or "error" with error_msg). For
- * "delete" the row is flipped to status=deleting, resources are torn
- * down, then the row is removed. The web UI polls BrainsTable for state.
+ * The brain registry is the Postgres `brains` table (control-plane source
+ * of truth, shared with the web app + MCP server). For "create" the row is
+ * written with status=provisioning first, then resource creation happens,
+ * then status flips to "ready" (or "error" with error_msg). For "delete"
+ * the row is flipped to status=deleting, AWS resources are torn down, then
+ * the row is removed (connectors/suggestions/mcp_tokens cascade). The web
+ * UI polls the registry for state.
  *
  * Idempotency: create() checks the existing row's resource handles before
  * each step, so a partial failure can be re-run. delete() tolerates
@@ -22,6 +25,7 @@
  * else in the account.
  */
 import { createHash, randomBytes } from "node:crypto";
+import { createRequire } from "node:module";
 import {
   BedrockAgentClient,
   CreateKnowledgeBaseCommand,
@@ -31,19 +35,6 @@ import {
   GetKnowledgeBaseCommand,
   GetDataSourceCommand,
 } from "@aws-sdk/client-bedrock-agent";
-import {
-  DynamoDBClient,
-  CreateTableCommand,
-  DeleteTableCommand,
-  DescribeTableCommand,
-} from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  PutCommand,
-  UpdateCommand,
-  DeleteCommand,
-} from "@aws-sdk/lib-dynamodb";
 import {
   LambdaClient,
   AddPermissionCommand,
@@ -74,17 +65,21 @@ import {
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
 
+// pg-http ships as a Lambda layer (zero-dependency Neon-over-HTTP helper).
+// ESM doesn't resolve layer modules via NODE_PATH, so reach it through a
+// CommonJS require bound to this module's URL.
+const require = createRequire(import.meta.url);
+const { pgFetchOne, pgExecute } = require("pg-http");
+
 const REGION = process.env.AWS_REGION || "us-east-1";
 const ACCOUNT = process.env.AWS_ACCOUNT_ID;
-const BRAINS_TABLE = process.env.BRAINS_TABLE;
+const DATABASE_URL = process.env.DATABASE_URL;
 const VECTOR_BUCKET_NAME = process.env.VECTOR_BUCKET_NAME;
 const SHARED_KB_ROLE_ARN = process.env.SHARED_KB_ROLE_ARN;
 const AUTO_INGEST_FN_ARN = process.env.AUTO_INGEST_FN_ARN;
 const EMBED_MODEL_ARN = process.env.EMBED_MODEL_ARN;
 const EMBED_DIM = parseInt(process.env.EMBED_DIM || "1024", 10);
 
-const ddbClient = new DynamoDBClient({});
-const ddb = DynamoDBDocumentClient.from(ddbClient);
 const bedrock = new BedrockAgentClient({});
 const s3 = new S3Client({});
 const s3vectors = new S3VectorsClient({});
@@ -183,31 +178,8 @@ function indexArn(brainId) {
   return `arn:aws:s3vectors:${REGION}:${ACCOUNT}:bucket/${VECTOR_BUCKET_NAME}/index/${indexName(brainId)}`;
 }
 
-function suggestionsTableName(brainId) {
-  return `context101-brain-${brainId}-suggestions`;
-}
-
-function connectorsTableName(brainId) {
-  return `context101-brain-${brainId}-connectors`;
-}
-
 function tokenSecretName(brainId) {
   return `context101-brain-${brainId}-token`;
-}
-
-async function waitForTableActive(tableName, attempts = 30) {
-  for (let i = 0; i < attempts; i++) {
-    try {
-      const res = await ddbClient.send(
-        new DescribeTableCommand({ TableName: tableName })
-      );
-      if (res.Table?.TableStatus === "ACTIVE") return;
-    } catch (err) {
-      if (!isNotFound(err)) throw err;
-    }
-    await new Promise((r) => setTimeout(r, 1000));
-  }
-  throw new Error(`Table ${tableName} did not become ACTIVE`);
 }
 
 async function createBrainBucket(name) {
@@ -403,87 +375,17 @@ async function createBrainToken(brainId) {
   }
 }
 
-async function createSuggestionsTable(brainId) {
-  const name = suggestionsTableName(brainId);
-  try {
-    await ddbClient.send(
-      new CreateTableCommand({
-        TableName: name,
-        BillingMode: "PAY_PER_REQUEST",
-        AttributeDefinitions: [
-          { AttributeName: "id", AttributeType: "S" },
-          { AttributeName: "status", AttributeType: "S" },
-          { AttributeName: "created_at", AttributeType: "S" },
-        ],
-        KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
-        GlobalSecondaryIndexes: [
-          {
-            IndexName: "status-created_at-index",
-            KeySchema: [
-              { AttributeName: "status", KeyType: "HASH" },
-              { AttributeName: "created_at", KeyType: "RANGE" },
-            ],
-            Projection: { ProjectionType: "ALL" },
-          },
-        ],
-      })
-    );
-  } catch (err) {
-    if (!isAlreadyExists(err)) throw err;
-  }
-  await waitForTableActive(name);
-  return name;
-}
+// ── Postgres registry helpers ────────────────────────────────────────
+// The brain registry lives in Postgres (`brains` table). The connection
+// role (neondb_owner) bypasses RLS, so we filter by org_id explicitly.
 
-async function createConnectorsTable(brainId) {
-  const name = connectorsTableName(brainId);
-  try {
-    await ddbClient.send(
-      new CreateTableCommand({
-        TableName: name,
-        BillingMode: "PAY_PER_REQUEST",
-        AttributeDefinitions: [
-          { AttributeName: "id", AttributeType: "S" },
-          { AttributeName: "status", AttributeType: "S" },
-          { AttributeName: "created_at", AttributeType: "S" },
-        ],
-        KeySchema: [{ AttributeName: "id", KeyType: "HASH" }],
-        GlobalSecondaryIndexes: [
-          {
-            IndexName: "status-created_at-index",
-            KeySchema: [
-              { AttributeName: "status", KeyType: "HASH" },
-              { AttributeName: "created_at", KeyType: "RANGE" },
-            ],
-            Projection: { ProjectionType: "ALL" },
-          },
-        ],
-      })
-    );
-  } catch (err) {
-    if (!isAlreadyExists(err)) throw err;
-  }
-  await waitForTableActive(name);
-  return name;
-}
-
-async function setStatus(brainId, patch) {
-  const exprNames = {};
-  const exprValues = {};
-  const sets = [];
-  for (const [k, v] of Object.entries(patch)) {
-    sets.push(`#${k} = :${k}`);
-    exprNames[`#${k}`] = k;
-    exprValues[`:${k}`] = v;
-  }
-  await ddb.send(
-    new UpdateCommand({
-      TableName: BRAINS_TABLE,
-      Key: { brain_id: brainId },
-      UpdateExpression: "SET " + sets.join(", "),
-      ExpressionAttributeNames: exprNames,
-      ExpressionAttributeValues: exprValues,
-    })
+async function setBrainStatus(brainId, status, errorMsg) {
+  await pgExecute(
+    DATABASE_URL,
+    `update brains
+       set status = $2, error_msg = $3, updated_at = now()
+     where id = $1`,
+    [brainId, status, errorMsg ?? null]
   );
 }
 
@@ -491,6 +393,8 @@ async function createBrain({
   brain_id,
   display_name,
   description,
+  org_id,
+  created_by,
   created_by_email,
 }) {
   if (!brain_id || !display_name) {
@@ -499,40 +403,44 @@ async function createBrain({
   if (!/^[a-z0-9][a-z0-9-]{0,62}$/.test(brain_id)) {
     throw new Error(`invalid brain_id: ${brain_id}`);
   }
+  if (!org_id) throw new Error("org_id is required");
+  // `created_by` is NOT NULL in Postgres; fall back to the email or a
+  // sentinel so a provisioning row can always be written.
+  const createdBy = created_by || created_by_email || "unknown";
 
-  // Step 0: insert row, fail if id taken.
-  const now = new Date().toISOString();
-  try {
-    await ddb.send(
-      new PutCommand({
-        TableName: BRAINS_TABLE,
-        Item: {
-          brain_id,
-          display_name,
-          description: description || null,
-          status: "provisioning",
-          created_at: now,
-          created_by_email: created_by_email || null,
-        },
-        ConditionExpression: "attribute_not_exists(brain_id)",
-      })
+  // Step 0: insert row, fail if id taken — unless the existing row is in
+  // `error` status (retry of a failed provision) and belongs to the same org.
+  const inserted = await pgFetchOne(
+    DATABASE_URL,
+    `insert into brains (id, org_id, display_name, description, status, created_by)
+     values ($1, $2, $3, $4, 'provisioning', $5)
+     on conflict (id) do nothing
+     returning id`,
+    [brain_id, org_id, display_name, description || null, createdBy]
+  );
+
+  if (!inserted) {
+    const cur = await pgFetchOne(
+      DATABASE_URL,
+      `select status, org_id from brains where id = $1`,
+      [brain_id]
     );
-  } catch (err) {
-    if (err.name === "ConditionalCheckFailedException") {
-      // Allow retries against an existing "error" row.
-      const cur = await ddb.send(
-        new GetCommand({
-          TableName: BRAINS_TABLE,
-          Key: { brain_id },
-        })
-      );
-      if (cur.Item?.status !== "error") {
-        throw new Error(`brain_id ${brain_id} already exists`);
-      }
-      await setStatus(brain_id, { status: "provisioning", error_msg: null });
-    } else {
-      throw err;
+    if (!cur) throw new Error(`brain_id ${brain_id} insert race`);
+    if (cur.org_id !== org_id) {
+      throw new Error(`brain_id ${brain_id} already exists`);
     }
+    if (cur.status !== "error") {
+      throw new Error(`brain_id ${brain_id} already exists`);
+    }
+    // Reset the errored row back to provisioning and retry the AWS steps.
+    await pgExecute(
+      DATABASE_URL,
+      `update brains
+         set status = 'provisioning', error_msg = null,
+             display_name = $2, description = $3, updated_at = now()
+       where id = $1`,
+      [brain_id, display_name, description || null]
+    );
   }
 
   try {
@@ -543,19 +451,28 @@ async function createBrain({
     const kbId = await createBrainKb(brain_id);
     const dsId = await createBrainDataSource(kbId, bucket);
     const tokenSecretArn = await createBrainToken(brain_id);
-    const suggestionsTable = await createSuggestionsTable(brain_id);
-    const connectorsTable = await createConnectorsTable(brain_id);
 
-    await setStatus(brain_id, {
-      status: "ready",
-      docs_bucket: bucket,
-      vector_index_arn: indexArn(brain_id),
-      kb_id: kbId,
-      ds_id: dsId,
-      token_secret_arn: tokenSecretArn,
-      suggestions_table: suggestionsTable,
-      connectors_table: connectorsTable,
-    });
+    await pgExecute(
+      DATABASE_URL,
+      `update brains
+         set status = 'ready',
+             docs_bucket = $2,
+             vector_index_arn = $3,
+             kb_id = $4,
+             ds_id = $5,
+             token_secret_arn = $6,
+             error_msg = null,
+             updated_at = now()
+       where id = $1`,
+      [
+        brain_id,
+        bucket,
+        indexArn(brain_id),
+        kbId,
+        dsId,
+        tokenSecretArn,
+      ]
+    );
 
     return {
       ok: true,
@@ -563,15 +480,13 @@ async function createBrain({
       kb_id: kbId,
       ds_id: dsId,
       docs_bucket: bucket,
-      suggestions_table: suggestionsTable,
-      connectors_table: connectorsTable,
       token_secret_arn: tokenSecretArn,
     };
   } catch (err) {
     const msg = err?.message || String(err);
     console.error(`provisioning failed for ${brain_id}:`, err);
     try {
-      await setStatus(brain_id, { status: "error", error_msg: msg.slice(0, 1000) });
+      await setBrainStatus(brain_id, "error", msg.slice(0, 1000));
     } catch (e2) {
       console.error("also failed to update error status:", e2);
     }
@@ -617,15 +532,16 @@ async function deleteBrain({ brain_id }) {
     throw new Error("the default brain cannot be deleted");
   }
 
-  const cur = await ddb.send(
-    new GetCommand({ TableName: BRAINS_TABLE, Key: { brain_id } })
+  const row = await pgFetchOne(
+    DATABASE_URL,
+    `select id, docs_bucket, kb_id, ds_id from brains where id = $1`,
+    [brain_id]
   );
-  if (!cur.Item) {
+  if (!row) {
     return { ok: true, alreadyGone: true };
   }
-  const row = cur.Item;
 
-  await setStatus(brain_id, { status: "deleting" });
+  await setBrainStatus(brain_id, "deleting", null);
 
   // Tear down in reverse order. Each step tolerates NotFound.
   // 1. Empty + delete bucket.
@@ -696,26 +612,15 @@ async function deleteBrain({ brain_id }) {
     if (!isNotFound(err)) throw err;
   }
 
-  // 5. Delete the per-brain DDB tables.
-  for (const t of [row.suggestions_table, row.connectors_table]) {
-    if (!t) continue;
-    try {
-      await ddbClient.send(new DeleteTableCommand({ TableName: t }));
-    } catch (err) {
-      if (!isNotFound(err)) throw err;
-    }
-  }
-
-  // 6. Remove the registry row.
-  await ddb.send(
-    new DeleteCommand({ TableName: BRAINS_TABLE, Key: { brain_id } })
-  );
+  // 5. Remove the registry row. Connectors, suggestions, and mcp_tokens
+  //    cascade-delete via their brain_id foreign keys.
+  await pgExecute(DATABASE_URL, `delete from brains where id = $1`, [brain_id]);
 
   return { ok: true, brain_id };
 }
 
 export const handler = async (event = {}) => {
-  if (!BRAINS_TABLE) throw new Error("BRAINS_TABLE env missing");
+  if (!DATABASE_URL) throw new Error("DATABASE_URL env missing");
   if (!ACCOUNT) throw new Error("AWS_ACCOUNT_ID env missing");
   const action = event.action;
   if (action === "create") return await createBrain(event);

@@ -69,11 +69,37 @@ const ddb = DynamoDBDocumentClient.from(
 type BetterAuthSession = {
   user?: {
     id?: string;
+    email?: string;
   };
   session?: {
     activeOrganizationId?: string | null;
   };
 } | null;
+
+export type AuthContext = {
+  orgId: string;
+  userId: string;
+  userEmail: string | null;
+};
+
+/**
+ * Resolve the signed-in user's organization + identity from the Better Auth
+ * session. Returns null when there's no session, no active org, or no
+ * Postgres control plane configured. Routes that write org-scoped rows
+ * (connectors, suggestions) use this for `org_id` / `created_by`.
+ */
+export async function readAuthContext(
+  request: NextRequest
+): Promise<AuthContext | null> {
+  if (!db) return null;
+  const session = (await getAuth()
+    .api.getSession({ headers: request.headers })
+    .catch(() => null)) as BetterAuthSession;
+  const orgId = session?.session?.activeOrganizationId ?? null;
+  const userId = session?.user?.id ?? null;
+  if (!orgId || !userId) return null;
+  return { orgId, userId, userEmail: session?.user?.email ?? null };
+}
 
 function legacySuggestionsTableForBrainId(brainId: string): string {
   return brainId === DEFAULT_BRAIN_ID
@@ -102,6 +128,30 @@ async function readBetterAuthOrgId(request: NextRequest): Promise<string | null>
   return session?.session?.activeOrganizationId ?? null;
 }
 
+type PostgresBrainRow = typeof postgresBrains.$inferSelect;
+
+function mapPostgresBrain(row: PostgresBrainRow): BrainConfig {
+  return {
+    brain_id: row.id,
+    display_name: row.displayName,
+    description: row.description,
+    status: row.status,
+    created_at: dateString(row.createdAt),
+    created_by_email: null,
+    error_msg: row.errorMsg,
+    kb_id: row.kbId ?? undefined,
+    ds_id: row.dsId ?? undefined,
+    docs_bucket: row.docsBucket ?? undefined,
+    vector_index_arn: row.vectorIndexArn ?? undefined,
+    // Legacy per-brain DDB table names are retained on the shape only for
+    // backwards compatibility; connectors/suggestions now live in Postgres
+    // keyed by brain_id, so these are no longer used to address storage.
+    suggestions_table: legacySuggestionsTableForBrainId(row.id),
+    connectors_table: legacyConnectorsTableForBrainId(row.id),
+    token_secret_arn: row.tokenSecretArn ?? undefined,
+  };
+}
+
 async function fetchBrainFromPostgres(
   brainId: string,
   orgId: string
@@ -115,23 +165,25 @@ async function fetchBrainFromPostgres(
     .limit(1);
 
   if (!row) return null;
+  return mapPostgresBrain(row);
+}
 
-  return {
-    brain_id: row.id,
-    display_name: row.displayName,
-    description: row.description,
-    status: row.status,
-    created_at: dateString(row.createdAt),
-    created_by_email: null,
-    error_msg: row.errorMsg,
-    kb_id: row.kbId ?? undefined,
-    ds_id: row.dsId ?? undefined,
-    docs_bucket: row.docsBucket ?? undefined,
-    vector_index_arn: row.vectorIndexArn ?? undefined,
-    suggestions_table: legacySuggestionsTableForBrainId(row.id),
-    connectors_table: legacyConnectorsTableForBrainId(row.id),
-    token_secret_arn: row.tokenSecretArn ?? undefined,
-  };
+/**
+ * Look up a brain by id from Postgres without an org filter. Used by routes
+ * that have no org context in hand (the OAuth callback and the MCP token
+ * route). The connection role bypasses RLS, so this is an id-only lookup.
+ */
+async function fetchBrainByIdFromPostgres(
+  brainId: string
+): Promise<BrainConfig | null> {
+  if (!db) return null;
+  const [row] = await db
+    .select()
+    .from(postgresBrains)
+    .where(eq(postgresBrains.id, brainId))
+    .limit(1);
+  if (!row) return null;
+  return mapPostgresBrain(row);
 }
 
 // Process-local cache. SSR Lambda containers are reused across invocations
@@ -155,8 +207,16 @@ async function fetchBrain(brainId: string): Promise<BrainConfig | null> {
   return item;
 }
 
-/** Look up a brain by id. Returns null when missing. */
+/**
+ * Look up a brain by id. Returns null when missing. Prefers the Postgres
+ * control plane (the source of truth); falls back to the legacy DynamoDB
+ * registry only when Postgres isn't configured or has no matching row.
+ */
 export async function getBrainById(brainId: string): Promise<BrainConfig | null> {
+  if (db) {
+    const pg = await fetchBrainByIdFromPostgres(brainId);
+    if (pg) return pg;
+  }
   return fetchBrain(brainId);
 }
 

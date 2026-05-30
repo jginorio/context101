@@ -34,6 +34,11 @@ export interface BrainSharedProps {
   sharedKbRoleArn: string;
   // The auto-ingest Lambda — provisioner adds S3 notifications pointed at it.
   autoIngestFn: lambda.IFunction;
+  // Shared Neon-over-HTTP helper layer + connection string. The provisioner
+  // writes the brain registry row to Postgres (the control-plane source of
+  // truth) instead of DynamoDB.
+  pgHttpLayer: lambda.ILayerVersion;
+  databaseUrl?: string;
   // Default brain registration inputs.
   defaultBrain: {
     docsBucket: string;
@@ -115,7 +120,11 @@ export class BrainShared extends Construct {
       functionName: `${props.namePrefix}-brain-provisioner`,
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,
+      layers: [props.pgHttpLayer],
       environment: {
+        // Registry now lives in Postgres; BRAINS_TABLE retained for the
+        // RegisterDefaultBrain custom resource only — the provisioner no
+        // longer reads/writes it.
         BRAINS_TABLE: this.brainsTable.tableName,
         AWS_ACCOUNT_ID: cdk.Stack.of(this).account,
         VECTOR_BUCKET_NAME: props.vectorBucketName,
@@ -123,6 +132,7 @@ export class BrainShared extends Construct {
         AUTO_INGEST_FN_ARN: props.autoIngestFn.functionArn,
         EMBED_MODEL_ARN: props.embedModelArn,
         EMBED_DIM: String(props.embedDim),
+        ...(props.databaseUrl ? { DATABASE_URL: props.databaseUrl } : {}),
       },
     });
 

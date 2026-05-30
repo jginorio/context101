@@ -1,36 +1,21 @@
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient } from "@aws-sdk/lib-dynamodb";
-import type { BrainConfig } from "@/lib/brains-server";
+import { and, desc, eq } from "drizzle-orm";
+
+import { db } from "@/lib/db/client";
+import { suggestions as suggestionsSchema } from "@/lib/db/schema";
 
 /**
- * Shared DynamoDB doc client for suggestions tables.
+ * Suggestions store.
  *
- * Local dev: uses AWS_PROFILE from .env.local.
- * Amplify SSR: uses the compute role's credentials automatically.
- *
- * Each brain has its own per-brain suggestions table (created at runtime
- * by the brain-provisioner Lambda). Routes resolve the active brain via
- * `resolveBrainFromRequest` and call `suggestionsTableForBrain(brain)` to
- * pick the right table name.
- *
- * `SUGGESTIONS_TABLE` is the default brain's table name baked at build
- * time. Retained as a fallback for unmigrated routes; remove once
- * everything routes through a resolved brain.
+ * Suggestions live in the Postgres `suggestions` table — the same table
+ * the MCP server writes to via `suggest_knowledge`. Rows are org-scoped
+ * and addressed by brain_id; the web admin lists / approves / rejects them.
  */
 
-export const SUGGESTIONS_TABLE = process.env.SUGGESTIONS_TABLE ?? "";
-
-const rawClient = new DynamoDBClient({
-  region: process.env.AWS_REGION ?? "us-east-1",
-});
-
-export const ddb = DynamoDBDocumentClient.from(rawClient, {
-  marshallOptions: { removeUndefinedValues: true },
-});
+export type SuggestionStatus = "pending" | "accepted" | "rejected";
 
 export type Suggestion = {
   id: string;
-  status: "pending" | "accepted" | "rejected";
+  status: SuggestionStatus;
   created_at: string;
   title: string;
   content: string;
@@ -41,13 +26,115 @@ export type Suggestion = {
   reviewer_email?: string;
 };
 
-/** Pull the suggestions table name out of a resolved brain row. */
-export function suggestionsTableForBrain(brain: BrainConfig): string {
-  const t = brain.suggestions_table;
-  if (!t) {
-    throw new Error(
-      `brain \`${brain.brain_id}\` has no suggestions_table on its registry row`
+type SuggestionRow = typeof suggestionsSchema.$inferSelect;
+
+function requireDb() {
+  if (!db) throw new Error("DATABASE_URL is not configured");
+  return db;
+}
+
+/** Map a Postgres suggestions row into the client-facing shape. */
+export function toClientSuggestion(row: SuggestionRow): Suggestion {
+  return {
+    id: row.id,
+    status: row.status as SuggestionStatus,
+    created_at: row.createdAt.toISOString(),
+    title: row.title,
+    content: row.content,
+    target_path: row.targetPath ?? undefined,
+    rationale: row.rationale ?? undefined,
+    trigger: row.trigger ?? undefined,
+    reviewed_at: row.reviewedAt ? row.reviewedAt.toISOString() : undefined,
+    reviewer_email: row.reviewedBy ?? undefined,
+  };
+}
+
+export async function pgListSuggestions(
+  orgId: string,
+  brainId: string,
+  status?: SuggestionStatus
+): Promise<SuggestionRow[]> {
+  const where = status
+    ? and(
+        eq(suggestionsSchema.orgId, orgId),
+        eq(suggestionsSchema.brainId, brainId),
+        eq(suggestionsSchema.status, status)
+      )
+    : and(
+        eq(suggestionsSchema.orgId, orgId),
+        eq(suggestionsSchema.brainId, brainId)
+      );
+  return requireDb()
+    .select()
+    .from(suggestionsSchema)
+    .where(where)
+    .orderBy(desc(suggestionsSchema.createdAt));
+}
+
+export async function pgGetSuggestion(
+  orgId: string,
+  brainId: string,
+  id: string
+): Promise<SuggestionRow | null> {
+  const [row] = await requireDb()
+    .select()
+    .from(suggestionsSchema)
+    .where(
+      and(
+        eq(suggestionsSchema.orgId, orgId),
+        eq(suggestionsSchema.brainId, brainId),
+        eq(suggestionsSchema.id, id)
+      )
+    )
+    .limit(1);
+  return row ?? null;
+}
+
+export async function pgMarkSuggestionAccepted(
+  orgId: string,
+  brainId: string,
+  id: string,
+  finalPath: string,
+  reviewedBy: string | null
+): Promise<void> {
+  await requireDb()
+    .update(suggestionsSchema)
+    .set({
+      status: "accepted",
+      finalPath,
+      reviewedBy,
+      reviewedAt: new Date(),
+    })
+    .where(
+      and(
+        eq(suggestionsSchema.orgId, orgId),
+        eq(suggestionsSchema.brainId, brainId),
+        eq(suggestionsSchema.id, id)
+      )
     );
-  }
-  return t;
+}
+
+/**
+ * Flip a pending suggestion to rejected. Returns false if the row wasn't
+ * pending (already reviewed) — callers map that to a 409.
+ */
+export async function pgMarkSuggestionRejected(
+  orgId: string,
+  brainId: string,
+  id: string,
+  reviewedBy: string | null
+): Promise<boolean> {
+  const updated = await requireDb()
+    .update(suggestionsSchema)
+    .set({ status: "rejected", reviewedBy, reviewedAt: new Date() })
+    .where(
+      and(
+        eq(suggestionsSchema.orgId, orgId),
+        eq(suggestionsSchema.brainId, brainId),
+        eq(suggestionsSchema.id, id),
+        eq(suggestionsSchema.status, "pending")
+      )
+    )
+    .returning();
+  return updated.length > 0;
 }

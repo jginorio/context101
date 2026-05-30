@@ -37,6 +37,29 @@ export class Context101Stack extends cdk.Stack {
     const embedDim = 1024;
     const embedModelArn = `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`;
 
+    // ── Postgres control plane (Neon) ─────────────────────────────────
+    //   The web app + MCP server already read the brain/connector/
+    //   suggestion registry from Postgres. The AWS worker Lambdas below
+    //   share the same source of truth via a tiny zero-dependency
+    //   Neon-over-HTTP helper packaged as a layer (see layers/pg-http).
+    //   DATABASE_URL is passed at deploy time via `-c DATABASE_URL=...`
+    //   (deploy.sh forwards it from .deploy-env).
+    const databaseUrl = this.node.tryGetContext("DATABASE_URL") as
+      | string
+      | undefined;
+    const pgHttpLayer = new lambda.LayerVersion(this, "PgHttpLayer", {
+      code: lambda.Code.fromAsset(
+        path.resolve(__dirname, "..", "layers", "pg-http")
+      ),
+      compatibleRuntimes: [lambda.Runtime.NODEJS_20_X],
+      description:
+        "Zero-dependency Neon Postgres-over-HTTP helper (pg-http) shared by control-plane Lambdas",
+    });
+    // Env injected into every worker Lambda that reaches the control plane.
+    const pgLambdaEnv: Record<string, string> = databaseUrl
+      ? { DATABASE_URL: databaseUrl }
+      : {};
+
     // ── 1. Docs bucket (source of truth for markdown) ────────────────
     const docsBucket = new s3.Bucket(this, "DocsBucket", {
       versioned: true,
@@ -227,10 +250,12 @@ export class Context101Stack extends cdk.Stack {
       handler: "index.handler",
       code: lambda.Code.fromAsset("lambda/auto-ingest"),
       timeout: cdk.Duration.seconds(30),
+      layers: [pgHttpLayer],
       environment: {
-        // BRAINS_TABLE filled in below once BrainShared is constructed —
-        // CDK token resolution at synth time handles the cycle. We pass
-        // the env after instantiation via addEnvironment.
+        // Brain lookups now come from Postgres (status=ready rows mapped
+        // by docs_bucket). DATABASE_URL is injected here; BRAINS_TABLE is
+        // still wired below for any legacy fallback but is no longer read.
+        ...pgLambdaEnv,
       },
     });
     ingestFn.addToRolePolicy(
@@ -463,11 +488,12 @@ export class Context101Stack extends cdk.Stack {
         functionName: `${namePrefix}-connector-sync-sheets`,
         timeout: cdk.Duration.minutes(5),
         memorySize: 1024,
+        layers: [pgHttpLayer],
         environment: {
-          CONNECTORS_TABLE: connectorsTable.tableName,
           DOCS_BUCKET: docsBucket.bucketName,
           GOOGLE_OAUTH_CLIENT_SECRET_ID:
             googleOAuthClientSecret.secretName,
+          ...pgLambdaEnv,
         },
       }
     );
@@ -498,11 +524,12 @@ export class Context101Stack extends cdk.Stack {
         functionName: `${namePrefix}-connector-sync-docs`,
         timeout: cdk.Duration.minutes(5),
         memorySize: 1024,
+        layers: [pgHttpLayer],
         environment: {
-          CONNECTORS_TABLE: connectorsTable.tableName,
           DOCS_BUCKET: docsBucket.bucketName,
           GOOGLE_OAUTH_CLIENT_SECRET_ID:
             googleOAuthClientSecret.secretName,
+          ...pgLambdaEnv,
         },
       }
     );
@@ -530,11 +557,12 @@ export class Context101Stack extends cdk.Stack {
         functionName: `${namePrefix}-connector-sync-slides`,
         timeout: cdk.Duration.minutes(5),
         memorySize: 1024,
+        layers: [pgHttpLayer],
         environment: {
-          CONNECTORS_TABLE: connectorsTable.tableName,
           DOCS_BUCKET: docsBucket.bucketName,
           GOOGLE_OAUTH_CLIENT_SECRET_ID:
             googleOAuthClientSecret.secretName,
+          ...pgLambdaEnv,
         },
       }
     );
@@ -564,8 +592,9 @@ export class Context101Stack extends cdk.Stack {
         // wall time bounded but give it room.
         timeout: cdk.Duration.minutes(10),
         memorySize: 1024,
+        layers: [pgHttpLayer],
         environment: {
-          CONNECTORS_TABLE: connectorsTable.tableName,
+          ...pgLambdaEnv,
           DOCS_BUCKET: docsBucket.bucketName,
           // Layer 2: after a successful sync, fire the per-repo code-wiki
           // Fargate task. The dispatcher Lambda lives inside the
@@ -600,9 +629,10 @@ export class Context101Stack extends cdk.Stack {
         // Notion blocks are paginated and we walk recursively — give it room
         timeout: cdk.Duration.minutes(10),
         memorySize: 1024,
+        layers: [pgHttpLayer],
         environment: {
-          CONNECTORS_TABLE: connectorsTable.tableName,
           DOCS_BUCKET: docsBucket.bucketName,
+          ...pgLambdaEnv,
         },
       }
     );
@@ -629,8 +659,9 @@ export class Context101Stack extends cdk.Stack {
         code: lambda.Code.fromAsset("lambda/connector-dispatch"),
         functionName: `${namePrefix}-connector-dispatch`,
         timeout: cdk.Duration.seconds(60),
+        layers: [pgHttpLayer],
         environment: {
-          CONNECTORS_TABLE: connectorsTable.tableName,
+          ...pgLambdaEnv,
           SHEETS_SYNC_FN_NAME: connectorSyncSheetsFn.functionName,
           DOCS_SYNC_FN_NAME: connectorSyncDocsFn.functionName,
           SLIDES_SYNC_FN_NAME: connectorSyncSlidesFn.functionName,
@@ -679,9 +710,6 @@ export class Context101Stack extends cdk.Stack {
     //   token_secret_arn is resolved via cdk.Lazy because the secret
     //   itself is conditional on `-c token=<value>` being passed.
     const teamToken = this.node.tryGetContext("token") as string | undefined;
-    const databaseUrl = this.node.tryGetContext("DATABASE_URL") as
-      | string
-      | undefined;
     const databaseDriver = this.node.tryGetContext("DATABASE_DRIVER") as
       | string
       | undefined;
@@ -747,6 +775,8 @@ export class Context101Stack extends cdk.Stack {
       vectorBucketArn,
       sharedKbRoleArn: kbRole.roleArn,
       autoIngestFn: ingestFn,
+      pgHttpLayer,
+      databaseUrl,
       defaultBrain: {
         docsBucket: docsBucket.bucketName,
         kbId: kb.attrKnowledgeBaseId,
@@ -1228,14 +1258,18 @@ export class Context101Stack extends cdk.Stack {
         code: lambda.Code.fromAsset("lambda/start-wiki-gen"),
         functionName: `${namePrefix}-start-wiki-gen`,
         timeout: cdk.Duration.seconds(20),
+        layers: [pgHttpLayer],
         environment: {
           WIKI_CLUSTER_ARN: wikiCluster.clusterArn,
           WIKI_TASK_DEF_ARN: wikiTaskDef.taskDefinitionArn,
           WIKI_SUBNET_IDS: wikiVpc.publicSubnets.map((s) => s.subnetId).join(","),
           WIKI_SECURITY_GROUP_ID: wikiSg.securityGroupId,
           // Resolves brain_id → docs_bucket at RunTask time so the
-          // generator reads from the right brain's bucket.
+          // generator reads from the right brain's bucket. Read from the
+          // Postgres control plane (DATABASE_URL); BRAINS_TABLE retained
+          // for legacy fallback only.
           BRAINS_TABLE: brainShared.brainsTable.tableName,
+          ...pgLambdaEnv,
         },
       });
       brainShared.brainsTable.grantReadData(startWikiGenFn);

@@ -2,8 +2,7 @@ import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { publicBrain } from "@/lib/brains-server";
-import { getCurrentUserEmail } from "@/utils/amplify-server-utils";
+import { publicBrain, readAuthContext } from "@/lib/brains-server";
 
 const PROVISIONER_FN_NAME = process.env.BRAIN_PROVISIONER_FN_NAME ?? "";
 const lambdaClient = new LambdaClient({
@@ -52,6 +51,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // The provisioner writes the brain row to the Postgres control plane,
+  // which requires an owning org + creator. Both come from the Better Auth
+  // session.
+  const auth = await readAuthContext(request);
+  if (!auth) {
+    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+  }
+
   const body = await request.json().catch(() => null);
   const displayName =
     body && typeof body.display_name === "string"
@@ -84,7 +91,7 @@ export async function POST(request: NextRequest) {
   }
   const brainId = `${slug}-${nanoid()}`;
 
-  const createdBy = await getCurrentUserEmail(request, new NextResponse());
+  const createdByEmail = auth.userEmail;
 
   try {
     // Fire-and-forget. The provisioner's first step is to insert a row
@@ -105,7 +112,9 @@ export async function POST(request: NextRequest) {
             brain_id: brainId,
             display_name: displayName,
             description,
-            created_by_email: createdBy,
+            org_id: auth.orgId,
+            created_by: auth.userId,
+            created_by_email: createdByEmail,
           })
         ),
       })
@@ -123,7 +132,7 @@ export async function POST(request: NextRequest) {
           description: description ?? null,
           status: "provisioning",
           created_at: new Date().toISOString(),
-          created_by_email: createdBy ?? null,
+          created_by_email: createdByEmail ?? null,
         }),
       },
       { status: 202 }

@@ -1,9 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import {
-  DeleteCommand,
-  GetCommand,
-} from "@aws-sdk/lib-dynamodb";
 import { DeleteSecretCommand } from "@aws-sdk/client-secrets-manager";
 import {
   DeleteObjectsCommand,
@@ -11,12 +7,12 @@ import {
 } from "@aws-sdk/client-s3";
 
 import {
-  connectorsTableForBrain,
-  ddbConnectors,
+  pgDeleteConnector,
+  pgGetConnector,
   sm,
-  type Connector,
+  toClientConnector,
 } from "@/utils/connectors";
-import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { readAuthContext, resolveBrainFromRequest } from "@/lib/brains-server";
 import { bucketForBrain, s3 } from "@/utils/s3";
 
 /**
@@ -29,9 +25,12 @@ import { bucketForBrain, s3 } from "@/utils/s3";
  *   - all S3 files under sources/<type>/<spreadsheet-slug>/
  */
 export async function POST(request: NextRequest) {
+  const auth = await readAuthContext(request);
+  if (!auth) {
+    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+  }
   const r = await resolveBrainFromRequest(request);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
-  const connectorsTable = connectorsTableForBrain(r.brain);
   const docsBucket = bucketForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
@@ -40,13 +39,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const got = await ddbConnectors.send(
-      new GetCommand({ TableName: connectorsTable, Key: { id: body.id } })
-    );
-    const row = got.Item as Connector | undefined;
-    if (!row) {
+    const rowRaw = await pgGetConnector(auth.orgId, r.brain.brain_id, body.id);
+    if (!rowRaw) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
+    const row = toClientConnector(rowRaw);
 
     // 1. Delete all S3 files under this connector's prefix
     if (row.resource_title) {
@@ -97,12 +94,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 3. Delete the connector row
-    await ddbConnectors.send(
-      new DeleteCommand({
-        TableName: connectorsTable,
-        Key: { id: body.id },
-      })
-    );
+    await pgDeleteConnector(auth.orgId, r.brain.brain_id, body.id);
 
     return NextResponse.json({ ok: true });
   } catch (err) {

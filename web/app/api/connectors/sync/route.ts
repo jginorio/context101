@@ -1,30 +1,31 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { GetCommand } from "@aws-sdk/lib-dynamodb";
 import { InvokeCommand } from "@aws-sdk/client-lambda";
 
 import {
-  connectorsTableForBrain,
-  ddbConnectors,
   lambdaClient,
+  pgGetConnector,
   syncFnNameFor,
-  type Connector,
+  type ConnectorType,
 } from "@/utils/connectors";
-import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { readAuthContext, resolveBrainFromRequest } from "@/lib/brains-server";
 import { bucketForBrain } from "@/utils/s3";
 
 /**
  * POST /api/connectors/sync[?brain=<id>]
  * Body: { id: string }
  *
- * Fire-and-forget invoke of the per-type sync Lambda, scoped to the
- * active brain. The Lambda writes the status back to the Dynamo row;
- * the UI polls /api/connectors/list to show progress.
+ * Fire-and-forget invoke of the per-type sync Lambda, scoped to the active
+ * brain. The Lambda writes status back to the Postgres connector row; the
+ * UI polls /api/connectors/list to show progress.
  */
 export async function POST(request: NextRequest) {
+  const auth = await readAuthContext(request);
+  if (!auth) {
+    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+  }
   const r = await resolveBrainFromRequest(request);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
-  const connectorsTable = connectorsTableForBrain(r.brain);
   const docsBucket = bucketForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
@@ -33,15 +34,12 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const got = await ddbConnectors.send(
-      new GetCommand({ TableName: connectorsTable, Key: { id: body.id } })
-    );
-    const row = got.Item as Connector | undefined;
+    const row = await pgGetConnector(auth.orgId, r.brain.brain_id, body.id);
     if (!row) {
       return NextResponse.json({ error: "not found" }, { status: 404 });
     }
 
-    const fn = syncFnNameFor(row.type);
+    const fn = syncFnNameFor(row.type as ConnectorType);
     if (!fn) {
       return NextResponse.json(
         { error: `no sync Lambda for type=${row.type}` },
@@ -56,7 +54,6 @@ export async function POST(request: NextRequest) {
         Payload: new TextEncoder().encode(
           JSON.stringify({
             connectorId: row.id,
-            connectorsTable,
             docsBucket,
             brainId: r.brain.brain_id,
           })

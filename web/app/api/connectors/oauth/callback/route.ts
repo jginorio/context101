@@ -1,10 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import {
-  GetCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
-import {
   CreateSecretCommand,
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
@@ -12,15 +8,15 @@ import { InvokeCommand } from "@aws-sdk/client-lambda";
 
 import {
   CONNECTOR_TOKEN_SECRET_PREFIX,
-  connectorsTableForBrain,
-  ddbConnectors,
   GOOGLE_OAUTH_CLIENT_SECRET_ID,
   isGoogleType,
   lambdaClient,
   NOTION_OAUTH_CLIENT_SECRET_ID,
+  pgGetConnectorById,
+  pgUpdateConnector,
   sm,
   syncFnNameFor,
-  type Connector,
+  type ConnectorType,
 } from "@/utils/connectors";
 import { getBrainById } from "@/lib/brains-server";
 import { bucketForBrain } from "@/utils/s3";
@@ -72,21 +68,18 @@ export async function GET(request: NextRequest) {
     return NextResponse.redirect(baseRedirect);
   }
   baseRedirect.searchParams.set("brain", brainId);
-  const connectorsTable = connectorsTableForBrain(brain);
   const docsBucket = bucketForBrain(brain);
 
   try {
     // Confirm the connector row exists + is still pending
-    const got = await ddbConnectors.send(
-      new GetCommand({ TableName: connectorsTable, Key: { id: connectorId } })
-    );
-    const row = got.Item as Connector | undefined;
+    const row = await pgGetConnectorById(connectorId);
     if (!row) throw new Error("connector row not found");
-    if (!["sheets", "docs", "slides", "notion"].includes(row.type))
-      throw new Error(`unexpected type: ${row.type}`);
+    const connectorType = row.type as ConnectorType;
+    if (!["sheets", "docs", "slides", "notion"].includes(connectorType))
+      throw new Error(`unexpected type: ${connectorType}`);
 
     const redirectUri = `${origin}/api/connectors/oauth/callback`;
-    const isGoogle = isGoogleType(row.type);
+    const isGoogle = isGoogleType(connectorType);
 
     // Load provider OAuth client creds
     const oauthClientSecretId = isGoogle
@@ -198,33 +191,28 @@ export async function GET(request: NextRequest) {
     const created = await sm.send(
       new CreateSecretCommand({
         Name: tokenSecretName,
-        Description: `OAuth token for connector ${row.id} (${row.type})`,
+        Description: `OAuth token for connector ${row.id} (${connectorType})`,
         SecretString: JSON.stringify(secretPayload),
       })
     );
 
-    // Flip the row to syncing + record token ARN + provider identity
-    await ddbConnectors.send(
-      new UpdateCommand({
-        TableName: connectorsTable,
-        Key: { id: row.id },
-        UpdateExpression:
-          "SET #s = :s, token_secret_arn = :arn, google_account_email = :ge, notion_workspace_name = :nw, brain_id = :bid",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: {
-          ":s": "syncing",
-          ":arn": created.ARN,
-          ":ge": googleEmail ?? null,
-          ":nw": workspaceName ?? null,
-          ":bid": brainId,
-        },
-      })
-    );
+    // Flip the row to syncing + record token ARN + provider identity. The
+    // provider identity (google email / notion workspace) lives in the
+    // connector's metadata jsonb.
+    const metadataPatch: Record<string, unknown> = {
+      ...((row.metadata as Record<string, unknown>) ?? {}),
+    };
+    if (googleEmail) metadataPatch.google_account_email = googleEmail;
+    if (workspaceName) metadataPatch.notion_workspace_name = workspaceName;
+    await pgUpdateConnector(row.orgId, row.brainId, row.id, {
+      status: "syncing",
+      tokenSecretArn: created.ARN,
+      metadata: metadataPatch,
+    });
 
     // Fire the first sync (fire-and-forget). The payload carries the
-    // brain's table + bucket so the sync Lambda routes into the right
-    // brain without re-reading the registry.
-    const syncFn = syncFnNameFor(row.type);
+    // brain's bucket so the sync Lambda routes into the right brain.
+    const syncFn = syncFnNameFor(connectorType);
     if (syncFn) {
       await lambdaClient
         .send(
@@ -234,7 +222,6 @@ export async function GET(request: NextRequest) {
             Payload: new TextEncoder().encode(
               JSON.stringify({
                 connectorId: row.id,
-                connectorsTable,
                 docsBucket,
                 brainId,
               })

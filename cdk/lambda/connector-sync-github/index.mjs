@@ -15,12 +15,7 @@
  * full filesystem. Override include/exclude patterns by editing
  * INCLUDE_RE / EXCLUDE_PATH_PARTS / MAX_FILE_BYTES below.
  */
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { createRequire } from "node:module";
 import {
   S3Client,
   PutObjectCommand,
@@ -33,15 +28,18 @@ import {
 } from "@aws-sdk/client-secrets-manager";
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+// pg-http ships as a Lambda layer (zero-dependency Neon-over-HTTP helper).
+// Connectors live in the Postgres `connectors` table; see lib/db/schema.ts.
+const require = createRequire(import.meta.url);
+const { pgFetchOne, pgExecute } = require("pg-http");
+
 const s3 = new S3Client({});
 const sm = new SecretsManagerClient({});
 const lambdaClient = new LambdaClient({});
 
-// Per-brain values come from the invocation event (dispatcher injects
-// per-row). Env-var fallbacks keep legacy invokes against the default
-// brain working.
-let CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
+const DATABASE_URL = process.env.DATABASE_URL;
+// The brain's docs bucket comes from the invocation event; env-var
+// fallback keeps legacy invokes against the default brain working.
 let DOCS_BUCKET = process.env.DOCS_BUCKET;
 
 const SOURCES_PREFIX = "sources/github/";
@@ -282,37 +280,48 @@ async function deleteKeys(keys) {
 
 // ── Status updates ───────────────────────────────────────────────────
 
+async function markSyncing(connectorId) {
+  await pgExecute(
+    DATABASE_URL,
+    `update connectors set status = 'syncing', updated_at = now() where id = $1`,
+    [connectorId]
+  );
+}
+
 async function markError(connectorId, message) {
-  await ddb.send(
-    new UpdateCommand({
-      TableName: CONNECTORS_TABLE,
-      Key: { id: connectorId },
-      UpdateExpression: "SET #s = :s, last_error = :e, last_error_at = :t",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: {
-        ":s": "error",
-        ":e": String(message).slice(0, 2000),
-        ":t": new Date().toISOString(),
-      },
-    })
+  await pgExecute(
+    DATABASE_URL,
+    `update connectors
+       set status = 'error', last_error = $2, updated_at = now()
+     where id = $1`,
+    [connectorId, String(message).slice(0, 2000)]
   );
 }
 
 async function markSuccess(connectorId, itemCount, repoFullName) {
-  await ddb.send(
-    new UpdateCommand({
-      TableName: CONNECTORS_TABLE,
-      Key: { id: connectorId },
-      UpdateExpression:
-        "SET #s = :s, last_synced_at = :t, item_count = :c, resource_title = :rt REMOVE last_error, last_error_at",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: {
-        ":s": "connected",
-        ":t": new Date().toISOString(),
-        ":c": itemCount,
-        ":rt": repoFullName,
-      },
-    })
+  await pgExecute(
+    DATABASE_URL,
+    `update connectors
+       set status = 'connected',
+           last_synced_at = now(),
+           item_count = $2,
+           last_error = null,
+           metadata = metadata || $3::jsonb,
+           updated_at = now()
+     where id = $1`,
+    [connectorId, itemCount, JSON.stringify({ resource_title: repoFullName })]
+  );
+}
+
+// Merge arbitrary keys into the connector's metadata jsonb (github stores
+// github_account_login and last_synced_tree_sha there).
+async function mergeMetadata(connectorId, patch) {
+  await pgExecute(
+    DATABASE_URL,
+    `update connectors
+       set metadata = metadata || $2::jsonb, updated_at = now()
+     where id = $1`,
+    [connectorId, JSON.stringify(patch)]
   );
 }
 
@@ -372,34 +381,35 @@ export const handler = async (event) => {
   // previous invocation's brain-scoped value in place when the next one
   // omits the field. Always pick from event ?? env, never from the
   // module-level state set by a prior call.
-  CONNECTORS_TABLE = event?.connectorsTable || process.env.CONNECTORS_TABLE;
   DOCS_BUCKET = event?.docsBucket || process.env.DOCS_BUCKET;
-  if (!CONNECTORS_TABLE || !DOCS_BUCKET) {
+  if (!DATABASE_URL || !DOCS_BUCKET) {
     throw new Error("required env vars missing");
   }
 
-  await ddb.send(
-    new UpdateCommand({
-      TableName: CONNECTORS_TABLE,
-      Key: { id: connectorId },
-      UpdateExpression: "SET #s = :s",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: { ":s": "syncing" },
-    })
-  );
+  await markSyncing(connectorId);
 
   try {
-    const got = await ddb.send(
-      new GetCommand({ TableName: CONNECTORS_TABLE, Key: { id: connectorId } })
+    const row = await pgFetchOne(
+      DATABASE_URL,
+      `select id, type, external_id, external_url, token_secret_arn,
+              metadata, brain_id
+         from connectors where id = $1`,
+      [connectorId]
     );
-    const row = got.Item;
     if (!row) throw new Error(`connector ${connectorId} not found`);
     if (row.type !== "github")
       throw new Error(`wrong connector type: ${row.type}`);
 
-    // resource_id is "<owner>/<repo>" (parsed at create time)
-    const [owner, repo] = (row.resource_id || "").split("/");
-    if (!owner || !repo) throw new Error(`bad resource_id: ${row.resource_id}`);
+    // metadata arrives as a JSON string (raw text output); github stores
+    // last_synced_tree_sha + github_account_login there.
+    const metadata =
+      typeof row.metadata === "string" && row.metadata
+        ? JSON.parse(row.metadata)
+        : row.metadata || {};
+
+    // external_id is "<owner>/<repo>" (parsed at create time)
+    const [owner, repo] = (row.external_id || "").split("/");
+    if (!owner || !repo) throw new Error(`bad external_id: ${row.external_id}`);
 
     const tokenSecretArn = row.token_secret_arn;
     if (!tokenSecretArn) throw new Error("token_secret_arn missing");
@@ -423,7 +433,7 @@ export const handler = async (event) => {
     // hasn't moved since last sync. We still re-PUT the source files
     // (idempotent, microseconds, restores anything deleted out of band)
     // — only the expensive Opus regen is gated.
-    const lastTreeSha = row.last_synced_tree_sha ?? null;
+    const lastTreeSha = metadata.last_synced_tree_sha ?? null;
     const treeChanged = !lastTreeSha || lastTreeSha !== treeSha;
 
     // Filter to "blob" entries (files), apply include/exclude.
@@ -496,14 +506,7 @@ export const handler = async (event) => {
     // Identify the connecting GitHub user (informational, shown on card)
     const me = await getAuthenticatedUser(pat);
     if (me?.login) {
-      await ddb.send(
-        new UpdateCommand({
-          TableName: CONNECTORS_TABLE,
-          Key: { id: connectorId },
-          UpdateExpression: "SET github_account_login = :gl",
-          ExpressionAttributeValues: { ":gl": me.login },
-        })
-      );
+      await mergeMetadata(connectorId, { github_account_login: me.login });
     }
 
     await markSuccess(connectorId, written, repoFullName);
@@ -512,14 +515,7 @@ export const handler = async (event) => {
     // markSuccess so the row only carries an SHA we actually finished
     // processing — a crash mid-write doesn't poison the next run.
     if (treeSha) {
-      await ddb.send(
-        new UpdateCommand({
-          TableName: CONNECTORS_TABLE,
-          Key: { id: connectorId },
-          UpdateExpression: "SET last_synced_tree_sha = :sha",
-          ExpressionAttributeValues: { ":sha": treeSha },
-        })
-      );
+      await mergeMetadata(connectorId, { last_synced_tree_sha: treeSha });
     }
 
     // Layer 2: optionally kick off the per-repo code-wiki Fargate task.

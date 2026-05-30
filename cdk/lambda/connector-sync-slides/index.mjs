@@ -13,12 +13,7 @@
  *   - Bullet the remaining text blocks (lines within a shape's textElements)
  *   - Speaker notes (if any) appended as "**Notes:** …"
  */
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  GetCommand,
-  UpdateCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { createRequire } from "node:module";
 import {
   S3Client,
   PutObjectCommand,
@@ -28,14 +23,17 @@ import {
   GetSecretValueCommand,
 } from "@aws-sdk/client-secrets-manager";
 
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+// pg-http ships as a Lambda layer (zero-dependency Neon-over-HTTP helper).
+// Connectors live in the Postgres `connectors` table; see lib/db/schema.ts.
+const require = createRequire(import.meta.url);
+const { pgFetchOne, pgExecute } = require("pg-http");
+
 const s3 = new S3Client({});
 const sm = new SecretsManagerClient({});
 
-// Per-brain values come from the invocation event (dispatcher injects
-// per-row). Env-var fallbacks keep legacy invokes against the default
-// brain working.
-let CONNECTORS_TABLE = process.env.CONNECTORS_TABLE;
+const DATABASE_URL = process.env.DATABASE_URL;
+// The brain's docs bucket comes from the invocation event; env-var
+// fallback keeps legacy invokes against the default brain working.
 let DOCS_BUCKET = process.env.DOCS_BUCKET;
 const GOOGLE_OAUTH_CLIENT_SECRET_ID =
   process.env.GOOGLE_OAUTH_CLIENT_SECRET_ID;
@@ -189,37 +187,36 @@ async function putSidecar(key, sidecar) {
   );
 }
 
+async function markSyncing(connectorId) {
+  await pgExecute(
+    DATABASE_URL,
+    `update connectors set status = 'syncing', updated_at = now() where id = $1`,
+    [connectorId]
+  );
+}
+
 async function markError(connectorId, message) {
-  await ddb.send(
-    new UpdateCommand({
-      TableName: CONNECTORS_TABLE,
-      Key: { id: connectorId },
-      UpdateExpression: "SET #s = :s, last_error = :e, last_error_at = :t",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: {
-        ":s": "error",
-        ":e": message.slice(0, 2000),
-        ":t": new Date().toISOString(),
-      },
-    })
+  await pgExecute(
+    DATABASE_URL,
+    `update connectors
+       set status = 'error', last_error = $2, updated_at = now()
+     where id = $1`,
+    [connectorId, String(message).slice(0, 2000)]
   );
 }
 
 async function markSuccess(connectorId, itemCount, deckTitle) {
-  await ddb.send(
-    new UpdateCommand({
-      TableName: CONNECTORS_TABLE,
-      Key: { id: connectorId },
-      UpdateExpression:
-        "SET #s = :s, last_synced_at = :t, item_count = :c, resource_title = :rt REMOVE last_error, last_error_at",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: {
-        ":s": "connected",
-        ":t": new Date().toISOString(),
-        ":c": itemCount,
-        ":rt": deckTitle,
-      },
-    })
+  await pgExecute(
+    DATABASE_URL,
+    `update connectors
+       set status = 'connected',
+           last_synced_at = now(),
+           item_count = $2,
+           last_error = null,
+           metadata = metadata || $3::jsonb,
+           updated_at = now()
+     where id = $1`,
+    [connectorId, itemCount, JSON.stringify({ resource_title: deckTitle })]
   );
 }
 
@@ -233,33 +230,26 @@ export const handler = async (event) => {
   // previous invocation's brain-scoped value in place when the next one
   // omits the field. Always pick from event ?? env, never from the
   // module-level state set by a prior call.
-  CONNECTORS_TABLE = event?.connectorsTable || process.env.CONNECTORS_TABLE;
   DOCS_BUCKET = event?.docsBucket || process.env.DOCS_BUCKET;
-  if (!CONNECTORS_TABLE || !DOCS_BUCKET || !GOOGLE_OAUTH_CLIENT_SECRET_ID) {
+  if (!DATABASE_URL || !DOCS_BUCKET || !GOOGLE_OAUTH_CLIENT_SECRET_ID) {
     throw new Error("required env vars missing");
   }
 
-  await ddb.send(
-    new UpdateCommand({
-      TableName: CONNECTORS_TABLE,
-      Key: { id: connectorId },
-      UpdateExpression: "SET #s = :s",
-      ExpressionAttributeNames: { "#s": "status" },
-      ExpressionAttributeValues: { ":s": "syncing" },
-    })
-  );
+  await markSyncing(connectorId);
 
   try {
-    const got = await ddb.send(
-      new GetCommand({ TableName: CONNECTORS_TABLE, Key: { id: connectorId } })
+    const row = await pgFetchOne(
+      DATABASE_URL,
+      `select id, type, external_id, external_url, token_secret_arn
+         from connectors where id = $1`,
+      [connectorId]
     );
-    const row = got.Item;
     if (!row) throw new Error(`connector ${connectorId} not found`);
     if (row.type !== "slides")
       throw new Error(`wrong connector type: ${row.type}`);
 
-    const presentationId = row.resource_id;
-    if (!presentationId) throw new Error("resource_id missing");
+    const presentationId = row.external_id;
+    if (!presentationId) throw new Error("external_id missing");
     const tokenSecretArn = row.token_secret_arn;
     if (!tokenSecretArn) throw new Error("token_secret_arn missing");
 
@@ -280,7 +270,7 @@ export const handler = async (event) => {
     const content = [
       `# ${title}`,
       "",
-      `Source: [Google Slides](${row.resource_url}) · ${slides.length} slide(s) · last synced ${new Date().toISOString()}`,
+      `Source: [Google Slides](${row.external_url}) · ${slides.length} slide(s) · last synced ${new Date().toISOString()}`,
       "",
       rendered,
       "",

@@ -11,23 +11,19 @@
  * Kept deliberately dumb — no retries, no conditional logic. The per-type
  * Lambda owns the sync and writes its own status back to the row.
  */
-import {
-  DynamoDBClient,
-} from "@aws-sdk/client-dynamodb";
-import {
-  DynamoDBDocumentClient,
-  QueryCommand,
-  ScanCommand,
-} from "@aws-sdk/lib-dynamodb";
+import { createRequire } from "node:module";
 import {
   LambdaClient,
   InvokeCommand,
 } from "@aws-sdk/client-lambda";
 
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
+// pg-http ships as a Lambda layer (zero-dependency Neon-over-HTTP helper).
+const require = createRequire(import.meta.url);
+const { pgQuery } = require("pg-http");
+
 const lambdaClient = new LambdaClient({});
 
-const BRAINS_TABLE = process.env.BRAINS_TABLE;
+const DATABASE_URL = process.env.DATABASE_URL;
 
 const FN_BY_TYPE = {
   sheets: process.env.SHEETS_SYNC_FN_NAME,
@@ -38,85 +34,61 @@ const FN_BY_TYPE = {
 };
 
 async function listReadyBrains() {
-  // Scan the brains table for status=ready rows. The table is small
-  // (one row per brain — handfuls, not thousands) so a scan is fine and
-  // avoids relying on a specific GSI from the dispatcher.
-  const items = [];
-  let exclusiveStartKey;
-  do {
-    const res = await ddb.send(
-      new ScanCommand({
-        TableName: BRAINS_TABLE,
-        FilterExpression: "#s = :s",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: { ":s": "ready" },
-        ProjectionExpression: "brain_id, connectors_table, docs_bucket",
-        ExclusiveStartKey: exclusiveStartKey,
-      })
-    );
-    for (const it of res.Items ?? []) items.push(it);
-    exclusiveStartKey = res.LastEvaluatedKey;
-  } while (exclusiveStartKey);
-  return items;
+  const { rows } = await pgQuery(
+    DATABASE_URL,
+    `select id, docs_bucket
+       from brains
+      where status = 'ready' and docs_bucket is not null`,
+    []
+  );
+  return rows;
 }
 
 async function dispatchOneBrain(brain) {
-  if (!brain.connectors_table || !brain.docs_bucket) {
-    console.warn(
-      `brain ${brain.brain_id} missing connectors_table/docs_bucket; skipping`
-    );
+  if (!brain.docs_bucket) {
+    console.warn(`brain ${brain.id} missing docs_bucket; skipping`);
     return [];
   }
 
   // Include rows in both `connected` and `error` status so a transient
   // failure from the last run gets retried at the next tick.
-  const statuses = ["connected", "error"];
-  const dispatched = [];
+  const { rows } = await pgQuery(
+    DATABASE_URL,
+    `select id, type
+       from connectors
+      where brain_id = $1 and status in ('connected', 'error')`,
+    [brain.id]
+  );
 
-  for (const status of statuses) {
-    const q = await ddb.send(
-      new QueryCommand({
-        TableName: brain.connectors_table,
-        IndexName: "status-created_at-index",
-        KeyConditionExpression: "#s = :s",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: { ":s": status },
+  const dispatched = [];
+  for (const row of rows) {
+    const fn = FN_BY_TYPE[row.type];
+    if (!fn) {
+      console.warn(
+        `no sync fn for type=${row.type}, skipping ${row.id} in brain ${brain.id}`
+      );
+      continue;
+    }
+    await lambdaClient.send(
+      new InvokeCommand({
+        FunctionName: fn,
+        InvocationType: "Event", // fire-and-forget
+        Payload: new TextEncoder().encode(
+          JSON.stringify({
+            connectorId: row.id,
+            docsBucket: brain.docs_bucket,
+            brainId: brain.id,
+          })
+        ),
       })
     );
-    for (const row of q.Items ?? []) {
-      const fn = FN_BY_TYPE[row.type];
-      if (!fn) {
-        console.warn(
-          `no sync fn for type=${row.type}, skipping ${row.id} in brain ${brain.brain_id}`
-        );
-        continue;
-      }
-      await lambdaClient.send(
-        new InvokeCommand({
-          FunctionName: fn,
-          InvocationType: "Event", // fire-and-forget
-          Payload: new TextEncoder().encode(
-            JSON.stringify({
-              connectorId: row.id,
-              connectorsTable: brain.connectors_table,
-              docsBucket: brain.docs_bucket,
-              brainId: brain.brain_id,
-            })
-          ),
-        })
-      );
-      dispatched.push({
-        brainId: brain.brain_id,
-        id: row.id,
-        type: row.type,
-      });
-    }
+    dispatched.push({ brainId: brain.id, id: row.id, type: row.type });
   }
   return dispatched;
 }
 
 export const handler = async () => {
-  if (!BRAINS_TABLE) throw new Error("BRAINS_TABLE missing");
+  if (!DATABASE_URL) throw new Error("DATABASE_URL missing");
 
   const brains = await listReadyBrains();
   const all = [];

@@ -1,7 +1,5 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
-import { randomUUID } from "node:crypto";
-import { PutCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 import {
   CreateSecretCommand,
   GetSecretValueCommand,
@@ -10,22 +8,20 @@ import { InvokeCommand } from "@aws-sdk/client-lambda";
 
 import {
   CONNECTOR_TOKEN_SECRET_PREFIX,
-  connectorsTableForBrain,
-  ddbConnectors,
   GOOGLE_OAUTH_CLIENT_SECRET_ID,
   isGoogleType,
   lambdaClient,
   NOTION_OAUTH_CLIENT_SECRET_ID,
   oauthScopesFor,
   parseResourceId,
+  pgInsertConnector,
+  pgUpdateConnector,
   sm,
   syncFnNameFor,
-  type Connector,
   type ConnectorType,
 } from "@/utils/connectors";
-import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { readAuthContext, resolveBrainFromRequest } from "@/lib/brains-server";
 import { bucketForBrain } from "@/utils/s3";
-import { getCurrentUserEmail } from "@/utils/amplify-server-utils";
 import { getPublicOrigin } from "@/utils/public-origin";
 
 const SUPPORTED_TYPES: ConnectorType[] = [
@@ -78,12 +74,14 @@ function resourceHint(type: ConnectorType): string {
  * The callback (/api/connectors/oauth/callback) completes the connection.
  */
 export async function POST(request: NextRequest) {
-  const response = NextResponse.next();
+  const auth = await readAuthContext(request);
+  if (!auth) {
+    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+  }
 
   const r = await resolveBrainFromRequest(request);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
   const brain = r.brain;
-  const connectorsTable = connectorsTableForBrain(brain);
   const docsBucket = bucketForBrain(brain);
 
   // The OAuth redirect URI must be whatever is registered in the provider
@@ -143,26 +141,19 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const userEmail = await getCurrentUserEmail(request, response);
-  const id = randomUUID();
-  const now = new Date().toISOString();
-
-  const row: Connector = {
-    id,
-    type,
-    status: "pending_auth",
-    label: body.label.trim().slice(0, 120) || defaultLabelFor(type),
-    resource_url: body.resource_url.trim(),
-    resource_id: resourceId,
-    brain_id: brain.brain_id,
-    created_at: now,
-    created_by: userEmail ?? undefined,
-  };
+  const createdBy = auth.userEmail ?? auth.userId;
 
   try {
-    await ddbConnectors.send(
-      new PutCommand({ TableName: connectorsTable, Item: row })
-    );
+    const inserted = await pgInsertConnector({
+      orgId: auth.orgId,
+      brainId: brain.brain_id,
+      type,
+      label: body.label.trim().slice(0, 120) || defaultLabelFor(type),
+      externalUrl: body.resource_url.trim(),
+      externalId: resourceId,
+      createdBy,
+    });
+    const id = inserted.id;
 
     // ── GitHub short-circuit (no OAuth dance) ─────────────────────────
     // PAT is the auth — store it in a per-connector secret, flip the row
@@ -179,18 +170,10 @@ export async function POST(request: NextRequest) {
           }),
         })
       );
-      await ddbConnectors.send(
-        new UpdateCommand({
-          TableName: connectorsTable,
-          Key: { id },
-          UpdateExpression: "SET #s = :s, token_secret_arn = :arn",
-          ExpressionAttributeNames: { "#s": "status" },
-          ExpressionAttributeValues: {
-            ":s": "syncing",
-            ":arn": created.ARN,
-          },
-        })
-      );
+      await pgUpdateConnector(auth.orgId, brain.brain_id, id, {
+        status: "syncing",
+        tokenSecretArn: created.ARN,
+      });
       const fn = syncFnNameFor("github");
       if (fn) {
         await lambdaClient
@@ -201,7 +184,6 @@ export async function POST(request: NextRequest) {
               Payload: new TextEncoder().encode(
                 JSON.stringify({
                   connectorId: id,
-                  connectorsTable,
                   docsBucket,
                   brainId: brain.brain_id,
                 })

@@ -12,17 +12,19 @@
  * StartIngestionJob is cheap and Bedrock handles queueing. ConflictException
  * means a job is already running — fine, it'll see the new files too.
  */
+import { createRequire } from "node:module";
 import {
   BedrockAgentClient,
   StartIngestionJobCommand,
 } from "@aws-sdk/client-bedrock-agent";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, ScanCommand } from "@aws-sdk/lib-dynamodb";
+
+// pg-http ships as a Lambda layer (zero-dependency Neon-over-HTTP helper).
+const require = createRequire(import.meta.url);
+const { pgQuery } = require("pg-http");
 
 const bedrock = new BedrockAgentClient({});
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
-const BRAINS_TABLE = process.env.BRAINS_TABLE;
+const DATABASE_URL = process.env.DATABASE_URL;
 
 // Cache the bucket → (brain_id, kb_id, ds_id) map in process memory. Lambda
 // containers are reused across invocations, so this saves DDB calls on
@@ -33,28 +35,21 @@ let cacheLoadedAt = 0;
 const CACHE_TTL_MS = 60_000;
 
 async function loadRegistry() {
-  const items = [];
-  let exclusiveStartKey;
-  do {
-    const res = await ddb.send(
-      new ScanCommand({
-        TableName: BRAINS_TABLE,
-        ProjectionExpression: "brain_id, docs_bucket, kb_id, ds_id, #s",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExclusiveStartKey: exclusiveStartKey,
-      })
-    );
-    items.push(...(res.Items ?? []));
-    exclusiveStartKey = res.LastEvaluatedKey;
-  } while (exclusiveStartKey);
+  const { rows } = await pgQuery(
+    DATABASE_URL,
+    `select id, docs_bucket, kb_id, ds_id
+       from brains
+      where status = 'ready'
+        and docs_bucket is not null
+        and kb_id is not null
+        and ds_id is not null`,
+    []
+  );
 
   const byBucket = new Map();
-  for (const row of items) {
-    if (row.status !== "ready" || !row.docs_bucket || !row.kb_id || !row.ds_id) {
-      continue;
-    }
+  for (const row of rows) {
     byBucket.set(row.docs_bucket, {
-      brainId: row.brain_id,
+      brainId: row.id,
       kbId: row.kb_id,
       dsId: row.ds_id,
     });
@@ -114,7 +109,7 @@ async function ingestForBucket(bucket, keys) {
 }
 
 export const handler = async (event) => {
-  if (!BRAINS_TABLE) throw new Error("BRAINS_TABLE env var is required");
+  if (!DATABASE_URL) throw new Error("DATABASE_URL env var is required");
 
   // Group event records by bucket — one StartIngestionJob per bucket per call.
   const byBucket = new Map();

@@ -37,19 +37,21 @@
  * override DOCS_BUCKET / BRAIN_ID / WIKI_MODE / CORPUS_PREFIX / WIKI_PREFIX
  * / REPO_FULL_NAME / WIKI_FORCE via containerOverrides at RunTask time.
  */
+import { createRequire } from "node:module";
 import {
   ECSClient,
   RunTaskCommand,
   ListTasksCommand,
   DescribeTasksCommand,
 } from "@aws-sdk/client-ecs";
-import { DynamoDBClient } from "@aws-sdk/client-dynamodb";
-import { DynamoDBDocumentClient, GetCommand } from "@aws-sdk/lib-dynamodb";
+
+// pg-http ships as a Lambda layer (zero-dependency Neon-over-HTTP helper).
+const require = createRequire(import.meta.url);
+const { pgFetchOne } = require("pg-http");
 
 const ecs = new ECSClient({});
-const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 
-const BRAINS_TABLE = process.env.BRAINS_TABLE;
+const DATABASE_URL = process.env.DATABASE_URL;
 
 function slugify(s) {
   return (s || "")
@@ -110,11 +112,12 @@ async function findRunningTask(cluster, taskDefArn, { brainId, mode, repo }) {
 }
 
 async function resolveBrain(brainId) {
-  if (!BRAINS_TABLE) throw new Error("BRAINS_TABLE env var missing");
-  const res = await ddb.send(
-    new GetCommand({ TableName: BRAINS_TABLE, Key: { brain_id: brainId } })
+  if (!DATABASE_URL) throw new Error("DATABASE_URL env var missing");
+  const item = await pgFetchOne(
+    DATABASE_URL,
+    `select id, status, docs_bucket from brains where id = $1`,
+    [brainId]
   );
-  const item = res.Item;
   if (!item) throw new Error(`brain not found: ${brainId}`);
   if (item.status !== "ready") {
     throw new Error(`brain ${brainId} is ${item.status}, not ready`);

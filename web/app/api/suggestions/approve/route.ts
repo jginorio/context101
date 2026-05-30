@@ -1,14 +1,12 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { PutObjectCommand } from "@aws-sdk/client-s3";
-import { GetCommand, UpdateCommand } from "@aws-sdk/lib-dynamodb";
 
-import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { readAuthContext, resolveBrainFromRequest } from "@/lib/brains-server";
 import { bucketForBrain, s3 } from "@/utils/s3";
 import {
-  ddb,
-  suggestionsTableForBrain,
-  type Suggestion,
+  pgGetSuggestion,
+  pgMarkSuggestionAccepted,
 } from "@/utils/suggestions";
 
 /**
@@ -28,10 +26,13 @@ import {
  * 4. Mark the suggestion accepted.
  */
 export async function POST(request: NextRequest) {
+  const auth = await readAuthContext(request);
+  if (!auth) {
+    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+  }
   const r = await resolveBrainFromRequest(request);
   if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
   const bucket = bucketForBrain(r.brain);
-  const table = suggestionsTableForBrain(r.brain);
 
   const body = await request.json().catch(() => null);
   if (!body || typeof body.id !== "string") {
@@ -39,10 +40,11 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const got = await ddb.send(
-      new GetCommand({ TableName: table, Key: { id: body.id } })
+    const suggestion = await pgGetSuggestion(
+      auth.orgId,
+      r.brain.brain_id,
+      body.id
     );
-    const suggestion = got.Item as Suggestion | undefined;
     if (!suggestion) {
       return NextResponse.json({ error: "suggestion not found" }, { status: 404 });
     }
@@ -60,7 +62,7 @@ export async function POST(request: NextRequest) {
         : undefined;
     const destKey =
       override ??
-      suggestion.target_path ??
+      suggestion.targetPath ??
       `${slugify(suggestion.title)}.md`;
 
     if (destKey.startsWith("/") || destKey.includes("..")) {
@@ -69,8 +71,6 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
-
-    const now = new Date().toISOString();
 
     await s3.send(
       new PutObjectCommand({
@@ -81,19 +81,12 @@ export async function POST(request: NextRequest) {
       })
     );
 
-    await ddb.send(
-      new UpdateCommand({
-        TableName: table,
-        Key: { id: body.id },
-        UpdateExpression:
-          "SET #s = :s, reviewed_at = :rt, final_path = :fp",
-        ExpressionAttributeNames: { "#s": "status" },
-        ExpressionAttributeValues: {
-          ":s": "accepted",
-          ":rt": now,
-          ":fp": destKey,
-        },
-      })
+    await pgMarkSuggestionAccepted(
+      auth.orgId,
+      r.brain.brain_id,
+      body.id,
+      destKey,
+      auth.userEmail ?? auth.userId
     );
 
     return NextResponse.json({ ok: true, destKey });
