@@ -1,8 +1,12 @@
 import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { and, eq } from "drizzle-orm";
 
+import { getAuth } from "@/lib/auth/server";
 import { getBrainById, publicBrain } from "@/lib/brains-server";
+import { db } from "@/lib/db/client";
+import { brains as brainsTable } from "@/lib/db/schema";
 
 const PROVISIONER_FN_NAME = process.env.BRAIN_PROVISIONER_FN_NAME ?? "";
 const lambdaClient = new LambdaClient({
@@ -10,6 +14,27 @@ const lambdaClient = new LambdaClient({
 });
 
 type RouteCtx = { params: Promise<{ id: string }> };
+
+type BetterAuthSession = {
+  user?: {
+    id?: string;
+  };
+  session?: {
+    activeOrganizationId?: string | null;
+  };
+} | null;
+
+function publicPostgresBrain(row: typeof brainsTable.$inferSelect) {
+  return {
+    brain_id: row.id,
+    display_name: row.displayName,
+    description: row.description,
+    status: row.status,
+    created_at: row.createdAt.toISOString(),
+    created_by_email: null,
+    error_msg: row.errorMsg,
+  };
+}
 
 /**
  * GET /api/brains/<id>
@@ -20,8 +45,29 @@ type RouteCtx = { params: Promise<{ id: string }> };
  *
  * The response is stripped of internal handles via `publicBrain`.
  */
-export async function GET(_req: NextRequest, { params }: RouteCtx) {
+export async function GET(request: NextRequest, { params }: RouteCtx) {
   const { id } = await params;
+  const session = (await getAuth()
+    .api.getSession({
+      headers: request.headers,
+    })
+    .catch(() => null)) as BetterAuthSession;
+  const userId = session?.user?.id;
+  const orgId = session?.session?.activeOrganizationId;
+
+  if (db && userId && orgId) {
+    const [row] = await db
+      .select()
+      .from(brainsTable)
+      .where(and(eq(brainsTable.orgId, orgId), eq(brainsTable.id, id)))
+      .limit(1);
+
+    if (!row) {
+      return NextResponse.json({ error: "not found" }, { status: 404 });
+    }
+    return NextResponse.json({ brain: publicPostgresBrain(row) });
+  }
+
   const row = await getBrainById(id);
   if (!row) {
     return NextResponse.json({ error: "not found" }, { status: 404 });

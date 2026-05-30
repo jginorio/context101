@@ -679,9 +679,65 @@ export class Context101Stack extends cdk.Stack {
     //   token_secret_arn is resolved via cdk.Lazy because the secret
     //   itself is conditional on `-c token=<value>` being passed.
     const teamToken = this.node.tryGetContext("token") as string | undefined;
+    const databaseUrl = this.node.tryGetContext("DATABASE_URL") as
+      | string
+      | undefined;
+    const databaseDriver = this.node.tryGetContext("DATABASE_DRIVER") as
+      | string
+      | undefined;
+    const databasePrepare = this.node.tryGetContext("DATABASE_PREPARE") as
+      | string
+      | undefined;
+    const betterAuthSecret = this.node.tryGetContext("BETTER_AUTH_SECRET") as
+      | string
+      | undefined;
+    const betterAuthUrl = this.node.tryGetContext("BETTER_AUTH_URL") as
+      | string
+      | undefined;
+    const mcpTokenPepper = this.node.tryGetContext("MCP_TOKEN_PEPPER") as
+      | string
+      | undefined;
+    const appMode = this.node.tryGetContext("APP_MODE") as string | undefined;
+    const allowPublicSignup = this.node.tryGetContext(
+      "ALLOW_PUBLIC_SIGNUP"
+    ) as string | undefined;
+    const billingEnabled = this.node.tryGetContext("BILLING_ENABLED") as
+      | string
+      | undefined;
+    const appUrl = this.node.tryGetContext("APP_URL") as string | undefined;
+    const marketingUrl = this.node.tryGetContext("MARKETING_URL") as
+      | string
+      | undefined;
     let defaultBrainTokenSecret: secretsmanager.Secret | undefined;
     let mcpServiceUrl: string | undefined;
     const mcpEnvVars: Array<{ name: string; value: string }> = [];
+    const openSaasEnvVars: Array<{ name: string; value: string }> = [
+      ...(databaseUrl ? [{ name: "DATABASE_URL", value: databaseUrl }] : []),
+      ...(databaseDriver
+        ? [{ name: "DATABASE_DRIVER", value: databaseDriver }]
+        : []),
+      ...(databasePrepare
+        ? [{ name: "DATABASE_PREPARE", value: databasePrepare }]
+        : []),
+      ...(betterAuthSecret
+        ? [{ name: "BETTER_AUTH_SECRET", value: betterAuthSecret }]
+        : []),
+      ...(betterAuthUrl
+        ? [{ name: "BETTER_AUTH_URL", value: betterAuthUrl }]
+        : []),
+      ...(mcpTokenPepper
+        ? [{ name: "MCP_TOKEN_PEPPER", value: mcpTokenPepper }]
+        : []),
+      ...(appMode ? [{ name: "APP_MODE", value: appMode }] : []),
+      ...(allowPublicSignup
+        ? [{ name: "ALLOW_PUBLIC_SIGNUP", value: allowPublicSignup }]
+        : []),
+      ...(billingEnabled
+        ? [{ name: "BILLING_ENABLED", value: billingEnabled }]
+        : []),
+      ...(appUrl ? [{ name: "APP_URL", value: appUrl }] : []),
+      ...(marketingUrl ? [{ name: "MARKETING_URL", value: marketingUrl }] : []),
+    ];
 
     const brainShared = new BrainShared(this, "BrainShared", {
       namePrefix,
@@ -887,6 +943,7 @@ export class Context101Stack extends cdk.Stack {
                 // The MCP server resolves the active brain per-request from
                 // BrainsTable; no per-brain env baked into the container.
                 { name: "BRAINS_TABLE", value: brainShared.brainsTable.tableName },
+                ...openSaasEnvVars,
               ],
             },
           },
@@ -1006,6 +1063,10 @@ export class Context101Stack extends cdk.Stack {
           { name: "GOOGLE_OAUTH_CLIENT_SECRET_ID", value: googleOAuthClientSecret.secretName },
           { name: "NOTION_OAUTH_CLIENT_SECRET_ID", value: notionOAuthClientSecret.secretName },
           { name: "CONNECTOR_TOKEN_SECRET_PREFIX", value: `${namePrefix}-connector-` },
+          // OpenSaaS/Postgres + Better Auth env. Optional during the
+          // transition; when unset, the app keeps using the existing
+          // Cognito/DynamoDB paths.
+          ...openSaasEnvVars,
           // MCP URL + bearer token for the /about page snippets. Empty
           // unless `-c token=` was also passed; the page falls back to
           // placeholder strings.

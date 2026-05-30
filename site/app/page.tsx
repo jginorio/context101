@@ -22,6 +22,7 @@ import { TypingRotate } from "@/components/typing-rotate";
 import { Button } from "@/components/ui/button";
 
 const REPO_URL = "https://github.com/jginorio/context101";
+const APP_URL = "https://app.context101.dev";
 const APP_DOCS_URL = `${REPO_URL}#setup`;
 
 const features = [
@@ -36,8 +37,8 @@ const features = [
     Icon: Database,
   },
   {
-    title: "Self-hosted in AWS",
-    body: "The deployable app is CDK, S3, Bedrock Knowledge Bases, S3 Vectors, DynamoDB, Lambda, Amplify, and a FastMCP service.",
+    title: "Self-hosted or hosted",
+    body: "Run it in your own AWS account, or use the hosted app as it matures. The same app model powers both: Better Auth, Postgres, S3, Bedrock, and MCP.",
     Icon: Cloud,
   },
   {
@@ -60,14 +61,14 @@ const faqs = [
       "Titan was the easiest fit for an AWS-first PoC: Bedrock Knowledge Bases can use it natively, which keeps deployment simple and avoids extra provider keys. There are likely better retrieval-quality options, and swapping embedding models is a reasonable future improvement.",
   },
   {
-    question: "Why Cognito?",
+    question: "Why Better Auth?",
     answer:
-      "Same reason: it was the path of least resistance for a CDK-deployed AWS stack. Cognito is not the dream auth product, but keeping auth inside AWS made the PoC easier to ship and easier for self-hosters to reproduce. We are open to changing it later.",
+      "The first PoC used Cognito because it was easiest inside AWS. For the open-source SaaS path, Better Auth makes more sense: auth and organizations live in the same Postgres control plane self-hosters already deploy.",
   },
   {
     question: "Why so many AWS services?",
     answer:
-      "Most infrastructure choices were made to make the stack easy to deploy from CDK, not because they are the only possible architecture. The bias was: one cloud account, managed services, minimal external setup, and no bespoke operations layer for the first version. Multi-brain support follows that model: one deployment can host multiple isolated brains.",
+      "Most infrastructure choices were made to make the stack easy to deploy from CDK, not because they are the only possible architecture. The bias was: one cloud account, managed services, minimal external setup, and no bespoke operations layer for the first version. The control plane is moving to Postgres so Neon, Supabase, RDS, Aurora, and local Postgres are all realistic options.",
   },
   {
     question: "What inspired this?",
@@ -109,10 +110,10 @@ export default function HomePage() {
             <span className="text-primary">Every AI tool.</span>
           </h1>
           <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
-            Context101 is a self-hosted MCP knowledge base for teams that want
-            Cursor, Claude, Devin, and internal agents to retrieve from the same
-            approved context. It is alpha software, designed to be deployed into
-            your own AWS account.
+            Context101 is an MCP knowledge base for teams that want Cursor,
+            Claude, Devin, and internal agents to retrieve from the same
+            approved context. It is open-source alpha software: self-hostable
+            today, with a hosted app path emerging at app.context101.dev.
           </p>
           <p className="mt-5 text-sm leading-7 text-muted-foreground">
             So now{" "}
@@ -127,17 +128,30 @@ export default function HomePage() {
               ]}
             />
           </p>
+          <div className="mt-6 flex flex-wrap gap-2">
+            <a
+              className="inline-flex items-center rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground hover:text-foreground"
+              href="https://better-auth.com"
+              rel="noreferrer"
+              target="_blank"
+            >
+              Auth by Better Auth
+            </a>
+            <span className="inline-flex items-center rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground">
+              Supports: Neon, Supabase, RDS, local Postgres
+            </span>
+          </div>
           <div className="mt-8 flex flex-wrap gap-3">
-            <Button asChild>
+            {/* <Button asChild>
+              <a href={APP_URL}>
+                Open hosted app
+                <ArrowRight />
+              </a>
+            </Button> */}
+            <Button asChild variant="outline">
               <a href={REPO_URL}>
                 View on GitHub
                 <GitBranch />
-              </a>
-            </Button>
-            <Button asChild variant="outline">
-              <a href={APP_DOCS_URL}>
-                Read deploy docs
-                <ArrowRight />
               </a>
             </Button>
           </div>
@@ -148,7 +162,7 @@ export default function HomePage() {
           delayMs={120}
         >
           <p className="mb-4 font-mono text-xs text-muted-foreground">
-            Deployable app, not this homepage
+            Hosted app and self-hosted app share the same code
           </p>
           <div className="grid gap-2.5">
             <div className="overflow-x-auto whitespace-pre rounded-2xl border border-border bg-[var(--code)] p-3.5 font-mono text-[13px] leading-6">
@@ -170,10 +184,11 @@ export default function HomePage() {
             The website and app are separate.
           </h2>
           <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-            This site explains the project. The deployable product lives in
-            <code> web/</code> and starts directly in the authenticated app. That
-            keeps self-hosted deployments focused on the knowledge base instead
-            of shipping a marketing homepage to every internal team.
+            This site explains the project. The product app lives in{" "}
+            <code> web/</code> for self-hosted deployments, and the hosted app
+            is intended to live separately at <code>app.context101.dev</code>.
+            That keeps the marketing surface separate from the private knowledge
+            app.
           </p>
         </FadeIn>
         <div className="mt-7 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
@@ -219,11 +234,11 @@ export default function HomePage() {
               A generated wiki, not just raw search.
             </h2>
             <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-              Context101 can synthesize the raw files in a brain into a
-              readable wiki: topic pages, source citations, and architecture
-              notes that agents can retrieve before falling back to raw docs.
-              The goal is to give teammates a shared, reconciled view instead of
-              a pile of disconnected chunks.
+              Context101 can synthesize the raw files in a brain into a readable
+              wiki: topic pages, source citations, and architecture notes that
+              agents can retrieve before falling back to raw docs. The goal is
+              to give teammates a shared, reconciled view instead of a pile of
+              disconnected chunks.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
               <div className="rounded-[22px] border border-border bg-card p-5">
@@ -296,7 +311,7 @@ export default function HomePage() {
         <FadeIn className="mt-7" delayMs={80}>
           <figure className="overflow-hidden rounded-[28px] border border-border bg-card">
             <Image
-                src="/suggestions-review-preview.png"
+              src="/suggestions-review-preview.png"
               alt="Context101 suggestions review drawer showing an agent-proposed update with a side-by-side diff and approve or reject actions."
               width={3024}
               height={1720}
@@ -354,15 +369,15 @@ export default function HomePage() {
           content that originally came from Google Docs, Notion, GitHub, or
           another connector, Context101 does not push that fix back to the
           original source of truth yet. Today you either update the source
-          manually or accept the suggestion into Context101&apos;s stored markdown.
-          Source-level writeback is a follow-up.
+          manually or accept the suggestion into Context101&apos;s stored
+          markdown. Source-level writeback is a follow-up.
         </FadeIn>
       </section>
 
       <section className="border-t border-border py-14 text-center">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            Small enough to try, real enough to use.
+            Small enough to try, real enough to evolve.
           </h2>
         </FadeIn>
         <div className="mt-7 grid gap-3.5 md:grid-cols-3">
@@ -374,7 +389,10 @@ export default function HomePage() {
               MCP clients
             </span>
           </FadeIn>
-          <FadeIn className="rounded-3xl border border-border bg-card px-4 py-6" delayMs={80}>
+          <FadeIn
+            className="rounded-3xl border border-border bg-card px-4 py-6"
+            delayMs={80}
+          >
             <strong className="block text-[clamp(38px,6vw,58px)] leading-[0.95] font-bold tracking-[-0.055em]">
               $<Counter to={5} />-<Counter to={15} />
             </strong>
@@ -382,12 +400,15 @@ export default function HomePage() {
               monthly AWS cost at PoC scale
             </span>
           </FadeIn>
-          <FadeIn className="rounded-3xl border border-border bg-card px-4 py-6" delayMs={160}>
+          <FadeIn
+            className="rounded-3xl border border-border bg-card px-4 py-6"
+            delayMs={160}
+          >
             <strong className="block text-[clamp(38px,6vw,58px)] leading-[0.95] font-bold tracking-[-0.055em]">
               <Counter to={1} />
             </strong>
             <span className="mt-3 block text-[13px] leading-5 text-muted-foreground">
-              deployable internal app
+              shared codebase for hosted and self-hosted
             </span>
           </FadeIn>
         </div>
@@ -400,8 +421,8 @@ export default function HomePage() {
           </h2>
           <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
             Context101 started as a PoC for an internal company problem. The
-            goal of open sourcing it is to let other teams deploy and evolve it
-            internally, not to claim it is a finished production SaaS.
+            goal of open sourcing it is to let other teams deploy and evolve it,
+            while the hosted app matures behind invite-controlled access.
           </p>
         </FadeIn>
         <div className="mt-7 grid gap-3.5 md:grid-cols-3">
@@ -428,9 +449,10 @@ export default function HomePage() {
           ))}
         </div>
         <FadeIn className="mt-7 rounded-[22px] border border-[color-mix(in_srgb,var(--accent)_28%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_86%,transparent)] p-5">
-          <strong>Future path:</strong> managed hosting can come later, after
-          per-user auth, per-brain RBAC, audit logs, connector credential
-          isolation, billing boundaries, and operational runbooks exist.
+          <strong>Hosted alpha:</strong> the hosted app is moving toward paid
+          access, but billing gates are not live yet. Until then, access should
+          stay invite/allowlist controlled, with comped orgs like Platea handled
+          explicitly in the control plane.
         </FadeIn>
       </section>
 
@@ -441,8 +463,9 @@ export default function HomePage() {
           </h2>
           <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
             A few choices are pragmatic rather than perfect. Context101 started
-            as a PoC, so the first version optimizes for easy self-hosted
-            deployment over architectural purity.
+            as a PoC, so the first version optimized for easy AWS deployment.
+            The current open-source SaaS path is moving auth and orgs to Better
+            Auth + Postgres while keeping AWS for content and retrieval.
           </p>
         </FadeIn>
 
@@ -484,8 +507,11 @@ export default function HomePage() {
       </section>
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border py-6 text-[13px] text-muted-foreground">
-        <span>Context101 alpha. Self-hosted first.</span>
-        <span>Marketing site in <code>site/</code>; deployable app in <code>web/</code>.</span>
+        <span>Context101 alpha. Open-source first.</span>
+        <span>
+          Marketing site in <code>site/</code>; deployable app in{" "}
+          <code>web/</code>.
+        </span>
       </footer>
     </main>
   );

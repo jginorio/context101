@@ -1,4 +1,8 @@
 .venv/
+**/node_modules/
+**/.next/
+**/out/
+**/build/
 __pycache__/
 *.pyc
 .git/
@@ -10,5 +14,14 @@ data/
 *.zip
 oauth-tokens.txt
 .env
+.env.*
+.claude/
+**/.claude/
+.agents/
+**/.agents/
+.cursor/
+**/.cursor/
+.migration-inventory/
+skills-lock.json
 README.md
 upload.py

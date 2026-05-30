@@ -19,6 +19,9 @@ cdk/*.d.ts
 cdk/lambda/**/node_modules/
 backups/
 .claude/
+.agents/
+skills-lock.json
+.migration-inventory/
 
 # Standalone public site
 site/node_modules/

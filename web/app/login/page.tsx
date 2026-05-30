@@ -1,30 +1,28 @@
-"use client";
-
-import { Authenticator, useAuthenticator } from "@aws-amplify/ui-react";
-import "@aws-amplify/ui-react/styles.css";
-import { useRouter, useSearchParams } from "next/navigation";
 import * as React from "react";
+import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 
-import "@/utils/amplify-client-config";
+import { getAuth } from "@/lib/auth/server";
+import { db } from "@/lib/db/client";
+import { organization } from "@/lib/db/auth-schema";
+import { LoginForm } from "@/components/login-form";
 
-function Redirector() {
-  const { authStatus } = useAuthenticator((ctx) => [ctx.authStatus]);
-  const router = useRouter();
-  const search = useSearchParams();
-  // Default to /knowledge, the authenticated admin home. The app root is
-  // only a redirect now; the public marketing site lives in ../site.
-  const next = search.get("next") || "/knowledge";
-
-  React.useEffect(() => {
-    if (authStatus === "authenticated") {
-      router.replace(next);
-    }
-  }, [authStatus, router, next]);
-
-  return null;
+async function hasAnyOrganization() {
+  if (!db) return false;
+  const rows = await db.select({ id: organization.id }).from(organization).limit(1);
+  return rows.length > 0;
 }
 
-function LoginContent() {
+async function LoginContent() {
+  const session = await getAuth()
+    .api.getSession({
+      headers: await headers(),
+    })
+    .catch(() => null);
+  if (session) redirect("/knowledge");
+
+  const setupAvailable = !(await hasAnyOrganization());
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6">
       <div className="w-full max-w-sm">
@@ -34,10 +32,7 @@ function LoginContent() {
             Sign in to manage the team knowledge base
           </p>
         </div>
-
-        <Authenticator hideSignUp loginMechanisms={["email"]}>
-          <Redirector />
-        </Authenticator>
+        <LoginForm setupAvailable={setupAvailable} />
       </div>
     </main>
   );

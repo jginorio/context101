@@ -17,3 +17,23 @@ CTX_TOKEN="context101-platea-2026-bearer"
 
 # OPTIONAL — passed through to the cdk subprocess.
 AWS_PROFILE="plateapr.com"
+
+# OPTIONAL — OpenSaaS/Postgres + Better Auth path.
+# DATABASE_URL should be your Postgres connection string.
+# Neon URLs auto-select DATABASE_DRIVER=neon-http. Supabase/RDS/local Postgres
+# can use DATABASE_DRIVER=postgres-js.
+# DATABASE_URL="postgresql://..."
+# DATABASE_DRIVER="neon-http"
+# DATABASE_PREPARE="true"
+# BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
+# BETTER_AUTH_URL="https://main.<amplify-app-id>.amplifyapp.com"
+# MCP_TOKEN_PEPPER="$(openssl rand -base64 32)"
+#
+# Deployment mode:
+# self_hosted = first-run setup/admin invite flow, no public signup by default
+# hosted      = public signup/onboarding/billing flow
+# APP_MODE="self_hosted"
+# ALLOW_PUBLIC_SIGNUP="false"
+# BILLING_ENABLED="false"
+# APP_URL="https://main.<amplify-app-id>.amplifyapp.com"
+# MARKETING_URL="https://context101.dev"

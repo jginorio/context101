@@ -4,8 +4,13 @@ import {
   GetCommand,
   QueryCommand,
 } from "@aws-sdk/lib-dynamodb";
+import { and, eq } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import type { NextRequest } from "next/server";
+
+import { getAuth } from "@/lib/auth/server";
+import { db } from "@/lib/db/client";
+import { brains as postgresBrains } from "@/lib/db/schema";
 
 /**
  * Server-side brain registry helpers.
@@ -48,6 +53,7 @@ export type BrainConfig = {
 };
 
 const BRAINS_TABLE = process.env.BRAINS_TABLE ?? "";
+const NAME_PREFIX = "context101";
 
 if (!BRAINS_TABLE && process.env.NODE_ENV !== "test") {
   // Don't crash — local dev without the env var still loads the home page.
@@ -59,6 +65,74 @@ const ddb = DynamoDBDocumentClient.from(
   new DynamoDBClient({ region: process.env.AWS_REGION ?? "us-east-1" }),
   { marshallOptions: { removeUndefinedValues: true } }
 );
+
+type BetterAuthSession = {
+  user?: {
+    id?: string;
+  };
+  session?: {
+    activeOrganizationId?: string | null;
+  };
+} | null;
+
+function legacySuggestionsTableForBrainId(brainId: string): string {
+  return brainId === DEFAULT_BRAIN_ID
+    ? `${NAME_PREFIX}-suggestions`
+    : `${NAME_PREFIX}-brain-${brainId}-suggestions`;
+}
+
+function legacyConnectorsTableForBrainId(brainId: string): string {
+  return brainId === DEFAULT_BRAIN_ID
+    ? `${NAME_PREFIX}-connectors`
+    : `${NAME_PREFIX}-brain-${brainId}-connectors`;
+}
+
+function dateString(value: Date | string | null | undefined): string {
+  if (!value) return new Date(0).toISOString();
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+async function readBetterAuthOrgId(request: NextRequest): Promise<string | null> {
+  if (!db) return null;
+  const session = (await getAuth()
+    .api.getSession({
+      headers: request.headers,
+    })
+    .catch(() => null)) as BetterAuthSession;
+  return session?.session?.activeOrganizationId ?? null;
+}
+
+async function fetchBrainFromPostgres(
+  brainId: string,
+  orgId: string
+): Promise<BrainConfig | null> {
+  if (!db) return null;
+
+  const [row] = await db
+    .select()
+    .from(postgresBrains)
+    .where(and(eq(postgresBrains.orgId, orgId), eq(postgresBrains.id, brainId)))
+    .limit(1);
+
+  if (!row) return null;
+
+  return {
+    brain_id: row.id,
+    display_name: row.displayName,
+    description: row.description,
+    status: row.status,
+    created_at: dateString(row.createdAt),
+    created_by_email: null,
+    error_msg: row.errorMsg,
+    kb_id: row.kbId ?? undefined,
+    ds_id: row.dsId ?? undefined,
+    docs_bucket: row.docsBucket ?? undefined,
+    vector_index_arn: row.vectorIndexArn ?? undefined,
+    suggestions_table: legacySuggestionsTableForBrainId(row.id),
+    connectors_table: legacyConnectorsTableForBrainId(row.id),
+    token_secret_arn: row.tokenSecretArn ?? undefined,
+  };
+}
 
 // Process-local cache. SSR Lambda containers are reused across invocations
 // so this avoids re-reading the registry on every request. TTL is short
@@ -171,22 +245,38 @@ export async function resolveBrainFromRequest(
   request: NextRequest
 ): Promise<ResolveResult> {
   const brainId = await readRequestedBrainId(request);
-  const brain = await fetchBrain(brainId);
-  if (!brain) {
+  const orgId = await readBetterAuthOrgId(request);
+  const brain = orgId
+    ? await fetchBrainFromPostgres(brainId, orgId)
+    : await fetchBrain(brainId);
+
+  // Better Auth/Postgres deployments should not fall through to the legacy
+  // global DDB registry when a user is signed in to an org. That would leak
+  // cross-org brains. Only use DDB when no Better Auth org context exists.
+  if (!brain && orgId) {
     return {
       ok: false,
       status: 404,
       error: `brain \`${brainId}\` not found`,
     };
   }
-  if (brain.status !== "ready") {
+
+  const resolvedBrain = brain ?? (await fetchBrain(brainId));
+  if (!resolvedBrain) {
+    return {
+      ok: false,
+      status: 404,
+      error: `brain \`${brainId}\` not found`,
+    };
+  }
+  if (resolvedBrain.status !== "ready") {
     return {
       ok: false,
       status: 409,
-      error: `brain \`${brainId}\` is ${brain.status}, not ready`,
+      error: `brain \`${brainId}\` is ${resolvedBrain.status}, not ready`,
     };
   }
-  return { ok: true, brain };
+  return { ok: true, brain: resolvedBrain };
 }
 
 /** Strip server-only fields from a brain row before returning it client-side. */

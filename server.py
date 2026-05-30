@@ -26,6 +26,7 @@ Auth:
 """
 
 import os
+import hashlib
 import time
 import uuid
 from contextvars import ContextVar
@@ -35,6 +36,8 @@ from typing import Any
 import boto3
 from botocore.config import Config
 from fastmcp import FastMCP
+import psycopg
+from psycopg.rows import dict_row
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
@@ -45,11 +48,14 @@ from starlette.routing import Mount
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 BRAINS_TABLE = os.environ.get("BRAINS_TABLE")
 AWS_PROFILE = os.environ.get("AWS_PROFILE")
+DATABASE_URL = os.environ.get("DATABASE_URL")
+MCP_TOKEN_PEPPER = os.environ.get("MCP_TOKEN_PEPPER")
 
-if not BRAINS_TABLE:
+if not BRAINS_TABLE and not DATABASE_URL:
     raise RuntimeError(
-        "BRAINS_TABLE env var is required. Set it to the DDB table name "
-        "output by `cdk deploy`."
+        "Either DATABASE_URL or BRAINS_TABLE env var is required. "
+        "DATABASE_URL enables the Postgres control plane; BRAINS_TABLE "
+        "enables the legacy DynamoDB control plane."
     )
 
 # ── AWS clients ───────────────────────────────────────────────────────
@@ -59,10 +65,10 @@ _boto_cfg = Config(retries={"max_attempts": 3, "mode": "standard"})
 
 bedrock_runtime = _session.client("bedrock-agent-runtime", config=_boto_cfg)
 s3_client = _session.client("s3", config=_boto_cfg)
-ddb = _session.resource("dynamodb", config=_boto_cfg)
+ddb = _session.resource("dynamodb", config=_boto_cfg) if BRAINS_TABLE else None
 secrets_client = _session.client("secretsmanager", config=_boto_cfg)
 
-_brains_table = ddb.Table(BRAINS_TABLE)
+_brains_table = ddb.Table(BRAINS_TABLE) if ddb and BRAINS_TABLE else None
 
 
 # ── Brain context — propagated through asyncio via ContextVar ─────────
@@ -93,11 +99,84 @@ _brain_cache: dict[str, tuple[dict[str, Any], float]] = {}
 _token_cache: dict[str, tuple[str, float]] = {}
 
 
+def _pg_fetchone(query: str, params: tuple[Any, ...]) -> dict[str, Any] | None:
+    """Run a small Postgres lookup and return one row as a dict."""
+    if not DATABASE_URL:
+        return None
+    try:
+        with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
+            with conn.cursor() as cur:
+                cur.execute(query, params)
+                row = cur.fetchone()
+                return dict(row) if row else None
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp] postgres lookup failed: {e}")
+        return None
+
+
+def _pg_execute(query: str, params: tuple[Any, ...]) -> None:
+    """Run a small Postgres write."""
+    if not DATABASE_URL:
+        raise RuntimeError("DATABASE_URL is not configured")
+    with psycopg.connect(DATABASE_URL, row_factory=dict_row) as conn:
+        with conn.cursor() as cur:
+            cur.execute(query, params)
+        conn.commit()
+
+
+def _load_brain_pg(brain_id: str) -> dict[str, Any] | None:
+    """Fetch a ready brain from Postgres; None if missing/not ready."""
+    row = _pg_fetchone(
+        """
+        select
+          id as brain_id,
+          org_id,
+          display_name,
+          description,
+          status,
+          kb_id,
+          ds_id,
+          docs_bucket,
+          vector_index_arn,
+          token_secret_arn
+        from brains
+        where id = %s and status = 'ready'
+        """,
+        (brain_id,),
+    )
+    if not row:
+        return None
+
+    # Legacy table names are still used by routes/tools that have not moved
+    # suggestions/connectors to Postgres yet.
+    row["suggestions_table"] = (
+        "context101-suggestions"
+        if brain_id == "default"
+        else f"context101-brain-{brain_id}-suggestions"
+    )
+    row["connectors_table"] = (
+        "context101-connectors"
+        if brain_id == "default"
+        else f"context101-brain-{brain_id}-connectors"
+    )
+    row["_source"] = "postgres"
+    return row
+
+
 def _load_brain(brain_id: str) -> dict[str, Any] | None:
-    """Fetch a brain row from BRAINS_TABLE; None if missing or not ready."""
+    """Fetch a brain row; prefer Postgres, fall back to legacy DDB."""
     cached = _brain_cache.get(brain_id)
     if cached and time.monotonic() - cached[1] < _BRAIN_TTL:
         return cached[0]
+
+    item = _load_brain_pg(brain_id)
+    if item:
+        _brain_cache[brain_id] = (item, time.monotonic())
+        return item
+
+    if not _brains_table:
+        return None
+
     try:
         resp = _brains_table.get_item(Key={"brain_id": brain_id})
     except Exception as e:  # noqa: BLE001
@@ -125,6 +204,50 @@ def _load_token(secret_arn: str) -> str | None:
         return None
     _token_cache[secret_arn] = (value, time.monotonic())
     return value
+
+
+def _hash_token(raw_token: str) -> str | None:
+    if not MCP_TOKEN_PEPPER:
+        return None
+    return hashlib.sha256((MCP_TOKEN_PEPPER + raw_token).encode("utf-8")).hexdigest()
+
+
+def _validate_token_pg(brain_id: str, presented: str | None) -> bool | None:
+    """Validate a bearer token against Postgres mcp_tokens.
+
+    Returns:
+      True/False when Postgres token validation is configured.
+      None when validation should fall back to Secrets Manager.
+    """
+    if not DATABASE_URL or not MCP_TOKEN_PEPPER or not presented:
+        return None
+
+    hashed = _hash_token(presented)
+    if not hashed:
+        return None
+
+    row = _pg_fetchone(
+        """
+        select id
+        from mcp_tokens
+        where brain_id = %s
+          and hashed_token = %s
+          and revoked_at is null
+          and (expires_at is null or expires_at > now())
+        limit 1
+        """,
+        (brain_id, hashed),
+    )
+    if row:
+        try:
+            _pg_execute(
+                "update mcp_tokens set last_used_at = now() where id = %s",
+                (row["id"],),
+            )
+        except Exception as e:  # noqa: BLE001
+            print(f"[mcp] failed to update token last_used_at: {e}")
+        return True
+    return False
 
 
 # ── MCP Server (single FastMCP, brain comes from contextvar) ──────────
@@ -327,6 +450,47 @@ def suggest_knowledge(
     """
     brain = _brain()
     suggestions_table_name = brain.get("suggestions_table")
+    if brain.get("_source") == "postgres":
+        if not title.strip() or not content.strip():
+            return "Both `title` and `content` are required."
+        if len(title) > 200:
+            return "Title too long (max 200 chars)."
+        if len(content) > 200_000:
+            return "Content too large (>200KB). Split into a smaller suggestion."
+
+        suggestion_id = str(uuid.uuid4())
+        now = datetime.now(timezone.utc).isoformat()
+        _pg_execute(
+            """
+            insert into suggestions (
+              id, org_id, brain_id, status, title, content, target_path,
+              rationale, trigger, proposed_by, created_at
+            )
+            values (%s, %s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (
+                suggestion_id,
+                brain["org_id"],
+                brain["brain_id"],
+                title.strip()[:200],
+                content,
+                target_path.strip() if target_path else None,
+                rationale.strip()[:2000] if rationale else None,
+                trigger.strip()[:500] if trigger else None,
+                "mcp_token",
+                now,
+            ),
+        )
+
+        kind = f"update to `{target_path}`" if target_path else "new document"
+        return (
+            f"✅ Suggestion submitted to brain `{brain['brain_id']}` ({kind}).\n\n"
+            f"**ID:** `{suggestion_id}`\n"
+            f"**Title:** {title}\n"
+            f"**Status:** pending — a human will review it in the Context101 admin UI. "
+            f"The change will not be part of the brain until approved."
+        )
+
     if not suggestions_table_name:
         return (
             f"Suggestions are disabled for brain `{brain['brain_id']}` "
@@ -448,26 +612,33 @@ async def _dispatch(scope, receive, send):
             404, {"error": f"brain `{brain_id}` not found or not ready"}
         )(scope, receive, send)
 
-    secret_arn = brain.get("token_secret_arn")
-    if not secret_arn:
-        return await _json_response(
-            503,
-            {"error": f"brain `{brain_id}` has no token configured"},
-        )(scope, receive, send)
-
-    expected = _load_token(secret_arn)
-    if not expected:
-        return await _json_response(
-            503,
-            {"error": f"brain `{brain_id}` token unavailable"},
-        )(scope, receive, send)
-
     presented = _extract_bearer(scope)
-    if not presented or presented != expected:
+    pg_valid = _validate_token_pg(brain_id, presented)
+    if pg_valid is False:
         return await _json_response(
             401,
             {"error": "invalid or missing bearer token"},
         )(scope, receive, send)
+    if pg_valid is None:
+        secret_arn = brain.get("token_secret_arn")
+        if not secret_arn:
+            return await _json_response(
+                503,
+                {"error": f"brain `{brain_id}` has no token configured"},
+            )(scope, receive, send)
+
+        expected = _load_token(secret_arn)
+        if not expected:
+            return await _json_response(
+                503,
+                {"error": f"brain `{brain_id}` token unavailable"},
+            )(scope, receive, send)
+
+        if not presented or presented != expected:
+            return await _json_response(
+                401,
+                {"error": "invalid or missing bearer token"},
+            )(scope, receive, send)
 
     # Rewrite the scope's path so FastMCP's own router matches /mcp routes
     # regardless of whether the client called /mcp or /brain/<id>/mcp.

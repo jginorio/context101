@@ -28,6 +28,10 @@
 #   4. GitHub PAT only: `gh auth token` if installed
 #
 # Override AWS profile via AWS_PROFILE in your env or the env file.
+# Optional OpenSaaS env values can also live in the env file:
+#   DATABASE_URL, DATABASE_DRIVER, DATABASE_PREPARE,
+#   BETTER_AUTH_SECRET, BETTER_AUTH_URL, MCP_TOKEN_PEPPER,
+#   APP_MODE, ALLOW_PUBLIC_SIGNUP, BILLING_ENABLED, APP_URL, MARKETING_URL.
 
 set -euo pipefail
 
@@ -142,6 +146,28 @@ CDK_ARGS=("$SUBCOMMAND")
 $SEED && CDK_ARGS+=("-c" "seed=true")
 CDK_ARGS+=("-c" "token=$TOKEN")
 CDK_ARGS+=("-c" "githubToken=$GH_TOKEN")
+
+add_context_if_set() {
+  local key="$1"
+  local value="${!key:-}"
+  if [[ -n "$value" ]]; then
+    CDK_ARGS+=("-c" "$key=$value")
+  fi
+  return 0
+}
+
+add_context_if_set "DATABASE_URL"
+add_context_if_set "DATABASE_DRIVER"
+add_context_if_set "DATABASE_PREPARE"
+add_context_if_set "BETTER_AUTH_SECRET"
+add_context_if_set "BETTER_AUTH_URL"
+add_context_if_set "MCP_TOKEN_PEPPER"
+add_context_if_set "APP_MODE"
+add_context_if_set "ALLOW_PUBLIC_SIGNUP"
+add_context_if_set "BILLING_ENABLED"
+add_context_if_set "APP_URL"
+add_context_if_set "MARKETING_URL"
+
 if [[ "$SUBCOMMAND" == "deploy" ]]; then
   CDK_ARGS+=("--require-approval" "never")
 fi
@@ -157,6 +183,17 @@ printf "\n${BOLD}cdk %s${RESET}\n" "$SUBCOMMAND"
 [[ -n "${AWS_PROFILE:-}" ]] && printf "  ${DIM}AWS_PROFILE: %s${RESET}\n" "$AWS_PROFILE"
 printf "  ${DIM}token:       %s${RESET}\n" "$(mask "$TOKEN")"
 printf "  ${DIM}githubToken: %s${RESET}\n" "$(mask "$GH_TOKEN")"
+[[ -n "${DATABASE_URL:-}" ]]        && printf "  ${DIM}DATABASE_URL:       %s${RESET}\n" "$(mask "$DATABASE_URL")"
+[[ -n "${DATABASE_DRIVER:-}" ]]     && printf "  ${DIM}DATABASE_DRIVER:    %s${RESET}\n" "$DATABASE_DRIVER"
+[[ -n "${DATABASE_PREPARE:-}" ]]    && printf "  ${DIM}DATABASE_PREPARE:   %s${RESET}\n" "$DATABASE_PREPARE"
+[[ -n "${BETTER_AUTH_SECRET:-}" ]]  && printf "  ${DIM}BETTER_AUTH_SECRET: %s${RESET}\n" "$(mask "$BETTER_AUTH_SECRET")"
+[[ -n "${BETTER_AUTH_URL:-}" ]]     && printf "  ${DIM}BETTER_AUTH_URL:    %s${RESET}\n" "$BETTER_AUTH_URL"
+[[ -n "${MCP_TOKEN_PEPPER:-}" ]]    && printf "  ${DIM}MCP_TOKEN_PEPPER:   %s${RESET}\n" "$(mask "$MCP_TOKEN_PEPPER")"
+[[ -n "${APP_MODE:-}" ]]            && printf "  ${DIM}APP_MODE:           %s${RESET}\n" "$APP_MODE"
+[[ -n "${ALLOW_PUBLIC_SIGNUP:-}" ]] && printf "  ${DIM}ALLOW_PUBLIC_SIGNUP:%s${RESET}\n" "$ALLOW_PUBLIC_SIGNUP"
+[[ -n "${BILLING_ENABLED:-}" ]]     && printf "  ${DIM}BILLING_ENABLED:    %s${RESET}\n" "$BILLING_ENABLED"
+[[ -n "${APP_URL:-}" ]]             && printf "  ${DIM}APP_URL:            %s${RESET}\n" "$APP_URL"
+[[ -n "${MARKETING_URL:-}" ]]       && printf "  ${DIM}MARKETING_URL:      %s${RESET}\n" "$MARKETING_URL"
 $SEED && printf "  ${DIM}seed:        ${RESET}${YELLOW}true${RESET}\n"
 printf "\n"
 
