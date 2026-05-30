@@ -6,18 +6,20 @@ import {
   Brain,
   Code2,
   FileCode,
-  FileSpreadsheet,
-  FileText,
   FileType2,
-  GitBranch,
   Layers,
   MessageSquare,
-  Notebook,
-  Presentation,
   Terminal,
   TerminalSquare,
 } from "lucide-react";
 
+import {
+  GithubLogo,
+  GoogleDocsLogo,
+  GoogleSheetsLogo,
+  GoogleSlidesLogo,
+  NotionLogo,
+} from "@/components/stack-logos";
 import { cn } from "@/lib/utils";
 
 /**
@@ -63,7 +65,7 @@ const LEFT_NODES: Node[] = [
   {
     id: "sheets",
     label: "Google Sheets",
-    Icon: FileSpreadsheet,
+    Icon: GoogleSheetsLogo,
     x: 4,
     y: 4,
     side: "left",
@@ -71,7 +73,7 @@ const LEFT_NODES: Node[] = [
   {
     id: "docs",
     label: "Google Docs",
-    Icon: FileText,
+    Icon: GoogleDocsLogo,
     x: 4,
     y: 16,
     side: "left",
@@ -79,13 +81,13 @@ const LEFT_NODES: Node[] = [
   {
     id: "slides",
     label: "Google Slides",
-    Icon: Presentation,
+    Icon: GoogleSlidesLogo,
     x: 4,
     y: 28,
     side: "left",
   },
-  { id: "notion", label: "Notion", Icon: Notebook, x: 4, y: 40, side: "left" },
-  { id: "github", label: "GitHub", Icon: GitBranch, x: 4, y: 52, side: "left" },
+  { id: "notion", label: "Notion", Icon: NotionLogo, x: 4, y: 40, side: "left" },
+  { id: "github", label: "GitHub", Icon: GithubLogo, x: 4, y: 52, side: "left" },
   {
     id: "markdown",
     label: "Markdown",

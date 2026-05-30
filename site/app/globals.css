@@ -89,9 +89,60 @@ a {
   }
 }
 
+.marquee-wrap {
+  display: flex;
+  gap: var(--gap, 2.5rem);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 8%,
+    #000 92%,
+    transparent
+  );
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 8%,
+    #000 92%,
+    transparent
+  );
+}
+
+.marquee-row {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  gap: var(--gap, 2.5rem);
+  min-width: max-content;
+  animation: marquee var(--duration, 32s) linear infinite;
+}
+
+.marquee-row[data-reverse="true"] {
+  animation-direction: reverse;
+}
+
+.marquee-wrap[data-pause="true"]:hover .marquee-row {
+  animation-play-state: paused;
+}
+
+@keyframes marquee {
+  to {
+    transform: translateX(calc(-100% - var(--gap, 2.5rem)));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .fade-in,
   .typing-cursor {
     animation: none;
+  }
+  .marquee-row {
+    animation: none;
+  }
+  .marquee-wrap {
+    -webkit-mask-image: none;
+    mask-image: none;
+    overflow-x: auto;
   }
 }
