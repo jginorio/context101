@@ -7,8 +7,8 @@
 # interprets the missing resources as "the user wants them gone" and
 # tears down:
 #   · App Runner MCP service           (-c token=<bearer>)
-#   · Amplify Hosting + Cognito user
-#     pool + wiki-gen Fargate stack    (-c githubToken=<PAT>)
+#   · Amplify Hosting + wiki-gen
+#     Fargate stack                    (-c githubToken=<PAT>)
 #
 # We've shipped that footgun once. This wrapper refuses to invoke cdk
 # deploy / diff without the tokens present.
@@ -111,8 +111,8 @@ if needs_guard && [[ -z "$TOKEN" || -z "$GH_TOKEN" ]]; then
 
   ${BOLD}Why this matters:${RESET} the stack's MCP service and Amplify branches
   are gated on CDK context flags. Running cdk deploy without them
-  deletes those resources (including the Cognito user pool, your
-  teammates' accounts, and the wiki-gen Fargate task).
+  deletes those resources (including the App Runner MCP service and
+  the wiki-gen Fargate task).
 
   ${BOLD}Set them up:${RESET}
 

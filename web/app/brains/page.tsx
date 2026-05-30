@@ -34,10 +34,9 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { useBrain, type ClientBrain } from "@/lib/brain-context";
-
-import "@/utils/amplify-client-config";
 
 const MCP_HOST = process.env.NEXT_PUBLIC_MCP_HOST ?? "";
 
@@ -558,11 +557,19 @@ export default function BrainsPage() {
 
       <section className="mx-auto w-full max-w-3xl px-4 sm:px-6 py-6 sm:py-8 space-y-4">
         {loading ? (
-          <Card>
-            <CardContent className="py-10 flex items-center justify-center text-sm text-muted-foreground">
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Loading brains…
-            </CardContent>
-          </Card>
+          Array.from({ length: 3 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="pt-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-4 w-4 rounded" />
+                  <Skeleton className="h-5 w-40" />
+                  <Skeleton className="h-4 w-16" />
+                </div>
+                <Skeleton className="h-3 w-56" />
+                <Skeleton className="h-16 w-full" />
+              </CardContent>
+            </Card>
+          ))
         ) : items.length === 0 ? (
           <Card>
             <CardHeader>

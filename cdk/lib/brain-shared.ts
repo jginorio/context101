@@ -1,21 +1,17 @@
 import * as cdk from "aws-cdk-lib";
 import { Construct } from "constructs";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as cr from "aws-cdk-lib/custom-resources";
 import * as path from "path";
 
 /**
  * Shared control-plane primitives for the multi-brain system.
  *
- *   • BrainsTable          — registry of brains. One row per brain.
  *   • brainProvisionerFn   — owns IAM for runtime creation/deletion of
  *                            per-brain resources (S3 bucket, KB, vector
- *                            index, DDB tables, bearer-token secret).
- *   • registerDefaultBrain — one-shot custom resource that inserts the
- *                            existing single brain's resources into
- *                            BrainsTable as `brain_id="default"`. Idempotent.
+ *                            index, bearer-token secret) and writes the
+ *                            brain row to the Postgres `brains` registry
+ *                            (the control-plane source of truth).
  *
  * Resource naming: every per-brain resource follows the pattern
  * `context101-brain-<brain_id>-…`. IAM on the provisioner is scoped to
@@ -35,46 +31,16 @@ export interface BrainSharedProps {
   // The auto-ingest Lambda — provisioner adds S3 notifications pointed at it.
   autoIngestFn: lambda.IFunction;
   // Shared Neon-over-HTTP helper layer + connection string. The provisioner
-  // writes the brain registry row to Postgres (the control-plane source of
-  // truth) instead of DynamoDB.
+  // writes the brain registry row to Postgres.
   pgHttpLayer: lambda.ILayerVersion;
   databaseUrl?: string;
-  // Default brain registration inputs.
-  defaultBrain: {
-    docsBucket: string;
-    kbId: string;
-    dsId: string;
-    vectorIndexArn: string;
-    suggestionsTable: string;
-    connectorsTable: string;
-    tokenSecretArn: string;
-  };
 }
 
 export class BrainShared extends Construct {
-  public readonly brainsTable: dynamodb.TableV2;
   public readonly provisionerFn: lambda.Function;
 
   constructor(scope: Construct, id: string, props: BrainSharedProps) {
     super(scope, id);
-
-    // ── BrainsTable — global registry ───────────────────────────────────
-    this.brainsTable = new dynamodb.TableV2(this, "BrainsTable", {
-      tableName: `${props.namePrefix}-brains`,
-      partitionKey: { name: "brain_id", type: dynamodb.AttributeType.STRING },
-      billing: dynamodb.Billing.onDemand(),
-      pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      globalSecondaryIndexes: [
-        {
-          // List brains by status (e.g. status=ready, newest first) without
-          // scanning. The web UI uses this for the switcher dropdown.
-          indexName: "status-created_at-index",
-          partitionKey: { name: "status", type: dynamodb.AttributeType.STRING },
-          sortKey: { name: "created_at", type: dynamodb.AttributeType.STRING },
-        },
-      ],
-    });
 
     // ── BrainProvisionerFn — runtime create/delete handler ─────────────
     //
@@ -122,10 +88,8 @@ export class BrainShared extends Construct {
       memorySize: 512,
       layers: [props.pgHttpLayer],
       environment: {
-        // Registry now lives in Postgres; BRAINS_TABLE retained for the
-        // RegisterDefaultBrain custom resource only — the provisioner no
-        // longer reads/writes it.
-        BRAINS_TABLE: this.brainsTable.tableName,
+        // The brain registry lives in Postgres; the provisioner writes the
+        // row over HTTP via DATABASE_URL (no DynamoDB).
         AWS_ACCOUNT_ID: cdk.Stack.of(this).account,
         VECTOR_BUCKET_NAME: props.vectorBucketName,
         SHARED_KB_ROLE_ARN: props.sharedKbRoleArn,
@@ -135,8 +99,6 @@ export class BrainShared extends Construct {
         ...(props.databaseUrl ? { DATABASE_URL: props.databaseUrl } : {}),
       },
     });
-
-    this.brainsTable.grantReadWriteData(this.provisionerFn);
 
     // S3: create/delete brain-specific buckets and configure them.
     this.provisionerFn.addToRolePolicy(
@@ -233,25 +195,9 @@ export class BrainShared extends Construct {
       })
     );
 
-    // DynamoDB: create/delete per-brain tables.
+    // Secrets Manager: create/delete per-brain bearer tokens.
     const stackAcct = cdk.Stack.of(this).account;
     const stackRegion = cdk.Stack.of(this).region;
-    this.provisionerFn.addToRolePolicy(
-      new iam.PolicyStatement({
-        sid: "ManageBrainTables",
-        actions: [
-          "dynamodb:CreateTable",
-          "dynamodb:DeleteTable",
-          "dynamodb:DescribeTable",
-          "dynamodb:UpdateTable",
-        ],
-        resources: [
-          `arn:aws:dynamodb:${stackRegion}:${stackAcct}:table/${props.namePrefix}-brain-*`,
-        ],
-      })
-    );
-
-    // Secrets Manager: create/delete per-brain bearer tokens.
     this.provisionerFn.addToRolePolicy(
       new iam.PolicyStatement({
         sid: "ManageBrainTokenSecrets",
@@ -293,73 +239,9 @@ export class BrainShared extends Construct {
       })
     );
 
-    // ── RegisterDefaultBrain — one-shot custom resource ─────────────────
-    //   Writes a row to BrainsTable mapping `default` → existing resources.
-    //   Idempotent via ConditionExpression: attribute_not_exists. On stack
-    //   delete it's a no-op (we never want to remove the default brain row
-    //   from the registry — the row's deletion is what would orphan the
-    //   retained S3/KB resources).
-    const isoNow = new Date().toISOString();
-    new cr.AwsCustomResource(this, "RegisterDefaultBrain", {
-      onCreate: {
-        service: "DynamoDB",
-        action: "putItem",
-        parameters: {
-          TableName: this.brainsTable.tableName,
-          Item: {
-            brain_id: { S: "default" },
-            display_name: { S: "Default" },
-            status: { S: "ready" },
-            created_at: { S: isoNow },
-            docs_bucket: { S: props.defaultBrain.docsBucket },
-            kb_id: { S: props.defaultBrain.kbId },
-            ds_id: { S: props.defaultBrain.dsId },
-            vector_index_arn: { S: props.defaultBrain.vectorIndexArn },
-            suggestions_table: { S: props.defaultBrain.suggestionsTable },
-            connectors_table: { S: props.defaultBrain.connectorsTable },
-            token_secret_arn: { S: props.defaultBrain.tokenSecretArn },
-          },
-          ConditionExpression: "attribute_not_exists(brain_id)",
-        },
-        physicalResourceId: cr.PhysicalResourceId.of("register-default-brain"),
-        // ConditionalCheckFailedException = row already there → success.
-        ignoreErrorCodesMatching: "ConditionalCheckFailedException",
-      },
-      onUpdate: {
-        // On stack updates, refresh the row's handles in case the default
-        // brain's KB/DS/tables got rewired by a CDK change. Use UpdateItem
-        // so we don't clobber created_at / status.
-        service: "DynamoDB",
-        action: "updateItem",
-        parameters: {
-          TableName: this.brainsTable.tableName,
-          Key: { brain_id: { S: "default" } },
-          UpdateExpression:
-            "SET docs_bucket = :db, kb_id = :kb, ds_id = :ds, " +
-            "vector_index_arn = :vi, suggestions_table = :st, " +
-            "connectors_table = :ct, token_secret_arn = :ts",
-          ExpressionAttributeValues: {
-            ":db": { S: props.defaultBrain.docsBucket },
-            ":kb": { S: props.defaultBrain.kbId },
-            ":ds": { S: props.defaultBrain.dsId },
-            ":vi": { S: props.defaultBrain.vectorIndexArn },
-            ":st": { S: props.defaultBrain.suggestionsTable },
-            ":ct": { S: props.defaultBrain.connectorsTable },
-            ":ts": { S: props.defaultBrain.tokenSecretArn },
-          },
-        },
-        physicalResourceId: cr.PhysicalResourceId.of("register-default-brain"),
-      },
-      // No onDelete — we deliberately do NOT remove the default row when
-      // the stack is destroyed. The retained S3/KB live on, and the row
-      // documents how to reattach.
-      policy: cr.AwsCustomResourcePolicy.fromStatements([
-        new iam.PolicyStatement({
-          actions: ["dynamodb:PutItem", "dynamodb:UpdateItem"],
-          resources: [this.brainsTable.tableArn],
-        }),
-      ]),
-      installLatestAwsSdk: false,
-    });
+    // The `default` brain row already lives in the Postgres `brains`
+    // registry (seeded during the migration off DynamoDB). New brains are
+    // written there by the provisioner, so there's no CDK-managed
+    // registration step anymore.
   }
 }

@@ -61,7 +61,7 @@ export type Connector = {
   last_error?: string;
   last_error_at?: string;
   created_at: string;
-  created_by?: string; // Cognito email of the user who added this
+  created_by?: string; // email (or user id) of the user who added this
   // Set on create — the brain this connector belongs to. Stored on the
   // row so dispatchers / sync Lambdas can route into the right brain
   // without re-reading the registry. Each brain has its own connectors

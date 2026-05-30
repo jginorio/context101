@@ -1,8 +1,6 @@
 "use client";
 
 import * as React from "react";
-import "@aws-amplify/ui-react/styles.css";
-import { signOut } from "aws-amplify/auth";
 import Link from "next/link";
 import {
   BookOpen,
@@ -16,7 +14,9 @@ import {
 import { toast } from "sonner";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SignOutButton } from "@/components/sign-out-button";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Sheet,
   SheetContent,
@@ -28,8 +28,6 @@ import { BrainStatusGate } from "@/components/brain-status-gate";
 import { OpenInChat } from "@/components/open-in-chat";
 import { WikiMarkdown } from "@/components/previews/wiki-markdown";
 import { cn } from "@/lib/utils";
-
-import "@/utils/amplify-client-config";
 
 type WikiPage = {
   id: string;
@@ -329,7 +327,11 @@ export default function WikiPage() {
   const navContent = (
     <>
       {!indexLoaded ? (
-        <p className="px-2 py-2 text-sm text-muted-foreground">Loading…</p>
+        <div className="space-y-1.5 px-2 py-2">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <Skeleton key={i} className="h-7 w-full" />
+          ))}
+        </div>
       ) : !index || index.pages.length === 0 ? (
         !codeWikis.length ? (
           <p className="px-2 py-2 text-sm text-muted-foreground">
@@ -529,16 +531,7 @@ export default function WikiPage() {
         </div>
         <div className="flex items-center gap-1 sm:gap-2 shrink-0">
           <ThemeToggle />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              signOut().then(() => (window.location.href = "/login?next=/knowledge"))
-            }
-            className="hidden sm:inline-flex"
-          >
-            Sign out
-          </Button>
+          <SignOutButton next="/wiki" className="hidden sm:inline-flex" />
         </div>
       </header>
 
@@ -555,7 +548,15 @@ export default function WikiPage() {
             {/* Mobile/tablet: meta card inline above content */}
             <div className="lg:hidden mb-4">{metaCard}</div>
             {contentLoading ? (
-              <p className="text-sm text-muted-foreground">Loading page…</p>
+              <div className="mx-auto max-w-3xl space-y-4">
+                <Skeleton className="h-8 w-2/3" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-11/12" />
+                <Skeleton className="h-4 w-4/5" />
+                <Skeleton className="h-40 w-full" />
+                <Skeleton className="h-4 w-full" />
+                <Skeleton className="h-4 w-3/4" />
+              </div>
             ) : activePage && content ? (
               <>
                 <div className="mb-4 flex flex-wrap items-center justify-between gap-2">

@@ -1,8 +1,6 @@
 "use client";
 
 import * as React from "react";
-import "@aws-amplify/ui-react/styles.css";
-import { signOut } from "aws-amplify/auth";
 import Link from "next/link";
 import {
   BookOpen,
@@ -16,6 +14,7 @@ import {
 } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { SignOutButton } from "@/components/sign-out-button";
 import { BrainSwitcher } from "@/components/brain-switcher";
 import { KnowledgeTree } from "@/components/knowledge-tree";
 import { KnowledgeViewer } from "@/components/knowledge-viewer";
@@ -30,7 +29,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 
-import "@/utils/amplify-client-config";
 import { BrainStatusGate } from "@/components/brain-status-gate";
 import { useBrain } from "@/lib/brain-context";
 
@@ -201,16 +199,7 @@ export default function Home() {
             </Button>
           </Link>
           <ThemeToggle />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() =>
-              signOut().then(() => (window.location.href = "/login?next=/knowledge"))
-            }
-            className="hidden sm:inline-flex"
-          >
-            Sign out
-          </Button>
+          <SignOutButton next="/knowledge" className="hidden sm:inline-flex" />
         </div>
       </header>
 

@@ -24,11 +24,10 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
+import { Skeleton } from "@/components/ui/skeleton";
 import { BrainStatusGate } from "@/components/brain-status-gate";
 import { SuggestionReviewSheet } from "@/components/suggestion-review-sheet";
 import { cn } from "@/lib/utils";
-
-import "@/utils/amplify-client-config";
 
 type Suggestion = {
   id: string;
@@ -209,14 +208,27 @@ export default function SuggestionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading && items === null && (
-                <TableRow>
-                  <TableCell colSpan={5} className="text-center py-10">
-                    <Loader2 className="inline h-4 w-4 animate-spin mr-2" />
-                    Loading…
-                  </TableCell>
-                </TableRow>
-              )}
+              {loading &&
+                items === null &&
+                Array.from({ length: 5 }).map((_, i) => (
+                  <TableRow key={i}>
+                    <TableCell>
+                      <Skeleton className="h-4 w-48" />
+                    </TableCell>
+                    <TableCell className="hidden lg:table-cell">
+                      <Skeleton className="h-4 w-full" />
+                    </TableCell>
+                    <TableCell className="hidden md:table-cell">
+                      <Skeleton className="h-4 w-24" />
+                    </TableCell>
+                    <TableCell className="hidden sm:table-cell">
+                      <Skeleton className="h-4 w-20" />
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <Skeleton className="ml-auto h-4 w-16" />
+                    </TableCell>
+                  </TableRow>
+                ))}
               {!loading && filtered.length === 0 && (
                 <TableRow>
                   <TableCell

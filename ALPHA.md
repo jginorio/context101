@@ -17,8 +17,8 @@ Context101 is alpha software. It started as an internal proof of concept and is 
 
 ## Known Product Caveats
 
-- Any signed-in Cognito user is currently an admin for the web app.
-- Any signed-in Cognito user can reveal a ready brain's MCP bearer token.
+- Any signed-in user in the organization is currently an admin for the web app.
+- Any signed-in user can reveal a ready brain's MCP bearer token.
 - There is no per-brain RBAC, per-document ACL, SCIM, SSO, or per-user MCP audit trail yet.
 - The GitHub connector uses a pasted Personal Access Token rather than a GitHub App/OAuth install flow.
 - Google Workspace, Notion, and GitHub connectors are useful but still early and intentionally simple.

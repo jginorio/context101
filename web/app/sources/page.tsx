@@ -23,6 +23,7 @@ import { toast } from "sonner";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,8 +43,6 @@ import {
 import { AddSourceDialog } from "@/components/add-source-dialog";
 import { BrainStatusGate } from "@/components/brain-status-gate";
 import { cn } from "@/lib/utils";
-
-import "@/utils/amplify-client-config";
 
 type Status =
   | "pending_auth"
@@ -258,13 +257,22 @@ function SourcesContent() {
           </div>
         )}
 
-        {items === null && loading && (
-          <Card>
-            <CardContent className="p-6 flex items-center gap-2 text-sm text-muted-foreground">
-              <Loader2 className="h-4 w-4 animate-spin" /> Loading…
-            </CardContent>
-          </Card>
-        )}
+        {items === null &&
+          loading &&
+          Array.from({ length: 4 }).map((_, i) => (
+            <Card key={i}>
+              <CardContent className="p-4">
+                <div className="flex items-start gap-3">
+                  <Skeleton className="mt-0.5 h-8 w-8 rounded" />
+                  <div className="min-w-0 flex-1 space-y-2">
+                    <Skeleton className="h-4 w-48" />
+                    <Skeleton className="h-3 w-64" />
+                    <Skeleton className="h-3 w-32" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
 
         {items && items.length === 0 && (
           <Card>

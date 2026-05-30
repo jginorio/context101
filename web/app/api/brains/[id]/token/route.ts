@@ -19,7 +19,7 @@ const secrets = new SecretsManagerClient({
  * exposed via `NEXT_PUBLIC_*` env, so the only path for a browser to
  * see it is this signed-in route.
  *
- * Auth: proxy.ts gates `/api/*` behind a valid Cognito session. Any
+ * Auth: proxy.ts gates `/api/*` behind a valid Better Auth session. Any
  * authenticated user can read any brain's token (matches today's
  * permission model where logged-in users have full admin access). When
  * we add per-brain RBAC, add a check here.

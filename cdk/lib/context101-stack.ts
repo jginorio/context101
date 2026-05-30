@@ -15,7 +15,6 @@ import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as events_targets from "aws-cdk-lib/aws-events-targets";
-import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as path from "path";
 import { BrainShared } from "./brain-shared";
 
@@ -68,47 +67,9 @@ export class Context101Stack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.RETAIN,
     });
 
-    // ── 1a. Suggestions table ────────────────────────────────────────
-    //      Agents (via the MCP tool `suggest_knowledge`) write rows
-    //      here. The web admin lists / approves / rejects them. On
-    //      approval, the web route writes the content to the docs
-    //      bucket and flips status to `accepted`.
-    const suggestionsTable = new dynamodb.TableV2(this, "SuggestionsTable", {
-      tableName: `${namePrefix}-suggestions`,
-      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
-      billing: dynamodb.Billing.onDemand(),
-      pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      globalSecondaryIndexes: [
-        {
-          // Lets the UI list all suggestions in a given status newest first.
-          indexName: "status-created_at-index",
-          partitionKey: { name: "status", type: dynamodb.AttributeType.STRING },
-          sortKey: { name: "created_at", type: dynamodb.AttributeType.STRING },
-        },
-      ],
-    });
-
-    // ── 1b. Connectors table ─────────────────────────────────────────
-    //      Per-connection metadata + pointer to the Secrets Manager
-    //      secret that holds the OAuth refresh_token. No secrets live in
-    //      Dynamo directly.
-    const connectorsTable = new dynamodb.TableV2(this, "ConnectorsTable", {
-      tableName: `${namePrefix}-connectors`,
-      partitionKey: { name: "id", type: dynamodb.AttributeType.STRING },
-      billing: dynamodb.Billing.onDemand(),
-      pointInTimeRecovery: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      globalSecondaryIndexes: [
-        {
-          // Quick list of "broken" connections without scanning, and for
-          // the dispatcher Lambda to enumerate active ones on each tick.
-          indexName: "status-created_at-index",
-          partitionKey: { name: "status", type: dynamodb.AttributeType.STRING },
-          sortKey: { name: "created_at", type: dynamodb.AttributeType.STRING },
-        },
-      ],
-    });
+    // Suggestions and connectors live in the Postgres control plane
+    // (tables `suggestions` / `connectors`), written by the web app + MCP
+    // server. They are no longer backed by DynamoDB.
 
     // ── 2. S3 Vectors bucket + index ─────────────────────────────────
     // Version suffix — bump this whenever a change to the Index config
@@ -239,12 +200,12 @@ export class Context101Stack extends cdk.Stack {
     });
 
     // ── 6. Auto-ingest Lambda ─────────────────────────────────────────
-    //   One shared Lambda — looks the brain up in BRAINS_TABLE by the
-    //   bucket name in the S3 event, fires StartIngestionJob against
-    //   that brain's KB. Each brain's bucket adds a notification + a
-    //   ResourcePolicy statement on this Lambda when provisioned
-    //   (see brain-provisioner). The default brain's bucket gets the
-    //   notification wired the regular CDK way below.
+    //   One shared Lambda — looks the brain up in the Postgres `brains`
+    //   registry by the bucket name in the S3 event, fires
+    //   StartIngestionJob against that brain's KB. Each brain's bucket
+    //   adds a notification + a ResourcePolicy statement on this Lambda
+    //   when provisioned (see brain-provisioner). The default brain's
+    //   bucket gets the notification wired the regular CDK way below.
     const ingestFn = new lambda.Function(this, "AutoIngestFn", {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "index.handler",
@@ -252,9 +213,8 @@ export class Context101Stack extends cdk.Stack {
       timeout: cdk.Duration.seconds(30),
       layers: [pgHttpLayer],
       environment: {
-        // Brain lookups now come from Postgres (status=ready rows mapped
-        // by docs_bucket). DATABASE_URL is injected here; BRAINS_TABLE is
-        // still wired below for any legacy fallback but is no longer read.
+        // Brain lookups come from Postgres (status=ready rows mapped by
+        // docs_bucket) via DATABASE_URL.
         ...pgLambdaEnv,
       },
     });
@@ -497,7 +457,6 @@ export class Context101Stack extends cdk.Stack {
         },
       }
     );
-    connectorsTable.grantReadWriteData(connectorSyncSheetsFn);
     docsBucket.grantReadWrite(connectorSyncSheetsFn);
     googleOAuthClientSecret.grantRead(connectorSyncSheetsFn);
     // Per-connection refresh-token secrets are named
@@ -533,7 +492,6 @@ export class Context101Stack extends cdk.Stack {
         },
       }
     );
-    connectorsTable.grantReadWriteData(connectorSyncDocsFn);
     docsBucket.grantReadWrite(connectorSyncDocsFn);
     googleOAuthClientSecret.grantRead(connectorSyncDocsFn);
     connectorSyncDocsFn.addToRolePolicy(
@@ -566,7 +524,6 @@ export class Context101Stack extends cdk.Stack {
         },
       }
     );
-    connectorsTable.grantReadWriteData(connectorSyncSlidesFn);
     docsBucket.grantReadWrite(connectorSyncSlidesFn);
     googleOAuthClientSecret.grantRead(connectorSyncSlidesFn);
     connectorSyncSlidesFn.addToRolePolicy(
@@ -605,7 +562,6 @@ export class Context101Stack extends cdk.Stack {
         },
       }
     );
-    connectorsTable.grantReadWriteData(connectorSyncGithubFn);
     docsBucket.grantReadWrite(connectorSyncGithubFn);
     connectorSyncGithubFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -636,7 +592,6 @@ export class Context101Stack extends cdk.Stack {
         },
       }
     );
-    connectorsTable.grantReadWriteData(connectorSyncNotionFn);
     docsBucket.grantReadWrite(connectorSyncNotionFn);
     connectorSyncNotionFn.addToRolePolicy(
       new iam.PolicyStatement({
@@ -670,7 +625,6 @@ export class Context101Stack extends cdk.Stack {
         },
       }
     );
-    connectorsTable.grantReadData(connectorDispatchFn);
     connectorSyncSheetsFn.grantInvoke(connectorDispatchFn);
     connectorSyncDocsFn.grantInvoke(connectorDispatchFn);
     connectorSyncSlidesFn.grantInvoke(connectorDispatchFn);
@@ -684,9 +638,6 @@ export class Context101Stack extends cdk.Stack {
       targets: [new events_targets.LambdaFunction(connectorDispatchFn)],
     });
 
-    new cdk.CfnOutput(this, "ConnectorsTableName", {
-      value: connectorsTable.tableName,
-    });
     new cdk.CfnOutput(this, "ConnectorSyncSheetsFnName", {
       value: connectorSyncSheetsFn.functionName,
     });
@@ -704,8 +655,7 @@ export class Context101Stack extends cdk.Stack {
     });
 
     // ── 7b. Multi-brain control plane ─────────────────────────────────
-    //   Declared BEFORE the optional App Runner block so the MCP service
-    //   can wire BRAINS_TABLE into its container env, and the App Runner
+    //   Declared BEFORE the optional App Runner block so the App Runner
     //   instance role can grant cross-brain access. The default brain's
     //   token_secret_arn is resolved via cdk.Lazy because the secret
     //   itself is conditional on `-c token=<value>` being passed.
@@ -777,35 +727,12 @@ export class Context101Stack extends cdk.Stack {
       autoIngestFn: ingestFn,
       pgHttpLayer,
       databaseUrl,
-      defaultBrain: {
-        docsBucket: docsBucket.bucketName,
-        kbId: kb.attrKnowledgeBaseId,
-        dsId: dataSource.attrDataSourceId,
-        vectorIndexArn,
-        suggestionsTable: suggestionsTable.tableName,
-        connectorsTable: connectorsTable.tableName,
-        // Resolved at synth-end — the App Runner block below may set
-        // defaultBrainTokenSecret. Empty string when teamToken wasn't
-        // passed on this deploy; web/MCP code treats that as "no token
-        // configured" and replies 503.
-        tokenSecretArn: cdk.Lazy.string({
-          produce: () => defaultBrainTokenSecret?.secretArn ?? "",
-        }),
-      },
     });
-    ingestFn.addEnvironment("BRAINS_TABLE", brainShared.brainsTable.tableName);
-    brainShared.brainsTable.grantReadData(ingestFn);
 
-    // Connector plane — read brain registry + widen IAM to any brain's
-    // connectors table + docs bucket. Sync Lambdas now take connectorsTable
-    // + docsBucket per invocation from the event payload, so they need
-    // wildcard access to context101-brain-* resources.
-    connectorDispatchFn.addEnvironment(
-      "BRAINS_TABLE",
-      brainShared.brainsTable.tableName
-    );
-    brainShared.brainsTable.grantReadData(connectorDispatchFn);
-
+    // Connector plane — sync Lambdas read/write the Postgres `connectors`
+    // table (over HTTP via DATABASE_URL) and each brain's docs bucket. They
+    // need wildcard S3 access to context101-brain-* buckets so a
+    // newly-provisioned brain works without redeploying.
     const allSyncFns = [
       connectorSyncSheetsFn,
       connectorSyncDocsFn,
@@ -814,22 +741,6 @@ export class Context101Stack extends cdk.Stack {
       connectorSyncGithubFn,
     ];
     for (const fn of allSyncFns) {
-      fn.addToRolePolicy(
-        new iam.PolicyStatement({
-          sid: "RwBrainConnectorsTables",
-          actions: [
-            "dynamodb:GetItem",
-            "dynamodb:PutItem",
-            "dynamodb:UpdateItem",
-            "dynamodb:Query",
-            "dynamodb:Scan",
-          ],
-          resources: [
-            `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-connectors`,
-            `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-connectors/index/*`,
-          ],
-        })
-      );
       fn.addToRolePolicy(
         new iam.PolicyStatement({
           sid: "RwBrainDocsBuckets",
@@ -846,22 +757,7 @@ export class Context101Stack extends cdk.Stack {
         })
       );
     }
-    // Dispatcher needs to Query any brain's connectors table.
-    connectorDispatchFn.addToRolePolicy(
-      new iam.PolicyStatement({
-        sid: "QueryBrainConnectorsTables",
-        actions: ["dynamodb:Query"],
-        resources: [
-          `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-connectors`,
-          `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-connectors/index/*`,
-        ],
-      })
-    );
 
-    new cdk.CfnOutput(this, "BrainsTableName", {
-      value: brainShared.brainsTable.tableName,
-      description: "Registry of all brains. Web UI + MCP both read from this.",
-    });
     new cdk.CfnOutput(this, "BrainProvisionerFnName", {
       value: brainShared.provisionerFn.functionName,
       description:
@@ -920,9 +816,10 @@ export class Context101Stack extends cdk.Stack {
           ],
         })
       );
-      // BrainsTable registry — read on every request to resolve the brain.
-      brainShared.brainsTable.grantReadData(instanceRole);
-      // Default brain bearer-token secret + every future brain's token.
+      // The MCP server resolves the active brain from the Postgres `brains`
+      // registry (over HTTP via DATABASE_URL). Bearer tokens validate
+      // against Postgres `mcp_tokens`, with a Secrets Manager fallback —
+      // default brain's token plus any future brain's token.
       tokenSecret.grantRead(instanceRole);
       instanceRole.addToPolicy(
         new iam.PolicyStatement({
@@ -930,19 +827,6 @@ export class Context101Stack extends cdk.Stack {
           actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
           resources: [
             `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-brain-*`,
-          ],
-        })
-      );
-      // MCP's `suggest_knowledge` tool writes to the active brain's
-      // suggestions table — default brain's table plus any future
-      // per-brain table.
-      suggestionsTable.grantWriteData(instanceRole);
-      instanceRole.addToPolicy(
-        new iam.PolicyStatement({
-          sid: "WriteBrainSuggestions",
-          actions: ["dynamodb:PutItem", "dynamodb:UpdateItem"],
-          resources: [
-            `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*-suggestions`,
           ],
         })
       );
@@ -971,8 +855,7 @@ export class Context101Stack extends cdk.Stack {
               runtimeEnvironmentVariables: [
                 { name: "AWS_REGION", value: this.region },
                 // The MCP server resolves the active brain per-request from
-                // BrainsTable; no per-brain env baked into the container.
-                { name: "BRAINS_TABLE", value: brainShared.brainsTable.tableName },
+                // the Postgres `brains` registry (DATABASE_URL in openSaas env).
                 ...openSaasEnvVars,
               ],
             },
@@ -1014,22 +897,16 @@ export class Context101Stack extends cdk.Stack {
       | undefined;
 
     if (githubToken) {
-      // a) Service role Amplify uses during builds (runs `ampx pipeline-deploy`,
-      //    which provisions the prod Cognito pool via CloudFormation).
+      // a) Service role for the Amplify app. Auth is Better Auth + Postgres
+      //    now, so there's no Amplify Gen 2 backend (Cognito) to provision —
+      //    this role exists only so Amplify Hosting can deliver SSR compute
+      //    logs to CloudWatch. Without these perms, log groups never get
+      //    created. See:
+      //    https://github.com/aws-amplify/amplify-hosting/issues/3964
       const amplifyServiceRole = new iam.Role(this, "AmplifyServiceRole", {
         assumedBy: new iam.ServicePrincipal("amplify.amazonaws.com"),
-        description:
-          "Used by Amplify Hosting during builds for backend deploys",
+        description: "Used by Amplify Hosting to deliver SSR compute logs",
       });
-      amplifyServiceRole.addManagedPolicy(
-        iam.ManagedPolicy.fromAwsManagedPolicyName(
-          "service-role/AmplifyBackendDeployFullAccess"
-        )
-      );
-      // Amplify itself (not our SSR code) uses THIS role to deliver SSR
-      // hosting compute logs to CloudWatch. Without these perms, log groups
-      // never get created. See:
-      // https://github.com/aws-amplify/amplify-hosting/issues/3964
       amplifyServiceRole.addToPolicy(
         new iam.PolicyStatement({
           sid: "AmplifyDeliverLogs",
@@ -1053,12 +930,10 @@ export class Context101Stack extends cdk.Stack {
         platform: "WEB_COMPUTE", // Next.js SSR
         environmentVariables: [
           { name: "DOCS_BUCKET", value: docsBucket.bucketName },
-          { name: "SUGGESTIONS_TABLE", value: suggestionsTable.tableName },
-          // Multi-brain control plane. The web app reads BRAINS_TABLE on
-          // every request to resolve the active brain; BRAIN_PROVISIONER_FN_NAME
-          // is invoked from /api/brains/{create,delete} (SSR has no permission
-          // to provision AWS resources directly).
-          { name: "BRAINS_TABLE", value: brainShared.brainsTable.tableName },
+          // Brain control plane lives in Postgres (DATABASE_URL in the
+          // OpenSaaS env below). BRAIN_PROVISIONER_FN_NAME is invoked from
+          // /api/brains/{create,delete} (SSR has no permission to provision
+          // AWS resources directly).
           { name: "BRAIN_PROVISIONER_FN_NAME", value: brainShared.provisionerFn.functionName },
           // MCP host (no /mcp suffix; the /about page appends /brain/<id>/mcp
           // per brain). Empty string when teamToken wasn't passed on this deploy.
@@ -1084,7 +959,6 @@ export class Context101Stack extends cdk.Stack {
           // the Lambda is declared after the App).
           { name: "START_WIKI_GEN_FN_NAME", value: `${namePrefix}-start-wiki-gen` },
           // Data source connectors
-          { name: "CONNECTORS_TABLE", value: connectorsTable.tableName },
           { name: "CONNECTOR_SYNC_SHEETS_FN_NAME", value: connectorSyncSheetsFn.functionName },
           { name: "CONNECTOR_SYNC_DOCS_FN_NAME", value: connectorSyncDocsFn.functionName },
           { name: "CONNECTOR_SYNC_SLIDES_FN_NAME", value: connectorSyncSlidesFn.functionName },
@@ -1093,9 +967,7 @@ export class Context101Stack extends cdk.Stack {
           { name: "GOOGLE_OAUTH_CLIENT_SECRET_ID", value: googleOAuthClientSecret.secretName },
           { name: "NOTION_OAUTH_CLIENT_SECRET_ID", value: notionOAuthClientSecret.secretName },
           { name: "CONNECTOR_TOKEN_SECRET_PREFIX", value: `${namePrefix}-connector-` },
-          // OpenSaaS/Postgres + Better Auth env. Optional during the
-          // transition; when unset, the app keeps using the existing
-          // Cognito/DynamoDB paths.
+          // Postgres + Better Auth env (DATABASE_URL, BETTER_AUTH_*, etc.).
           ...openSaasEnvVars,
           // MCP URL + bearer token for the /about page snippets. Empty
           // unless `-c token=` was also passed; the page falls back to
@@ -1195,17 +1067,14 @@ export class Context101Stack extends cdk.Stack {
           resources: ["*"],
         })
       );
-      // Suggestions table — SSR lists (GSI query), reads for diff, and
-      // updates status on approve/reject.
-      suggestionsTable.grantReadWriteData(ssrComputeRole);
-
-      // Data source connectors:
-      //   - R/W the connectors table
+      // Suggestions + connectors are R/W in Postgres (over HTTP via
+      // DATABASE_URL), so SSR needs no DynamoDB grants for them.
+      //
+      // Data source connectors still need AWS for:
       //   - Read the OAuth client secret (to start/complete OAuth flows)
       //   - Create + delete per-connection token secrets (named
       //     `context101-connector-<uuid>`)
       //   - Invoke the per-type sync Lambda for "Sync now"
-      connectorsTable.grantReadWriteData(ssrComputeRole);
       googleOAuthClientSecret.grantRead(ssrComputeRole);
       notionOAuthClientSecret.grantRead(ssrComputeRole);
       ssrComputeRole.addToPolicy(
@@ -1265,14 +1134,11 @@ export class Context101Stack extends cdk.Stack {
           WIKI_SUBNET_IDS: wikiVpc.publicSubnets.map((s) => s.subnetId).join(","),
           WIKI_SECURITY_GROUP_ID: wikiSg.securityGroupId,
           // Resolves brain_id → docs_bucket at RunTask time so the
-          // generator reads from the right brain's bucket. Read from the
-          // Postgres control plane (DATABASE_URL); BRAINS_TABLE retained
-          // for legacy fallback only.
-          BRAINS_TABLE: brainShared.brainsTable.tableName,
+          // generator reads from the right brain's bucket, from the
+          // Postgres control plane (DATABASE_URL).
           ...pgLambdaEnv,
         },
       });
-      brainShared.brainsTable.grantReadData(startWikiGenFn);
       startWikiGenFn.addToRolePolicy(
         new iam.PolicyStatement({
           sid: "RunWikiGenerator",
@@ -1309,13 +1175,11 @@ export class Context101Stack extends cdk.Stack {
       );
 
       // Multi-brain control plane:
-      //   - SSR reads/writes the BrainsTable registry on every request
-      //     (resolve active brain → look up handles).
+      //   - The brain registry lives in Postgres (DATABASE_URL); SSR reads
+      //     it over HTTP, so no DynamoDB grants are needed.
       //   - SSR invokes BrainProvisionerFn from /api/brains/{create,delete}.
-      //   - SSR needs cross-brain S3 + DDB + Secrets Manager access for any
-      //     brain provisioned at runtime (existing default-brain grants
-      //     above already cover the original resources).
-      brainShared.brainsTable.grantReadWriteData(ssrComputeRole);
+      //   - SSR needs cross-brain S3 + Secrets Manager access for any brain
+      //     provisioned at runtime.
       brainShared.provisionerFn.grantInvoke(ssrComputeRole);
       ssrComputeRole.addToPolicy(
         new iam.PolicyStatement({
@@ -1329,26 +1193,6 @@ export class Context101Stack extends cdk.Stack {
           resources: [
             `arn:aws:s3:::${namePrefix}-brain-*`,
             `arn:aws:s3:::${namePrefix}-brain-*/*`,
-          ],
-        })
-      );
-      ssrComputeRole.addToPolicy(
-        new iam.PolicyStatement({
-          sid: "RwBrainTables",
-          actions: [
-            "dynamodb:GetItem",
-            "dynamodb:PutItem",
-            "dynamodb:UpdateItem",
-            "dynamodb:DeleteItem",
-            "dynamodb:Query",
-            "dynamodb:Scan",
-            "dynamodb:BatchGetItem",
-            "dynamodb:BatchWriteItem",
-            "dynamodb:DescribeTable",
-          ],
-          resources: [
-            `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*`,
-            `arn:aws:dynamodb:${this.region}:${this.account}:table/${namePrefix}-brain-*/index/*`,
           ],
         })
       );

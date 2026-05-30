@@ -3,7 +3,7 @@
  * any brain's docs bucket.
  *
  * The bucket name in the event identifies the brain. We look the brain
- * up in the BRAINS_TABLE registry to get the (kbId, dsId) pair, then
+ * up in the Postgres `brains` registry to get the (kbId, dsId) pair, then
  * fire StartIngestionJob against the right KB. Multiple records in one
  * event can span different brains (S3 events normally don't fan across
  * buckets, but we group defensively).

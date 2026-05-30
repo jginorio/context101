@@ -19,7 +19,7 @@ Email the maintainer or use GitHub private vulnerability reporting once it is en
 
 Context101 is intended for trusted internal teams.
 
-- The web app is gated by Cognito, but every signed-in user currently has broad admin capabilities.
+- The web app is gated by Better Auth, but every signed-in user currently has broad admin capabilities.
 - MCP access uses per-brain bearer tokens stored in AWS Secrets Manager.
 - Any signed-in web user can reveal ready brain bearer tokens.
 - Data-source connector credentials are stored in Secrets Manager, but connector flows are still alpha.

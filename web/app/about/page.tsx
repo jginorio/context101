@@ -19,8 +19,6 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
 import { useBrain, type ClientBrain } from "@/lib/brain-context";
 
-import "@/utils/amplify-client-config";
-
 const MCP_HOST = process.env.NEXT_PUBLIC_MCP_HOST ?? "";
 
 function brainMcpUrl(brainId: string): string {

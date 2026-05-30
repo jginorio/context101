@@ -2,7 +2,7 @@
 
 This is the deployable Context101 admin app. It is intentionally separate from the public marketing site in `../site`.
 
-Self-hosted users deploy this app, not the homepage. The root route redirects into `/knowledge`; the app is gated by Cognito once deployed.
+Self-hosted users deploy this app, not the homepage. The root route redirects into `/knowledge`; the app is gated by Better Auth once deployed.
 
 ## Local Development
 

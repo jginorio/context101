@@ -13,10 +13,10 @@ Multi-brain routing:
     https://<mcp-host>/brain/<brain_id>/mcp     (preferred — explicit)
     https://<mcp-host>/mcp                       (legacy alias — default brain)
 
-  Brain identity, the KB/bucket/table handles, and the bearer-token secret
-  ARN come from the BRAINS_TABLE DDB registry (populated by the web admin
-  UI's "Create brain" flow + the RegisterDefaultBrain CDK custom resource).
-  Token values are read on-demand from Secrets Manager and cached.
+  Brain identity, the KB/bucket handles, and the bearer-token secret ARN
+  come from the Postgres `brains` registry (populated by the web admin UI's
+  "Create brain" flow). Bearer tokens are validated against Postgres
+  `mcp_tokens`, with a Secrets Manager fallback read on-demand and cached.
 
 Auth:
   Each brain has its own bearer token in Secrets Manager. The middleware
@@ -46,29 +46,26 @@ from starlette.routing import Mount
 # ── Config ────────────────────────────────────────────────────────────
 
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
-BRAINS_TABLE = os.environ.get("BRAINS_TABLE")
 AWS_PROFILE = os.environ.get("AWS_PROFILE")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 MCP_TOKEN_PEPPER = os.environ.get("MCP_TOKEN_PEPPER")
 
-if not BRAINS_TABLE and not DATABASE_URL:
+if not DATABASE_URL:
     raise RuntimeError(
-        "Either DATABASE_URL or BRAINS_TABLE env var is required. "
-        "DATABASE_URL enables the Postgres control plane; BRAINS_TABLE "
-        "enables the legacy DynamoDB control plane."
+        "DATABASE_URL env var is required (Postgres control plane)."
     )
 
 # ── AWS clients ───────────────────────────────────────────────────────
+# AWS is still used for the data plane: Bedrock retrieval, the brain's S3
+# bucket, and Secrets Manager (bearer-token fallback). The control plane
+# (brains, tokens, suggestions) lives entirely in Postgres.
 
 _session = boto3.Session(region_name=AWS_REGION, profile_name=AWS_PROFILE)
 _boto_cfg = Config(retries={"max_attempts": 3, "mode": "standard"})
 
 bedrock_runtime = _session.client("bedrock-agent-runtime", config=_boto_cfg)
 s3_client = _session.client("s3", config=_boto_cfg)
-ddb = _session.resource("dynamodb", config=_boto_cfg) if BRAINS_TABLE else None
 secrets_client = _session.client("secretsmanager", config=_boto_cfg)
-
-_brains_table = ddb.Table(BRAINS_TABLE) if ddb and BRAINS_TABLE else None
 
 
 # ── Brain context — propagated through asyncio via ContextVar ─────────
@@ -147,24 +144,11 @@ def _load_brain_pg(brain_id: str) -> dict[str, Any] | None:
     if not row:
         return None
 
-    # Legacy table names are still used by routes/tools that have not moved
-    # suggestions/connectors to Postgres yet.
-    row["suggestions_table"] = (
-        "context101-suggestions"
-        if brain_id == "default"
-        else f"context101-brain-{brain_id}-suggestions"
-    )
-    row["connectors_table"] = (
-        "context101-connectors"
-        if brain_id == "default"
-        else f"context101-brain-{brain_id}-connectors"
-    )
-    row["_source"] = "postgres"
     return row
 
 
 def _load_brain(brain_id: str) -> dict[str, Any] | None:
-    """Fetch a brain row; prefer Postgres, fall back to legacy DDB."""
+    """Fetch a ready brain row from Postgres (cached briefly)."""
     cached = _brain_cache.get(brain_id)
     if cached and time.monotonic() - cached[1] < _BRAIN_TTL:
         return cached[0]
@@ -172,20 +156,6 @@ def _load_brain(brain_id: str) -> dict[str, Any] | None:
     item = _load_brain_pg(brain_id)
     if item:
         _brain_cache[brain_id] = (item, time.monotonic())
-        return item
-
-    if not _brains_table:
-        return None
-
-    try:
-        resp = _brains_table.get_item(Key={"brain_id": brain_id})
-    except Exception as e:  # noqa: BLE001
-        print(f"[mcp] failed to load brain {brain_id}: {e}")
-        return None
-    item = resp.get("Item")
-    if not item or item.get("status") != "ready":
-        return None
-    _brain_cache[brain_id] = (item, time.monotonic())
     return item
 
 
@@ -449,53 +419,6 @@ def suggest_knowledge(
         The suggestion's ID (for audit/traceability).
     """
     brain = _brain()
-    suggestions_table_name = brain.get("suggestions_table")
-    if brain.get("_source") == "postgres":
-        if not title.strip() or not content.strip():
-            return "Both `title` and `content` are required."
-        if len(title) > 200:
-            return "Title too long (max 200 chars)."
-        if len(content) > 200_000:
-            return "Content too large (>200KB). Split into a smaller suggestion."
-
-        suggestion_id = str(uuid.uuid4())
-        now = datetime.now(timezone.utc).isoformat()
-        _pg_execute(
-            """
-            insert into suggestions (
-              id, org_id, brain_id, status, title, content, target_path,
-              rationale, trigger, proposed_by, created_at
-            )
-            values (%s, %s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s)
-            """,
-            (
-                suggestion_id,
-                brain["org_id"],
-                brain["brain_id"],
-                title.strip()[:200],
-                content,
-                target_path.strip() if target_path else None,
-                rationale.strip()[:2000] if rationale else None,
-                trigger.strip()[:500] if trigger else None,
-                "mcp_token",
-                now,
-            ),
-        )
-
-        kind = f"update to `{target_path}`" if target_path else "new document"
-        return (
-            f"✅ Suggestion submitted to brain `{brain['brain_id']}` ({kind}).\n\n"
-            f"**ID:** `{suggestion_id}`\n"
-            f"**Title:** {title}\n"
-            f"**Status:** pending — a human will review it in the Context101 admin UI. "
-            f"The change will not be part of the brain until approved."
-        )
-
-    if not suggestions_table_name:
-        return (
-            f"Suggestions are disabled for brain `{brain['brain_id']}` "
-            "(no suggestions table on the registry row)."
-        )
     if not title.strip() or not content.strip():
         return "Both `title` and `content` are required."
     if len(title) > 200:
@@ -503,25 +426,29 @@ def suggest_knowledge(
     if len(content) > 200_000:
         return "Content too large (>200KB). Split into a smaller suggestion."
 
-    table = ddb.Table(suggestions_table_name)
     suggestion_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc).isoformat()
-
-    item: dict[str, Any] = {
-        "id": suggestion_id,
-        "status": "pending",
-        "created_at": now,
-        "title": title.strip()[:200],
-        "content": content,
-    }
-    if target_path:
-        item["target_path"] = target_path.strip()
-    if rationale:
-        item["rationale"] = rationale.strip()[:2000]
-    if trigger:
-        item["trigger"] = trigger.strip()[:500]
-
-    table.put_item(Item=item)
+    _pg_execute(
+        """
+        insert into suggestions (
+          id, org_id, brain_id, status, title, content, target_path,
+          rationale, trigger, proposed_by, created_at
+        )
+        values (%s, %s, %s, 'pending', %s, %s, %s, %s, %s, %s, %s)
+        """,
+        (
+            suggestion_id,
+            brain["org_id"],
+            brain["brain_id"],
+            title.strip()[:200],
+            content,
+            target_path.strip() if target_path else None,
+            rationale.strip()[:2000] if rationale else None,
+            trigger.strip()[:500] if trigger else None,
+            "mcp_token",
+            now,
+        ),
+    )
 
     kind = f"update to `{target_path}`" if target_path else "new document"
     return (

@@ -1,7 +1,7 @@
 /**
  * connector-dispatch Lambda
  *
- * Fired by EventBridge every 6h. For every brain in BRAINS_TABLE, queries
+ * Fired by EventBridge every 6h. For every ready brain in Postgres, queries
  * that brain's connectors table for status=connected or status=error rows
  * and invokes the right per-type sync Lambda for each. The per-invoke
  * payload carries the brain's connectors_table + docs_bucket + brain_id

@@ -1,12 +1,10 @@
 # Context101
 
-An open-source alpha MCP knowledge base for trusted internal teams, backed by **Amazon Bedrock Knowledge Bases** with S3 + S3 Vectors. The control plane is moving to **Better Auth + Postgres** while AWS continues to own content storage, retrieval, and background jobs.
+An open-source alpha MCP knowledge base for trusted internal teams, backed by **Amazon Bedrock Knowledge Bases** with S3 + S3 Vectors. The control plane runs on **Better Auth + Postgres** while AWS continues to own content storage, retrieval, and background jobs.
 
 Create **as many brains as you want from the web admin UI** — each brain is a fully isolated knowledge base (own S3 bucket, own Bedrock KB, own vector index, own suggestions queue, own MCP bearer token). One MCP service serves every brain; clients reach a specific brain via `/brain/<brain_id>/mcp`.
 
 > **Alpha status:** Context101 started as an internal proof of concept. It is useful today for self-hosted, trusted-team deployments, but it is not production-ready SaaS infrastructure and it is not ready for public multi-tenant hosting. Read [ALPHA.md](./ALPHA.md) before deploying with sensitive data.
-
-> **Transition status:** the app now has a Better Auth + Postgres path for authentication, organizations, brain listing, and MCP token validation. Legacy Cognito/DynamoDB code still exists as a rollback and for routes that have not been fully migrated yet.
 
 ## Architecture
 
@@ -24,8 +22,8 @@ Create **as many brains as you want from the web admin UI** — each brain is a 
                        │
                        ▼
             ┌─────────────────────┐
-            │ Postgres control    │  ← orgs, brains, MCP token hashes
-            │ plane (Better Auth) │    + legacy DDB fallback in alpha
+            │ Postgres control    │  ← orgs, brains, connectors,
+            │ plane (Better Auth) │    suggestions, MCP token hashes
             └──────────┬──────────┘
                        │
        ┌───────────────┼───────────────┐
@@ -40,7 +38,7 @@ Create **as many brains as you want from the web admin UI** — each brain is a 
                   (looks up brain from event bucket)
 ```
 
-The current alpha is in transition. Read paths and MCP token validation can use the Postgres control plane, while the legacy DynamoDB registry and per-brain tables remain for rollback and for routes that have not yet moved. Brain create/delete still goes through `BrainProvisionerFn`, which provisions AWS resources (`s3:CreateBucket`, `bedrock-agent:CreateKnowledgeBase`, `s3vectors:CreateIndex`, and related resources) against a fixed `context101-brain-*` naming pattern.
+The control plane (orgs, brains, connectors, suggestions, and MCP token hashes) lives entirely in Postgres. Brain create/delete goes through `BrainProvisionerFn`, which provisions AWS resources (`s3:CreateBucket`, `bedrock-agent:CreateKnowledgeBase`, `s3vectors:CreateIndex`, and related resources) against a fixed `context101-brain-*` naming pattern and writes the brain row to Postgres.
 
 ## Repo Layout
 
@@ -50,14 +48,14 @@ The current alpha is in transition. Read paths and MCP token validation can use 
 │   ├── bin/context101.ts
 │   ├── lib/
 │   │   ├── context101-stack.ts
-│   │   └── brain-shared.ts       # BrainsTable + BrainProvisionerFn + default-brain seed
+│   │   └── brain-shared.ts       # BrainProvisionerFn + per-brain IAM
 │   └── lambda/
 │       ├── brain-provisioner/    # Web UI → create/delete a brain at runtime
 │       ├── auto-ingest/          # S3 event → look up brain → Bedrock StartIngestionJob
 │       ├── start-wiki-gen/       # SSR → ecs:RunTask shim (per-brain DOCS_BUCKET override)
 │       ├── connector-dispatch/   # EventBridge 6h → fan-out across every brain's connectors
 │       └── connector-sync-{sheets,docs,slides,notion,github}/
-├── server.py                     # Python MCP server (FastMCP + Postgres/DDB brain routing)
+├── server.py                     # Python MCP server (FastMCP + Postgres brain routing)
 ├── Dockerfile                    # Used by App Runner
 ├── knowledge/                    # Optional bootstrap seed for the default brain
 ├── site/                         # Standalone public website / marketing page
@@ -76,12 +74,11 @@ The public homepage is deliberately separate from the deployable app. Self-hoste
 
 ## Auth And Control Plane
 
-Context101 is moving from the original Cognito + DynamoDB alpha control plane to **Better Auth + Postgres**:
+Context101's control plane runs on **Better Auth + Postgres**:
 
 - **Better Auth** owns users, sessions, organizations, members, and invitations.
 - **Postgres** stores Context101 app data: brains, suggestions, connectors, MCP token hashes, audit logs, and usage metrics.
 - **MCP bearer tokens** are hashed into Postgres with `MCP_TOKEN_PEPPER`; raw tokens are not stored in the database.
-- **Legacy DynamoDB remains temporarily** for rollback and for routes that have not yet moved.
 
 Supported Postgres connection modes:
 
@@ -150,7 +147,7 @@ npm install
 ./deploy.sh
 ```
 
-This provisions the baseline infra — S3 docs bucket, Bedrock Knowledge Base, S3 Vectors, legacy DynamoDB tables, Postgres-backed app schema (when `DATABASE_URL` is configured), and Lambdas. To also seed the docs bucket with the example markdown under `knowledge/` so a brand-new stack isn't empty, pass `--seed`:
+This provisions the baseline infra — S3 docs bucket, Bedrock Knowledge Base, S3 Vectors, the `pg-http` Lambda layer, and Lambdas. The control-plane schema lives in your Postgres database (apply it with `npm run db:migrate` from `web/`). To also seed the docs bucket with the example markdown under `knowledge/` so a brand-new stack isn't empty, pass `--seed`:
 
 ```bash
 ./deploy.sh --seed
@@ -161,9 +158,8 @@ The seed flag is **off by default** so subsequent deploys never clobber whatever
 > **Source of truth:** At runtime, the **S3 docs bucket** is the source of truth. Content is managed through the web admin UI, agent `suggest_knowledge` proposals (reviewed in the Suggestions tab), and data connectors. The local `knowledge/` folder is just an **optional bootstrap seed** that's only uploaded when you pass `-c seed=true`. Avoid editing files in the S3 console directly — use the web UI so writes go through the app's auth, approval, and audit surfaces.
 
 **Key outputs** (you'll want to save these):
-- `BrainsTableName` — the legacy DDB registry of brains; kept during the Better Auth/Postgres migration as fallback
 - `BrainProvisionerFnName` — the Lambda the `/brains` page invokes to create/delete a brain
-- `DocsBucketName` / `KnowledgeBaseId` — the default brain's bucket + KB (registered into `BrainsTable` as `brain_id="default"` by a one-shot custom resource)
+- `DocsBucketName` / `KnowledgeBaseId` — the default brain's bucket + KB (the `default` brain row lives in the Postgres `brains` registry)
 
 The web admin UI and App Runner MCP service are **gated on two CDK context flags** (they only deploy if you pass them). See the next two sections.
 
@@ -181,7 +177,7 @@ Both come up together once `CTX_TOKEN` and `CTX_GH_TOKEN` are in your `.deploy-e
 
 ### Why the wrapper exists
 
-The stack's App Runner MCP service and the entire Amplify branch (web app + legacy Cognito backend + wiki-gen Fargate stack) are wrapped in `if (teamToken) { ... }` / `if (githubToken) { ... }` blocks. A bare `cdk deploy` with neither flag tells CloudFormation those resources should no longer exist — so it deletes them. **This has happened once already.** Recovery took ~30 min plus a fresh Cognito user pool (= invite everyone again) and a new App Runner URL (= update every teammate's MCP client config).
+The stack's App Runner MCP service and the entire Amplify branch (web app + wiki-gen Fargate stack) are wrapped in `if (teamToken) { ... }` / `if (githubToken) { ... }` blocks. A bare `cdk deploy` with neither flag tells CloudFormation those resources should no longer exist — so it deletes them. **This has happened once already.** Recovery took ~30 min plus a new App Runner URL (= update every teammate's MCP client config). Accounts/orgs live in Postgres, so they survive a stack rebuild.
 
 `./cdk/deploy.sh` refuses to call `cdk deploy / diff / destroy` without both tokens, sourced from `cdk/.deploy-env` (repo-local, gitignored) or `~/.context101/deploy-env` (user-global). It also falls back to `gh auth token` for the GitHub PAT so you can ignore that field if you have the gh CLI logged in.
 
@@ -190,29 +186,9 @@ The stack's App Runner MCP service and the entire Amplify branch (web app + lega
 > aws amplify start-job --app-id <WebAppId> --branch-name main --job-type RELEASE
 > ```
 
-### 3a. Create your first Cognito user (legacy path)
+### 3. Create your first admin (Better Auth)
 
-Cognito is provisioned by Amplify Gen 2 auth on the first web build. Self-signup is off — you invite yourself manually:
-
-```bash
-# Find the user pool (fresh deploys get a new one every time the Amplify app is recreated)
-POOL_ID=$(aws cognito-idp list-user-pools --max-results 30 \
-  --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)] | sort_by(@, &CreationDate)[-1].Id' \
-  --output text --region us-east-1)
-
-aws cognito-idp admin-create-user \
-  --user-pool-id "$POOL_ID" \
-  --username YOUR_EMAIL \
-  --user-attributes Name=email,Value=YOUR_EMAIL Name=email_verified,Value=true \
-  --desired-delivery-mediums EMAIL \
-  --region us-east-1
-```
-
-Check your inbox for a temp password (from `no-reply@verificationemail.com`). First login at `WebAppDefaultDomain` forces a password reset.
-
-### 3b. Create your first Better Auth admin (new path)
-
-The new OpenSaaS path uses Better Auth + Postgres. Set the Postgres and Better Auth env vars in `cdk/.deploy-env` (or `~/.context101/deploy-env`) before deploying:
+Auth runs on Better Auth + Postgres. Set the Postgres and Better Auth env vars in `cdk/.deploy-env` (or `~/.context101/deploy-env`) before deploying:
 
 ```bash
 DATABASE_URL="postgresql://..."
@@ -252,14 +228,15 @@ CDK references both secrets by *name*, not value — so rotating the creds doesn
 
 ### 5a. Run locally for dev
 
-The container reads `BRAINS_TABLE` and resolves the rest (KB id, bucket, token) per request from the registry. Local dev points at the same table:
+The container reads the brain registry from Postgres (`DATABASE_URL`) and resolves the rest (KB id, bucket, token) per request. Local dev points at the same database:
 
 ```bash
 pip install -r requirements.txt
 
 export AWS_PROFILE=<your-profile>
 export AWS_REGION=us-east-1
-export BRAINS_TABLE=context101-brains
+export DATABASE_URL="postgresql://..."
+export MCP_TOKEN_PEPPER="<same value as the web app>"
 
 uvicorn server:app --port 8787 --host 0.0.0.0
 ```
@@ -316,46 +293,11 @@ There is also a local helper script at `scripts/install-mcps.sh` that was origin
 
 ## Inviting teammates to the web app
 
-The new auth path uses Better Auth organizations. In self-hosted mode, create the first admin at `/setup`, then invite teammates through the organization-member flow as that UI lands. During the transition, legacy Cognito invite instructions may still apply to older deployments that have not moved to Better Auth yet.
-
-Share the `WebAppDefaultDomain` output from `cdk deploy` with your teammates (e.g. `https://main.dolgu9byu4ct1.amplifyapp.com`).
-
-### Find the current user pool ID
-
-The pool ID changes every time the Amplify app is recreated (e.g. if you destroy the `if (githubToken)` branch and redeploy). Find the latest one:
-
-```bash
-POOL_ID=$(aws cognito-idp list-user-pools --max-results 30 \
-  --query 'UserPools[?contains(Name, `amplifyAuthUserPool`)] | sort_by(@, &CreationDate)[-1].Id' \
-  --output text --region us-east-1)
-echo "$POOL_ID"
-```
-
-### Invite a teammate
-
-```bash
-aws cognito-idp admin-create-user \
-  --user-pool-id "$POOL_ID" \
-  --username TEAMMATE_EMAIL \
-  --user-attributes Name=email,Value=TEAMMATE_EMAIL Name=email_verified,Value=true \
-  --desired-delivery-mediums EMAIL \
-  --region us-east-1
-```
-
-Replace `TEAMMATE_EMAIL` (both places) with their actual email. They'll get an email titled "Your temporary password" from `no-reply@verificationemail.com`.
-
-### Revoke access
-
-```bash
-aws cognito-idp admin-delete-user \
-  --user-pool-id "$POOL_ID" \
-  --username TEAMMATE_EMAIL \
-  --region us-east-1
-```
+Auth uses Better Auth organizations. In self-hosted mode, create the first admin at `/setup`, then invite teammates through the organization-member flow. Share the `WebAppDefaultDomain` output from `cdk deploy` with your teammates (e.g. `https://main.dolgu9byu4ct1.amplifyapp.com`).
 
 ### Separate from the MCP bearer tokens
 
-Note: Better Auth controls access to the **web admin UI** on the new path. The **MCP endpoints** still use per-brain bearer tokens; when `DATABASE_URL` and `MCP_TOKEN_PEPPER` are configured, those tokens are validated against hashes in Postgres, with Secrets Manager fallback kept during migration. Rotating web auth credentials doesn't affect MCP tokens.
+Note: Better Auth controls access to the **web admin UI**. The **MCP endpoints** use per-brain bearer tokens; when `DATABASE_URL` and `MCP_TOKEN_PEPPER` are configured, those tokens are validated against hashes in Postgres, with a Secrets Manager fallback. Rotating web auth credentials doesn't affect MCP tokens.
 
 - **Default brain's token** — comes from `CTX_TOKEN` in `cdk/.deploy-env` and is stored in the `context101-bearer-token` secret. To rotate: edit `.deploy-env`, re-run `./cdk/deploy.sh`, redistribute.
 - **Other brains' tokens** — stored in `context101-brain-<brain_id>-token`. To rotate, update the secret value directly with `aws secretsmanager put-secret-value` (no redeploy). The MCP server's token cache picks up the new value within ~5 min.
@@ -368,7 +310,7 @@ Every brain is a fully isolated silo: its own S3 docs bucket, Bedrock Knowledge 
 
 1. Sign in to the admin UI, click **Brains** in the header.
 2. Click **+ New brain**, enter a display name (e.g. "Marketing") + optional description, submit.
-3. The row appears with `status=provisioning` and the dialog closes. Behind the scenes, `BrainProvisionerFn` creates the bucket, Bedrock KB, vector index, DDB tables, and bearer-token secret — typically 30–60 seconds.
+3. The row appears with `status=provisioning` and the dialog closes. Behind the scenes, `BrainProvisionerFn` creates the bucket, Bedrock KB, vector index, and bearer-token secret, and writes the brain row to Postgres — typically 30–60 seconds.
 4. Status flips to `ready`; the header brain switcher gains the new brain. Click **Copy** next to the MCP URL on the brain's row (or visit **About**) to get a copy-pasteable client config.
 
 ### Switch brain
@@ -383,7 +325,7 @@ API routes accept the brain id in this priority: `?brain=<id>` → `x-brain-id` 
 
 ### Delete a brain
 
-Click the trash icon on the brain's row on `/brains`, type the display name to confirm. The provisioner empties + deletes the S3 bucket (including all object versions), deletes the Bedrock KB + data source, the vector index, both DDB tables, the bearer-token secret, and finally removes the registry row. The default brain is refused.
+Click the trash icon on the brain's row on `/brains`, type the display name to confirm. The provisioner empties + deletes the S3 bucket (including all object versions), deletes the Bedrock KB + data source, the vector index, and the bearer-token secret, and finally removes the Postgres `brains` row (connectors, suggestions, and MCP tokens cascade-delete with it). The default brain is refused.
 
 > **No per-brain RBAC yet.** Better Auth gives us organization membership, but fine-grained per-brain roles are still a follow-up.
 
@@ -391,7 +333,7 @@ Click the trash icon on the brain's row on `/brains`, type the display name to c
 
 - S3 docs bucket: $0/mo idle (object-storage only)
 - Bedrock KB + S3 Vectors index: $0/mo idle (pay-per-query)
-- Suggestions + connectors tables: $0/mo idle in legacy DDB; near-zero idle in Postgres for normal alpha scale
+- Suggestions + connectors: stored in Postgres; near-zero idle cost at normal alpha scale
 - Bearer-token secret: ~$0.40/mo
 - App Runner MCP: **shared** across all brains, ~$5–15/mo total
 
@@ -411,7 +353,7 @@ Every S3 write — whichever brain, whichever path — triggers the auto-ingest 
 
 ## Tools
 
-All four MCP tools operate on the brain identified by the URL path (`/brain/<brain_id>/mcp`). Every tool's S3 reads and KB queries are scoped to that brain's resources. Suggestions write to Postgres when the brain is resolved from Postgres, with legacy DDB fallback during migration.
+All four MCP tools operate on the brain identified by the URL path (`/brain/<brain_id>/mcp`). Every tool's S3 reads and KB queries are scoped to that brain's resources. Suggestions are written to the Postgres `suggestions` table, keyed by `brain_id`.
 
 | Tool | Purpose |
 |------|---------|
@@ -449,7 +391,7 @@ Why this split:
 
 ## Knowledge suggestions (web app)
 
-Agents propose knowledge via `suggest_knowledge`. Proposals land in the **active brain's** review queue — **nothing is written until a human approves**. The new path stores suggestions in Postgres by `brain_id`; legacy deployments still use per-brain DynamoDB suggestions tables (`context101-brain-<brain_id>-suggestions` for non-default brains; `context101-suggestions` for default).
+Agents propose knowledge via `suggest_knowledge`. Proposals land in the **active brain's** review queue — **nothing is written until a human approves**. Suggestions are stored in the Postgres `suggestions` table, keyed by `brain_id` and `org_id`.
 
 ```
 Agent (Cursor / Claude Desktop / Devin / etc.)
@@ -486,7 +428,7 @@ Web admin UI → /suggestions tab (scoped to active brain)
 
 - Approving writes the **full proposed content** to S3 — the agent is expected to produce a drop-in replacement, not a patch
 - Rejecting doesn't delete the row; it remains with `status=rejected` for audit
-- The legacy DynamoDB table has a GSI on `(status, created_at)`; the Postgres path indexes by `brain_id`, `status`, and `created_at`
+- The Postgres `suggestions` table indexes by `brain_id`, `status`, and `created_at`
 - Approval triggers the standard S3 → auto-ingest Lambda → Bedrock ingestion pipeline, so approved suggestions are retrievable via `search_knowledge` within ~1 min
 
 ## Data source connectors
@@ -656,7 +598,7 @@ Connectors in both `connected` and `error` states are retried on every 6h tick �
 Click the trash icon on the card → confirm. This:
 1. Deletes the refresh-token secret (force delete, no recovery window).
 2. Deletes every S3 object under `sources/<type>/<slug>/` in the docs bucket.
-3. Deletes the connector row from DynamoDB.
+3. Deletes the connector row from Postgres.
 
 Bedrock auto-reindexes on the S3 delete events, so within a minute the content is gone from `search_knowledge` too.
 
@@ -800,7 +742,7 @@ To opt back into the original auto-regen behavior, set the Lambda env var to `tr
 aws lambda update-function-configuration \
   --function-name context101-connector-sync-github \
   --environment 'Variables={
-    CONNECTORS_TABLE=context101-connectors,
+    DATABASE_URL=<...>,
     DOCS_BUCKET=<...>,
     START_WIKI_GEN_FN_NAME=context101-start-wiki-gen,
     AUTO_TRIGGER_CODE_WIKI=true
@@ -971,7 +913,7 @@ knowledge/databases.md                   (local markdown)
 
 ## Cleanup
 
-**Tear down a single brain:** click delete on its row in `/brains` and confirm by typing the display name. The provisioner empties the bucket, deletes the KB, vector index, DDB tables, and token secret. The default brain cannot be deleted this way.
+**Tear down a single brain:** click delete on its row in `/brains` and confirm by typing the display name. The provisioner empties the bucket, deletes the KB, vector index, and token secret, and removes the Postgres `brains` row. The default brain cannot be deleted this way.
 
 **Tear down the whole stack:**
 
@@ -988,7 +930,7 @@ The default brain's docs bucket and the shared S3 Vectors bucket have `RETAIN` p
 - **Titan embed v2, 1024-dim** — native to Bedrock, no third-party API keys.
 - **App Runner** — one stable TLS URL serving every brain, ~$5–15/mo total (does not scale with brain count).
 - **Per-brain bearer tokens** — each brain has its own Secrets Manager secret. Compromise of one brain's token doesn't touch others.
-- **Postgres control plane** — Better Auth + app tables live in Postgres, with legacy DynamoDB fallback during migration.
+- **Postgres control plane** — Better Auth + app tables (brains, connectors, suggestions, MCP token hashes) live in Postgres.
 
 ## Notes
 
