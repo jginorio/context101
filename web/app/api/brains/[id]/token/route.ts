@@ -5,7 +5,7 @@ import {
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { getBrainById } from "@/lib/brains-server";
+import { getBrainByIdForOrg, readAuthContext } from "@/lib/brains-server";
 
 const secrets = new SecretsManagerClient({
   region: process.env.AWS_REGION ?? "us-east-1",
@@ -19,17 +19,21 @@ const secrets = new SecretsManagerClient({
  * exposed via `NEXT_PUBLIC_*` env, so the only path for a browser to
  * see it is this signed-in route.
  *
- * Auth: proxy.ts gates `/api/*` behind a valid Better Auth session. Any
- * authenticated user can read any brain's token (matches today's
- * permission model where logged-in users have full admin access). When
- * we add per-brain RBAC, add a check here.
+ * Auth: scoped to the caller's active org and re-verifies membership (so a
+ * removed member can't read tokens). Any member of the org can read its
+ * brains' tokens — matches today's permission model where org members have
+ * full admin access. When we add per-brain RBAC, tighten here.
  */
 export async function GET(
-  _req: NextRequest,
+  request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id } = await params;
-  const brain = await getBrainById(id);
+  const auth = await readAuthContext(request);
+  if (!auth) {
+    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
+  }
+  const brain = await getBrainByIdForOrg(auth.orgId, id);
   if (!brain) {
     return NextResponse.json({ error: "brain not found" }, { status: 404 });
   }

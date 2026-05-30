@@ -10,6 +10,7 @@ import {
   Info,
   Menu,
   Plug,
+  Settings,
   Sparkles,
 } from "lucide-react";
 
@@ -126,6 +127,11 @@ export default function Home() {
                     <Info className="mr-2 h-3.5 w-3.5" /> About
                   </Button>
                 </Link>
+                <Link href="/settings" onClick={() => setMobileNavOpen(false)}>
+                  <Button variant="ghost" size="sm" className="w-full justify-start">
+                    <Settings className="mr-2 h-3.5 w-3.5" /> Settings
+                  </Button>
+                </Link>
               </nav>
               <div className="flex-1 min-h-0 overflow-y-auto p-2">{tree}</div>
             </SheetContent>
@@ -196,6 +202,11 @@ export default function Home() {
           <Link href="/about" className="hidden md:inline-flex">
             <Button variant="ghost" size="sm">
               <Info className="mr-1 h-3.5 w-3.5" /> About
+            </Button>
+          </Link>
+          <Link href="/settings" className="hidden md:inline-flex">
+            <Button variant="ghost" size="sm">
+              <Settings className="mr-1 h-3.5 w-3.5" /> Settings
             </Button>
           </Link>
           <ThemeToggle />

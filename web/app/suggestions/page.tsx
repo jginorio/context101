@@ -6,7 +6,6 @@ import {
   ArrowLeft,
   Check,
   Filter,
-  Loader2,
   RefreshCw,
   Sparkles,
   X,

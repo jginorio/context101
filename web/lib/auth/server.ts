@@ -62,6 +62,22 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
     plugins: [
       organization({
         creatorRole: "admin",
+        // No transactional email infra yet. We still implement this so
+        // inviteMember succeeds and the accept link is captured in logs;
+        // the Settings UI surfaces a copyable link per pending invitation
+        // (built from listInvitations), so admins can share it manually.
+        sendInvitationEmail: async (data: {
+          id: string;
+          email: string;
+          role: string;
+          organization: { name?: string };
+        }) => {
+          const base = deploymentConfig.appUrl.replace(/\/$/, "");
+          const link = `${base}/accept-invitation/${data.id}`;
+          console.log(
+            `[org] invitation for ${data.email} (role=${data.role}) to "${data.organization?.name ?? "org"}": ${link}`
+          );
+        },
       }),
       // Keep this last so Better Auth can apply Set-Cookie headers from
       // server actions / route handlers in Next.js.

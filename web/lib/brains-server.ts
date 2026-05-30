@@ -5,6 +5,7 @@ import type { NextRequest } from "next/server";
 import { getAuth } from "@/lib/auth/server";
 import { db } from "@/lib/db/client";
 import { brains as postgresBrains } from "@/lib/db/schema";
+import { member } from "@/lib/db/auth-schema";
 
 /**
  * Server-side brain registry helpers.
@@ -71,10 +72,29 @@ async function getSession(request: NextRequest): Promise<BetterAuthSession> {
 }
 
 /**
+ * True if `userId` is currently a member of `orgId`.
+ *
+ * Better Auth's `removeMember` deletes the membership row but does NOT
+ * revoke the user's existing session or clear `activeOrganizationId` on it.
+ * So we re-verify membership on every request rather than trusting the
+ * session's `activeOrganizationId` — otherwise a just-removed user keeps
+ * org-scoped access until their session expires.
+ */
+async function isOrgMember(userId: string, orgId: string): Promise<boolean> {
+  if (!db) return false;
+  const [row] = await db
+    .select({ id: member.id })
+    .from(member)
+    .where(and(eq(member.userId, userId), eq(member.organizationId, orgId)))
+    .limit(1);
+  return !!row;
+}
+
+/**
  * Resolve the signed-in user's organization + identity from the Better Auth
- * session. Returns null when there's no session or no active org. Routes
- * that write org-scoped rows (connectors, suggestions) use this for
- * `org_id` / `created_by`.
+ * session, verifying they are still a member of the active org. Returns null
+ * when there's no session, no active org, or the user is no longer a member.
+ * Routes that read/write org-scoped rows use this for `org_id` / `created_by`.
  */
 export async function readAuthContext(
   request: NextRequest
@@ -83,12 +103,8 @@ export async function readAuthContext(
   const orgId = session?.session?.activeOrganizationId ?? null;
   const userId = session?.user?.id ?? null;
   if (!orgId || !userId) return null;
+  if (!(await isOrgMember(userId, orgId))) return null;
   return { orgId, userId, userEmail: session?.user?.email ?? null };
-}
-
-async function readActiveOrgId(request: NextRequest): Promise<string | null> {
-  const session = await getSession(request);
-  return session?.session?.activeOrganizationId ?? null;
 }
 
 function dateString(value: Date | string | null | undefined): string {
@@ -128,9 +144,20 @@ async function fetchBrainFromPostgres(
 }
 
 /**
- * Look up a brain by id without an org filter. Used by routes that have no
- * org context in hand (the OAuth callback and the MCP token route). The
- * connection role bypasses RLS, so this is a safe id-only lookup.
+ * Look up a brain by id scoped to an org. Use this for org-scoped routes
+ * (e.g. the MCP token route) so a non-member can't read another org's brain.
+ */
+export async function getBrainByIdForOrg(
+  orgId: string,
+  brainId: string
+): Promise<BrainConfig | null> {
+  return fetchBrainFromPostgres(brainId, orgId);
+}
+
+/**
+ * Look up a brain by id without an org filter. Used only by the OAuth
+ * callback, which routes via the opaque `state` param and has no reliable
+ * org context. The connection role bypasses RLS, so this is an id-only lookup.
  */
 export async function getBrainById(brainId: string): Promise<BrainConfig | null> {
   const [row] = await requireDb()
@@ -205,13 +232,13 @@ export type ResolveResult =
 export async function resolveBrainFromRequest(
   request: NextRequest
 ): Promise<ResolveResult> {
-  const brainId = await readRequestedBrainId(request);
-  const orgId = await readActiveOrgId(request);
-  if (!orgId) {
+  const auth = await readAuthContext(request);
+  if (!auth) {
     return { ok: false, status: 401, error: "not authenticated" };
   }
+  const brainId = await readRequestedBrainId(request);
 
-  const brain = await fetchBrainFromPostgres(brainId, orgId);
+  const brain = await fetchBrainFromPostgres(brainId, auth.orgId);
   if (!brain) {
     return { ok: false, status: 404, error: `brain \`${brainId}\` not found` };
   }
