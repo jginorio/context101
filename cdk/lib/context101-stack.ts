@@ -325,14 +325,27 @@ export class Context101Stack extends cdk.Stack {
     // profiles are per-account.
     wikiTaskRole.addToPolicy(
       new iam.PolicyStatement({
-        sid: "InvokeClaudeOpus",
+        sid: "InvokeBedrockModels",
         actions: [
           "bedrock:InvokeModel",
           "bedrock:InvokeModelWithResponseStream",
         ],
+        // Any in-account foundation model / inference profile, so admins can
+        // pick a different Bedrock model for wiki generation in Settings.
         resources: [
-          `arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-7*`,
-          `arn:aws:bedrock:*:${this.account}:inference-profile/*claude-opus-4-7*`,
+          `arn:aws:bedrock:*::foundation-model/*`,
+          `arn:aws:bedrock:*:${this.account}:inference-profile/*`,
+        ],
+      })
+    );
+    // Bring-your-own wiki model: read the per-brain API key secret that
+    // start-wiki-gen passes as LLM_KEY_SECRET_ARN.
+    wikiTaskRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: "ReadBrainLlmKeySecrets",
+        actions: ["secretsmanager:GetSecretValue"],
+        resources: [
+          `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-brain-*-llm-key*`,
         ],
       })
     );
@@ -1052,6 +1065,15 @@ export class Context101Stack extends cdk.Stack {
           ],
         })
       );
+      // List Bedrock models for the Settings → Wiki model picker (the
+      // searchable dropdown). List* actions don't support resource scoping.
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "ListBedrockModels",
+          actions: ["bedrock:ListFoundationModels"],
+          resources: ["*"],
+        })
+      );
       // Bedrock validates the Anthropic model subscription via AWS
       // Marketplace on each cold-start invoke. Without these actions the
       // Lambda gets "not authorized to perform aws-marketplace:Subscribe".
@@ -1103,6 +1125,38 @@ export class Context101Stack extends cdk.Stack {
           conditions: {
             StringLike: {
               "secretsmanager:Name": `${namePrefix}-connector-*`,
+            },
+          },
+        })
+      );
+      // Bring-your-own wiki model API keys (Settings → Wiki model). Stored as
+      // `context101-brain-<id>-llm-key`; the SSR route writes/rotates/deletes
+      // them and the wiki task reads them at generation time.
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "ManageBrainLlmKeySecrets",
+          actions: [
+            "secretsmanager:CreateSecret",
+            "secretsmanager:PutSecretValue",
+            "secretsmanager:UpdateSecret",
+            "secretsmanager:DeleteSecret",
+            "secretsmanager:DescribeSecret",
+            "secretsmanager:GetSecretValue",
+            "secretsmanager:TagResource",
+          ],
+          resources: [
+            `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-brain-*-llm-key*`,
+          ],
+        })
+      );
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "CreateBrainLlmKeySecrets",
+          actions: ["secretsmanager:CreateSecret"],
+          resources: ["*"],
+          conditions: {
+            StringLike: {
+              "secretsmanager:Name": `${namePrefix}-brain-*-llm-key`,
             },
           },
         })

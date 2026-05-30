@@ -1,1 +1,4 @@
 boto3>=1.35.0
+# Unifies bring-your-own wiki model providers (Anthropic, OpenAI, xAI Grok,
+# Google Gemini) behind a single completion call. Bedrock stays on boto3.
+litellm>=1.50.0

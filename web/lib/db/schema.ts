@@ -73,6 +73,13 @@ export const brains = pgTable(
     docsBucket: text("docs_bucket"),
     vectorIndexArn: text("vector_index_arn"),
     tokenSecretArn: text("token_secret_arn"),
+    // Wiki generation model. null provider = default AWS Bedrock (keyless,
+    // via the wiki task role). For bring-your-own providers (anthropic,
+    // openai, grok, gemini) the API key lives in Secrets Manager and only
+    // its ARN is stored here.
+    wikiModelProvider: text("wiki_model_provider"),
+    wikiModelId: text("wiki_model_id"),
+    wikiLlmKeySecretArn: text("wiki_llm_key_secret_arn"),
     createdBy: text("created_by").notNull(),
     ...timestamps,
   },

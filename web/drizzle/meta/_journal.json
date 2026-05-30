@@ -8,6 +8,13 @@
       "when": 1779847120485,
       "tag": "0000_redundant_madrox",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1780165143215,
+      "tag": "0001_special_goliath",
+      "breakpoints": true
     }
   ]
 }

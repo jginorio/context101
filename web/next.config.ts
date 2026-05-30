@@ -32,7 +32,7 @@ const nextConfig: NextConfig = {
   // Next 16's Turbopack auto-externalizes @aws-sdk/* by default, but it
   // renames them with a hash ("@aws-sdk/client-s3-611b56...") that
   // Amplify's Lambda runtime can't resolve. Bundling side-steps the issue.
-  transpilePackages: ["@aws-sdk/client-s3"],
+  transpilePackages: ["@aws-sdk/client-s3", "@aws-sdk/client-bedrock"],
 };
 
 export default nextConfig;

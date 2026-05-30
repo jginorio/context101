@@ -115,7 +115,9 @@ async function resolveBrain(brainId) {
   if (!DATABASE_URL) throw new Error("DATABASE_URL env var missing");
   const item = await pgFetchOne(
     DATABASE_URL,
-    `select id, status, docs_bucket from brains where id = $1`,
+    `select id, status, docs_bucket,
+            wiki_model_provider, wiki_model_id, wiki_llm_key_secret_arn
+       from brains where id = $1`,
     [brainId]
   );
   if (!item) throw new Error(`brain not found: ${brainId}`);
@@ -194,6 +196,22 @@ export const handler = async (event = {}) => {
     { name: "DOCS_BUCKET", value: brain.docs_bucket },
     { name: "WIKI_MODE", value: mode },
   ];
+  // Per-brain wiki model. Null provider → the generator's default Bedrock
+  // path. For bring-your-own providers, pass the provider + model + the
+  // Secrets Manager ARN holding the API key (the task fetches it at runtime;
+  // the raw key never lands in the task env / DescribeTasks output).
+  if (brain.wiki_model_provider) {
+    overrideEnv.push({ name: "MODEL_PROVIDER", value: brain.wiki_model_provider });
+  }
+  if (brain.wiki_model_id) {
+    overrideEnv.push({ name: "MODEL_ID", value: brain.wiki_model_id });
+  }
+  if (brain.wiki_llm_key_secret_arn) {
+    overrideEnv.push({
+      name: "LLM_KEY_SECRET_ARN",
+      value: brain.wiki_llm_key_secret_arn,
+    });
+  }
   if (mode === "code") {
     const [owner, name] = repo.split("/");
     const repoSlug = slugify(`${owner}-${name}`);

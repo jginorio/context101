@@ -56,6 +56,12 @@ CORPUS_PREFIX = os.environ.get("CORPUS_PREFIX", "")
 # Opus knows which repo it's documenting. Ignored in main mode.
 REPO_FULL_NAME = os.environ.get("REPO_FULL_NAME", "")
 MODEL_ID = os.environ.get("MODEL_ID", "us.anthropic.claude-opus-4-7")
+# Wiki model provider. "bedrock" (default) uses the keyless Bedrock path via
+# the task role. Bring-your-own providers ("anthropic", "openai", "grok",
+# "gemini") are routed through LiteLLM with an API key fetched from
+# LLM_KEY_SECRET_ARN (a Secrets Manager ARN injected by start-wiki-gen).
+MODEL_PROVIDER = os.environ.get("MODEL_PROVIDER", "bedrock").lower()
+LLM_KEY_SECRET_ARN = os.environ.get("LLM_KEY_SECRET_ARN")
 MIN_PAGES = int(os.environ.get("MIN_PAGES", "4"))
 MAX_PAGES = int(os.environ.get("MAX_PAGES", "8"))
 CORPUS_PREVIEW_CHARS = int(os.environ.get("CORPUS_PREVIEW_CHARS", "600"))
@@ -79,6 +85,7 @@ _cfg = Config(retries={"max_attempts": 5, "mode": "adaptive"}, read_timeout=300)
 
 s3 = _session.client("s3", config=_cfg)
 bedrock = _session.client("bedrock-runtime", config=_cfg)
+secrets_client = _session.client("secretsmanager", config=_cfg)
 
 
 # ── Types ─────────────────────────────────────────────────────────────
@@ -217,8 +224,37 @@ def build_corpus_summary(docs: list[SourceDoc]) -> str:
 # ── Bedrock call ──────────────────────────────────────────────────────
 
 
-def invoke_opus(user_text: str) -> str:
-    """Single-turn Converse call to Opus. Returns the assistant text."""
+_llm_key_cache: str | None = None
+
+# Map our provider names to LiteLLM's "<provider>/<model>" prefix.
+_LITELLM_PREFIX = {
+    "anthropic": "anthropic",
+    "openai": "openai",
+    "grok": "xai",
+    "gemini": "gemini",
+}
+
+
+def _llm_api_key() -> str:
+    """Fetch (and cache) the bring-your-own API key from Secrets Manager."""
+    global _llm_key_cache
+    if _llm_key_cache is not None:
+        return _llm_key_cache
+    if not LLM_KEY_SECRET_ARN:
+        raise RuntimeError(
+            f"Provider '{MODEL_PROVIDER}' requires an API key but "
+            "LLM_KEY_SECRET_ARN is not set."
+        )
+    resp = secrets_client.get_secret_value(SecretId=LLM_KEY_SECRET_ARN)
+    key = (resp.get("SecretString") or "").strip()
+    if not key:
+        raise RuntimeError("LLM API key secret is empty.")
+    _llm_key_cache = key
+    return key
+
+
+def _invoke_bedrock(user_text: str) -> str:
+    """Single-turn Converse call to a Bedrock model. Returns assistant text."""
     resp = bedrock.converse(
         modelId=MODEL_ID,
         messages=[{"role": "user", "content": [{"text": user_text}]}],
@@ -226,6 +262,32 @@ def invoke_opus(user_text: str) -> str:
     )
     content = resp["output"]["message"]["content"]
     return "".join(block.get("text", "") for block in content).strip()
+
+
+def _invoke_litellm(user_text: str) -> str:
+    """Single-turn completion via LiteLLM for bring-your-own providers."""
+    import litellm
+
+    prefix = _LITELLM_PREFIX.get(MODEL_PROVIDER)
+    if not prefix:
+        raise RuntimeError(f"Unsupported wiki model provider: {MODEL_PROVIDER}")
+    if not MODEL_ID:
+        raise RuntimeError(f"MODEL_ID is required for provider '{MODEL_PROVIDER}'.")
+
+    resp = litellm.completion(
+        model=f"{prefix}/{MODEL_ID}",
+        messages=[{"role": "user", "content": user_text}],
+        max_tokens=MAX_TOKENS,
+        api_key=_llm_api_key(),
+    )
+    return (resp.choices[0].message.content or "").strip()
+
+
+def invoke_llm(user_text: str) -> str:
+    """Single-turn LLM call routed to the configured provider."""
+    if MODEL_PROVIDER == "bedrock":
+        return _invoke_bedrock(user_text)
+    return _invoke_litellm(user_text)
 
 
 # ── Structure parsing ────────────────────────────────────────────────
@@ -364,7 +426,7 @@ def generate_page(spec: PageSpec, docs_by_key: dict[str, SourceDoc]) -> str:
         source_content=source_content,
         repo_full_name=REPO_FULL_NAME or "this repository",
     )
-    return invoke_opus(prompt)
+    return invoke_llm(prompt)
 
 
 # ── S3 writes ─────────────────────────────────────────────────────────
@@ -515,7 +577,7 @@ def main() -> int:
         max_pages=MAX_PAGES,
         repo_full_name=REPO_FULL_NAME or "this repository",
     )
-    structure_raw = invoke_opus(structure_prompt)
+    structure_raw = invoke_llm(structure_prompt)
     structure_xml = extract_xml(structure_raw)
     title, description, specs = parse_structure(structure_xml, set(docs_by_key))
     print(f"  plan: {len(specs)} page(s)")

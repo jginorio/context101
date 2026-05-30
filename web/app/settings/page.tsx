@@ -19,6 +19,7 @@ import { SignOutButton } from "@/components/sign-out-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { OrganizationSettings } from "@/components/settings/organization-settings";
+import { WikiModelSettings } from "@/components/settings/wiki-model-settings";
 
 type SectionId =
   | "organization"
@@ -38,7 +39,7 @@ type Section = {
 
 const SECTIONS: Section[] = [
   { id: "organization", label: "Organization", icon: Users, available: true },
-  { id: "model", label: "Wiki model & API keys", icon: KeyRound, available: false },
+  { id: "model", label: "Wiki model & API keys", icon: KeyRound, available: true },
   { id: "embeddings", label: "Embeddings", icon: Boxes, available: false },
   { id: "wiki", label: "Wiki regeneration", icon: FileText, available: false },
   { id: "sources", label: "Source sync", icon: Plug, available: false },
@@ -121,10 +122,17 @@ export default function SettingsPage() {
               <p className="text-sm text-muted-foreground">
                 Manage who has access to this organization and their roles.
               </p>
+            ) : active === "model" ? (
+              <p className="text-sm text-muted-foreground">
+                Choose which model generates each brain&apos;s wiki — AWS
+                Bedrock, or bring your own Anthropic / OpenAI / Grok / Gemini
+                key.
+              </p>
             ) : null}
           </div>
 
           {active === "organization" ? <OrganizationSettings /> : null}
+          {active === "model" ? <WikiModelSettings /> : null}
         </section>
       </div>
     </main>
