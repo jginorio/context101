@@ -3,6 +3,8 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { publicBrain, readAuthContext } from "@/lib/brains-server";
+import { db } from "@/lib/db/client";
+import { brains as brainsTable } from "@/lib/db/schema";
 
 const PROVISIONER_FN_NAME = process.env.BRAIN_PROVISIONER_FN_NAME ?? "";
 const lambdaClient = new LambdaClient({
@@ -94,6 +96,25 @@ export async function POST(request: NextRequest) {
   const createdByEmail = auth.userEmail;
 
   try {
+    // Pre-insert the provisioning row so the UI can poll it immediately.
+    // Without this, the client polls /api/brains/<id> before the async
+    // provisioner has inserted anything (→ 404), and the brains list never
+    // shows the new card until a manual refresh. The provisioner treats an
+    // existing `provisioning` row as a resume, so this is race-safe.
+    if (db) {
+      await db
+        .insert(brainsTable)
+        .values({
+          id: brainId,
+          orgId: auth.orgId,
+          displayName,
+          description: description ?? null,
+          status: "provisioning",
+          createdBy: auth.userId,
+        })
+        .onConflictDoNothing();
+    }
+
     // Fire-and-forget. The provisioner's first step is to insert a row
     // with status="provisioning"; once Lambda accepts the Event invoke
     // we can return immediately and let the client poll the registry.

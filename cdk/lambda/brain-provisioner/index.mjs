@@ -429,10 +429,13 @@ async function createBrain({
     if (cur.org_id !== org_id) {
       throw new Error(`brain_id ${brain_id} already exists`);
     }
-    if (cur.status !== "error") {
+    // A `ready` or `deleting` brain with this id is a genuine collision.
+    // A `provisioning` row is expected: the web route pre-inserts it so the
+    // UI can poll immediately, and a re-run of a failed (`error`) provision
+    // should resume. In both cases, (re)start the AWS provisioning steps.
+    if (cur.status === "ready" || cur.status === "deleting") {
       throw new Error(`brain_id ${brain_id} already exists`);
     }
-    // Reset the errored row back to provisioning and retry the AWS steps.
     await pgExecute(
       DATABASE_URL,
       `update brains
