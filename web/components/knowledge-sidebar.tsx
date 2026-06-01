@@ -1,12 +1,14 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   ChevronDown,
   ChevronRight,
   Download,
   FilePlus,
   FolderPlus,
+  MoreHorizontal,
   Plus,
 } from "lucide-react";
 import { toast } from "sonner";
@@ -39,74 +41,56 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { AddSourceDialog } from "@/components/add-source-dialog";
 import {
-  PROVIDER_GROUPS,
+  CONNECTOR_TYPES,
   SOURCE_TYPES,
   TypeIcon,
   type ConnectorType,
-  type ProviderGroup,
 } from "@/lib/source-providers";
 import { useAppShell } from "@/components/app-shell";
 import { cn } from "@/lib/utils";
 
 // Root folders that are surfaced through their own grouped sections, so we
-// keep them out of the "Your files" tree.
+// keep them out of the uploaded files tree.
 const HIDDEN_ROOT_FOLDERS = ["sources", "wiki"];
 
-function SectionHeader({
+function SidebarSection({
   label,
-  icon,
   collapsed,
   onToggle,
   action,
+  children,
 }: {
   label: string;
-  icon?: React.ReactNode;
   collapsed: boolean;
   onToggle: () => void;
   action?: React.ReactNode;
+  children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-1">
-      <button
-        onClick={onToggle}
-        className="flex flex-1 items-center gap-1.5 rounded-md px-1.5 py-1 text-left text-[11px] font-semibold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-      >
-        {collapsed ? (
-          <ChevronRight className="h-3 w-3 shrink-0" />
-        ) : (
-          <ChevronDown className="h-3 w-3 shrink-0" />
-        )}
-        {icon}
-        <span className="truncate">{label}</span>
-      </button>
-      {action}
-    </div>
-  );
-}
-
-// Renders a connector type's S3 prefix as a lazily-loaded subtree. Empty
-// state nudges the user to add a source.
-function ProviderSubtree({
-  type,
-  ctx,
-}: {
-  type: ConnectorType;
-  ctx: TreeContext;
-}) {
-  return (
-    <div className="ml-1 border-l pl-1">
-      <FolderNode
-        prefix={SOURCE_TYPES[type].prefix}
-        name={SOURCE_TYPES[type].label}
-        depth={0}
-        ctx={ctx}
-      />
-    </div>
+    <section className="overflow-hidden rounded-lg border bg-card/40">
+      <div className="flex items-center gap-1 border-b border-border/60 px-1.5 py-1">
+        <button
+          type="button"
+          onClick={onToggle}
+          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-xs font-medium text-foreground transition-colors hover:bg-muted/60"
+        >
+          {collapsed ? (
+            <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
+          ) : (
+            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+          )}
+          <span className="truncate">{label}</span>
+        </button>
+        {action}
+      </div>
+      {!collapsed ? <div className="p-1">{children}</div> : null}
+    </section>
   );
 }
 
@@ -137,15 +121,14 @@ export function KnowledgeSidebar({
   const [rootDragOver, setRootDragOver] = React.useState(false);
   const [localRefresh, setLocalRefresh] = React.useState(0);
 
-  // Multi-select for zip export, scoped to the user's own files. Keys follow
-  // the S3 convention — folders end with "/", files don't.
   const [checked, setChecked] = React.useState<Set<string>>(new Set());
   const [zipping, setZipping] = React.useState(false);
 
-  // Expanded state per section id; absent = collapsed (all sections start
-  // collapsed so the sidebar opens compact).
-  const [expanded, setExpanded] = React.useState<Record<string, boolean>>({});
-  const toggleSection = (id: string) =>
+  const [expanded, setExpanded] = React.useState({
+    "your-files": true,
+    sources: true,
+  });
+  const toggleSection = (id: "your-files" | "sources") =>
     setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const [addType, setAddType] = React.useState<ConnectorType | null>(null);
@@ -159,8 +142,6 @@ export function KnowledgeSidebar({
     });
   }, []);
 
-  // Select every manual file/folder at the root (connector-managed and
-  // generated prefixes are excluded — they're browsed, not bulk-exported).
   async function selectAll() {
     try {
       const r = await fetch("/api/files/list?prefix=");
@@ -212,7 +193,6 @@ export function KnowledgeSidebar({
     }
   }
 
-  // Merge the parent's refresh signal with internal ones (e.g. after a move).
   const mergedRefreshKey = refreshKey + localRefresh;
 
   async function confirmDelete() {
@@ -244,7 +224,6 @@ export function KnowledgeSidebar({
     }
   }
 
-  // Dropping onto the "Your files" area moves the item to the root prefix.
   const handleRootDragOver = (e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
     e.preventDefault();
@@ -273,7 +252,7 @@ export function KnowledgeSidebar({
     }
   };
 
-  const ctx: TreeContext = {
+  const editableCtx: TreeContext = {
     selectedKey,
     refreshKey: mergedRefreshKey,
     onSelectFile: (key) => {
@@ -287,170 +266,160 @@ export function KnowledgeSidebar({
     onMoved: () => setLocalRefresh((n) => n + 1),
     checked,
     onToggleCheck: toggleCheck,
+    mode: "editable",
   };
 
-  const addButton = (onClick: () => void, label: string) => (
-    <Button
-      size="icon-sm"
-      variant="ghost"
-      className="h-5 w-5"
-      onClick={onClick}
-      aria-label={label}
-    >
-      <Plus className="h-3.5 w-3.5" />
-    </Button>
-  );
-
-  function ProviderAddAction(group: ProviderGroup) {
-    if (group.types.length === 1) {
-      return addButton(
-        () => setAddType(group.types[0]),
-        `Add ${group.label} source`
-      );
-    }
-    return (
-      <DropdownMenu>
-        <DropdownMenuTrigger
-          render={
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              className="h-5 w-5"
-              aria-label={`Add ${group.label} source`}
-            />
-          }
-        >
-          <Plus className="h-3.5 w-3.5" />
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {group.types.map((t) => (
-            <DropdownMenuItem key={t} onClick={() => setAddType(t)}>
-              <TypeIcon type={t} className="mr-2 h-3.5 w-3.5" />
-              {SOURCE_TYPES[t].menuLabel}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
-    );
-  }
+  const browseCtx: TreeContext = {
+    selectedKey,
+    refreshKey: mergedRefreshKey,
+    onSelectFile: (key) => {
+      onSelectFile(key);
+      closeMobileNav();
+    },
+    onNewFile: () => {},
+    onNewFolder: () => {},
+    onRename: () => {},
+    onDeleteRequest: () => {},
+    onMoved: () => {},
+    checked: new Set(),
+    onToggleCheck: () => {},
+    mode: "browse",
+  };
 
   return (
-    <div className="space-y-3">
-      {/* ── Your files ─────────────────────────────────────────────── */}
-      <div>
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <SectionHeader
-            label="Your files"
-            collapsed={!expanded["your-files"]}
-            onToggle={() => toggleSection("your-files")}
-          />
-          {checked.size === 0 ? (
-            <Button
-              size="sm"
-              variant="ghost"
-              className="h-6 shrink-0 text-xs"
-              onClick={selectAll}
-            >
-              Select all
-            </Button>
-          ) : (
-            <div className="flex shrink-0 items-center gap-1">
-              <Button
-                size="sm"
-                variant="ghost"
-                className="h-6 text-xs"
-                onClick={() => setChecked(new Set())}
-                disabled={zipping}
-              >
-                Clear
-              </Button>
-              <Button
-                size="sm"
-                className="h-6 text-xs"
-                onClick={downloadZip}
-                disabled={zipping}
-              >
-                <Download className="mr-1 h-3.5 w-3.5" />
-                {zipping ? "Zipping…" : "ZIP"}
-              </Button>
-            </div>
-          )}
-        </div>
-
-        {expanded["your-files"] && (
-          <ContextMenu>
-            <ContextMenuTrigger>
-              <div
-                onDragOver={handleRootDragOver}
-                onDragLeave={() => setRootDragOver(false)}
-                onDrop={handleRootDrop}
-                className={cn(
-                  "min-h-8 space-y-0.5 rounded",
-                  rootDragOver && "bg-accent/40 ring-1 ring-ring"
-                )}
-              >
-                <FolderNode
-                  prefix=""
-                  name="/"
-                  depth={0}
-                  ctx={ctx}
-                  hideRootFolders={HIDDEN_ROOT_FOLDERS}
+    <div className="space-y-2">
+      <SidebarSection
+        label="Uploaded files"
+        collapsed={!expanded["your-files"]}
+        onToggle={() => toggleSection("your-files")}
+        action={
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="h-6 w-6 shrink-0"
+                  aria-label="Uploaded files actions"
                 />
-              </div>
-            </ContextMenuTrigger>
-            <ContextMenuContent>
-              <ContextMenuItem onClick={() => onNewFile("")}>
-                <FilePlus className="mr-2 h-3.5 w-3.5" /> New file at root
-              </ContextMenuItem>
-              <ContextMenuItem onClick={() => onNewFolder("")}>
-                <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder at root
-              </ContextMenuItem>
-            </ContextMenuContent>
-          </ContextMenu>
-        )}
-      </div>
+              }
+            >
+              <MoreHorizontal className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => onNewFile("")}>
+                <FilePlus className="mr-2 h-3.5 w-3.5" /> New file
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onNewFolder("")}>
+                <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={selectAll}>Select all</DropdownMenuItem>
+              {checked.size > 0 ? (
+                <>
+                  <DropdownMenuItem onClick={() => setChecked(new Set())}>
+                    Clear selection
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={downloadZip} disabled={zipping}>
+                    <Download className="mr-2 h-3.5 w-3.5" />
+                    {zipping ? "Zipping…" : `Download ZIP (${checked.size})`}
+                  </DropdownMenuItem>
+                </>
+              ) : null}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      >
+        <ContextMenu>
+          <ContextMenuTrigger>
+            <div
+              onDragOver={handleRootDragOver}
+              onDragLeave={() => setRootDragOver(false)}
+              onDrop={handleRootDrop}
+              className={cn(
+                "min-h-8 space-y-0.5 rounded-md",
+                rootDragOver && "bg-accent/40 ring-1 ring-ring"
+              )}
+            >
+              <FolderNode
+                prefix=""
+                name="/"
+                depth={0}
+                ctx={editableCtx}
+                hideRootFolders={HIDDEN_ROOT_FOLDERS}
+              />
+            </div>
+          </ContextMenuTrigger>
+          <ContextMenuContent>
+            <ContextMenuItem onClick={() => onNewFile("")}>
+              <FilePlus className="mr-2 h-3.5 w-3.5" /> New file at root
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => onNewFolder("")}>
+              <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder at root
+            </ContextMenuItem>
+          </ContextMenuContent>
+        </ContextMenu>
+      </SidebarSection>
 
-      {/* ── Connected sources, grouped by provider ─────────────────── */}
-      {PROVIDER_GROUPS.map((group) => {
-        const GroupIcon = group.icon;
-        const isCollapsed = !expanded[group.id];
-        return (
-          <div key={group.id}>
-            <SectionHeader
-              label={group.label}
-              icon={<GroupIcon className="h-3 w-3 shrink-0" />}
-              collapsed={isCollapsed}
-              onToggle={() => toggleSection(group.id)}
-              action={ProviderAddAction(group)}
+      <SidebarSection
+        label="Connected sources"
+        collapsed={!expanded.sources}
+        onToggle={() => toggleSection("sources")}
+        action={
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  className="h-6 w-6 shrink-0"
+                  aria-label="Add connected source"
+                />
+              }
+            >
+              <Plus className="h-3.5 w-3.5" />
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              {CONNECTOR_TYPES.map((t) => (
+                <DropdownMenuItem key={t} onClick={() => setAddType(t)}>
+                  <TypeIcon type={t} className="mr-2 h-3.5 w-3.5" />
+                  {SOURCE_TYPES[t].menuLabel}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        }
+      >
+        <div className="space-y-0.5">
+          {CONNECTOR_TYPES.map((type) => (
+            <FolderNode
+              key={type}
+              prefix={SOURCE_TYPES[type].prefix}
+              name={SOURCE_TYPES[type].menuLabel}
+              depth={0}
+              ctx={browseCtx}
+              forceHeader
+              prefetch
+              hideWhenEmpty
+              defaultOpen={false}
+              headerIcon={
+                <TypeIcon type={type} className="h-3.5 w-3.5 shrink-0 opacity-90" />
+              }
             />
-            {!isCollapsed && (
-              <div className="mt-0.5">
-                {group.types.length === 1 ? (
-                  <ProviderSubtree type={group.types[0]} ctx={ctx} />
-                ) : (
-                  group.types.map((t) => {
-                    const childId = `${group.id}:${t}`;
-                    const childCollapsed = !expanded[childId];
-                    return (
-                      <div key={t} className="ml-1">
-                        <SectionHeader
-                          label={SOURCE_TYPES[t].label}
-                          icon={<TypeIcon type={t} className="h-3 w-3 shrink-0" />}
-                          collapsed={childCollapsed}
-                          onToggle={() => toggleSection(childId)}
-                        />
-                        {!childCollapsed && (
-                          <ProviderSubtree type={t} ctx={ctx} />
-                        )}
-                      </div>
-                    );
-                  })
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
+          ))}
+          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+            Manage connectors on the{" "}
+            <Link
+              href="/sources"
+              onClick={closeMobileNav}
+              className="font-medium text-foreground underline-offset-2 hover:underline"
+            >
+              Sources
+            </Link>{" "}
+            page.
+          </p>
+        </div>
+      </SidebarSection>
 
       <AddSourceDialog
         open={!!addType}

@@ -107,6 +107,8 @@ export type TreeContext = {
   // e.g. "foo/bar.md", folders end with "/".
   checked: Set<string>;
   onToggleCheck: (key: string) => void;
+  // Connector-synced files are browse-only: no checkboxes, drag, or edits.
+  mode?: "editable" | "browse";
 };
 
 // Compute the destination key when dropping `src` into folder `destPrefix`.
@@ -138,27 +140,41 @@ export function FolderNode({
   depth,
   ctx,
   hideRootFolders,
+  forceHeader = false,
+  headerIcon,
+  defaultOpen,
+  hideWhenEmpty = false,
+  prefetch = false,
 }: {
   prefix: string;
   name: string;
   depth: number;
   ctx: TreeContext;
   // Folder names to hide at depth 0 only (used to keep connector-managed
-  // `sources/` and generated `wiki/` out of the "Your files" section).
+  // `sources/` and generated `wiki/` out of the uploaded files section).
   hideRootFolders?: string[];
+  // Show a collapsible row even at depth 0 (used for connector type roots).
+  forceHeader?: boolean;
+  headerIcon?: React.ReactNode;
+  defaultOpen?: boolean;
+  // Hide connector roots that finished loading with no children.
+  hideWhenEmpty?: boolean;
+  // Load listing even while collapsed (needed to hide empty connector roots).
+  prefetch?: boolean;
 }) {
-  const [open, setOpen] = React.useState(depth === 0);
+  const browse = ctx.mode === "browse";
+  const [open, setOpen] = React.useState(defaultOpen ?? depth === 0);
   const [data, setData] = React.useState<ListResponse | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [dragOver, setDragOver] = React.useState(false);
 
   React.useEffect(() => {
-    if (!open) return;
+    if (!open && !prefetch) return;
     setError(null);
     fetchList(prefix)
       .then(setData)
       .catch((e) => setError(e.message));
-  }, [open, prefix, ctx.refreshKey]);
+  }, [open, prefetch, prefix, ctx.refreshKey]);
 
   // ── D&D handlers for dropping into this folder ─────────────────────
   const handleDragOver = (e: React.DragEvent) => {
@@ -196,69 +212,90 @@ export function FolderNode({
       (f) => !(depth === 0 && hideRootFolders?.includes(f.name))
     ) ?? [];
 
-  const header =
-    depth === 0 ? null : (
-      <ContextMenu>
-        <ContextMenuTrigger>
-          <div
-            onDragOver={handleDragOver}
-            onDragLeave={handleDragLeave}
-            onDrop={handleDrop}
-            className={cn(
-              "flex items-center gap-1 w-full text-sm py-1 px-2 rounded hover:bg-muted",
-              dragOver && "bg-accent ring-1 ring-ring"
-            )}
-            style={{ paddingLeft: `${depth * 12 + 8}px` }}
-          >
-            <Checkbox
-              checked={ctx.checked.has(prefix)}
-              onCheckedChange={() => ctx.onToggleCheck(prefix)}
-              onClick={(e) => e.stopPropagation()}
-              className="h-3.5 w-3.5 shrink-0"
-              aria-label={`select folder ${name}`}
-            />
-            <button
-              onClick={() => setOpen((o) => !o)}
-              draggable
-              onDragStart={(e) => {
-                e.dataTransfer.setData(
-                  DRAG_MIME,
-                  JSON.stringify({ key: prefix, isFolder: true } as DragPayload)
-                );
-                e.dataTransfer.effectAllowed = "move";
-              }}
-              className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
-            >
-              {open ? (
-                <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
-              ) : (
-                <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
-              )}
-              <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" />
-              <span className="truncate">{name}</span>
-            </button>
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onClick={() => ctx.onNewFile(prefix)}>
-            <FilePlus className="mr-2 h-3.5 w-3.5" /> New file here
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => ctx.onNewFolder(prefix)}>
-            <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder here
-          </ContextMenuItem>
-          <ContextMenuSeparator />
-          <ContextMenuItem onClick={() => ctx.onRename(prefix, true)}>
-            Rename
-          </ContextMenuItem>
-          <ContextMenuItem
-            variant="destructive"
-            onClick={() => ctx.onDeleteRequest(prefix, true)}
-          >
-            Delete folder
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-    );
+  const isEmpty =
+    data !== null && visibleFolders.length === 0 && data.files.length === 0;
+
+  if (hideWhenEmpty && isEmpty) return null;
+
+  const showHeader = depth > 0 || forceHeader;
+  const indent = showHeader ? depth * 12 + 8 : 8;
+
+  const folderToggle = (
+    <button
+      onClick={() => setOpen((o) => !o)}
+      draggable={!browse}
+      onDragStart={
+        browse
+          ? undefined
+          : (e) => {
+              e.dataTransfer.setData(
+                DRAG_MIME,
+                JSON.stringify({ key: prefix, isFolder: true } as DragPayload)
+              );
+              e.dataTransfer.effectAllowed = "move";
+            }
+      }
+      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+    >
+      {open ? (
+        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
+      ) : (
+        <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
+      )}
+      {headerIcon ?? <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" />}
+      <span className="truncate">{name}</span>
+    </button>
+  );
+
+  const folderRow = (
+    <div
+      onDragOver={browse ? undefined : handleDragOver}
+      onDragLeave={browse ? undefined : handleDragLeave}
+      onDrop={browse ? undefined : handleDrop}
+      className={cn(
+        "flex w-full items-center gap-1 rounded px-2 py-1 text-sm hover:bg-muted",
+        dragOver && "bg-accent ring-1 ring-ring"
+      )}
+      style={{ paddingLeft: `${indent}px` }}
+    >
+      {!browse && (
+        <Checkbox
+          checked={ctx.checked.has(prefix)}
+          onCheckedChange={() => ctx.onToggleCheck(prefix)}
+          onClick={(e) => e.stopPropagation()}
+          className="h-3.5 w-3.5 shrink-0"
+          aria-label={`select folder ${name}`}
+        />
+      )}
+      {folderToggle}
+    </div>
+  );
+
+  const header = !showHeader ? null : browse ? (
+    folderRow
+  ) : (
+    <ContextMenu>
+      <ContextMenuTrigger>{folderRow}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={() => ctx.onNewFile(prefix)}>
+          <FilePlus className="mr-2 h-3.5 w-3.5" /> New file here
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => ctx.onNewFolder(prefix)}>
+          <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder here
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => ctx.onRename(prefix, true)}>
+          Rename
+        </ContextMenuItem>
+        <ContextMenuItem
+          variant="destructive"
+          onClick={() => ctx.onDeleteRequest(prefix, true)}
+        >
+          Delete folder
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
+  );
 
   return (
     <div>
@@ -282,16 +319,16 @@ export function FolderNode({
               ctx={ctx}
             />
           ))}
-          {data?.files.map((file) => (
-            <ContextMenu key={file.key}>
-              <ContextMenuTrigger>
-                <div
-                  className={cn(
-                    "flex items-center gap-1 w-full text-sm py-1 px-2 rounded hover:bg-muted",
-                    ctx.selectedKey === file.key && "bg-muted"
-                  )}
-                  style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
-                >
+          {data?.files.map((file) => {
+            const fileRow = (
+              <div
+                className={cn(
+                  "flex w-full items-center gap-1 rounded px-2 py-1 text-sm hover:bg-muted",
+                  ctx.selectedKey === file.key && "bg-muted"
+                )}
+                style={{ paddingLeft: `${(showHeader ? depth + 1 : depth) * 12 + 8}px` }}
+              >
+                {!browse && (
                   <Checkbox
                     checked={ctx.checked.has(file.key)}
                     onCheckedChange={() => ctx.onToggleCheck(file.key)}
@@ -299,49 +336,72 @@ export function FolderNode({
                     className="h-3.5 w-3.5 shrink-0"
                     aria-label={`select ${file.name}`}
                   />
-                  <button
-                    onClick={() => ctx.onSelectFile(file.key)}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData(
-                        DRAG_MIME,
-                        JSON.stringify({
-                          key: file.key,
-                          isFolder: false,
-                        } as DragPayload)
-                      );
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    className="flex items-center gap-1.5 flex-1 min-w-0 text-left"
-                  >
-                    <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                    <span className="truncate">{file.name}</span>
-                  </button>
-                </div>
-              </ContextMenuTrigger>
-              <ContextMenuContent>
-                <ContextMenuItem onClick={() => downloadFile(file.key)}>
-                  <Download className="mr-2 h-3.5 w-3.5" /> Download
-                </ContextMenuItem>
-                <ContextMenuSeparator />
-                <ContextMenuItem onClick={() => ctx.onRename(file.key, false)}>
-                  Rename
-                </ContextMenuItem>
-                <ContextMenuItem
-                  variant="destructive"
-                  onClick={() => ctx.onDeleteRequest(file.key, false)}
+                )}
+                <button
+                  onClick={() => ctx.onSelectFile(file.key)}
+                  draggable={!browse}
+                  onDragStart={
+                    browse
+                      ? undefined
+                      : (e) => {
+                          e.dataTransfer.setData(
+                            DRAG_MIME,
+                            JSON.stringify({
+                              key: file.key,
+                              isFolder: false,
+                            } as DragPayload)
+                          );
+                          e.dataTransfer.effectAllowed = "move";
+                        }
+                  }
+                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
                 >
-                  Delete
-                </ContextMenuItem>
-              </ContextMenuContent>
-            </ContextMenu>
-          ))}
-          {data && visibleFolders.length === 0 && data.files.length === 0 && (
+                  <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                  <span className="truncate">{file.name}</span>
+                </button>
+              </div>
+            );
+
+            if (browse) {
+              return (
+                <ContextMenu key={file.key}>
+                  <ContextMenuTrigger>{fileRow}</ContextMenuTrigger>
+                  <ContextMenuContent>
+                    <ContextMenuItem onClick={() => downloadFile(file.key)}>
+                      <Download className="mr-2 h-3.5 w-3.5" /> Download
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+              );
+            }
+
+            return (
+              <ContextMenu key={file.key}>
+                <ContextMenuTrigger>{fileRow}</ContextMenuTrigger>
+                <ContextMenuContent>
+                  <ContextMenuItem onClick={() => downloadFile(file.key)}>
+                    <Download className="mr-2 h-3.5 w-3.5" /> Download
+                  </ContextMenuItem>
+                  <ContextMenuSeparator />
+                  <ContextMenuItem onClick={() => ctx.onRename(file.key, false)}>
+                    Rename
+                  </ContextMenuItem>
+                  <ContextMenuItem
+                    variant="destructive"
+                    onClick={() => ctx.onDeleteRequest(file.key, false)}
+                  >
+                    Delete
+                  </ContextMenuItem>
+                </ContextMenuContent>
+              </ContextMenu>
+            );
+          })}
+          {isEmpty && (
             <p
-              className="text-xs text-muted-foreground italic px-2 py-1"
-              style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
+              className="px-2 py-1 text-xs italic text-muted-foreground"
+              style={{ paddingLeft: `${(showHeader ? depth + 1 : depth) * 12 + 8}px` }}
             >
-              empty
+              {browse ? "No synced files" : "empty"}
             </p>
           )}
         </div>

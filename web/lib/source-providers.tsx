@@ -85,6 +85,16 @@ export const PROVIDER_GROUPS: ProviderGroup[] = [
   { id: "github", label: "GitHub", icon: GithubLogo, types: ["github"] },
 ];
 
+// Flat connector order for the knowledge sidebar (Google types first, then
+// single-provider connectors).
+export const CONNECTOR_TYPES: ConnectorType[] = [
+  "docs",
+  "sheets",
+  "slides",
+  "notion",
+  "github",
+];
+
 export function TypeIcon({
   type,
   className = "h-4 w-4 opacity-80",
