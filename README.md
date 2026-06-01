@@ -118,7 +118,7 @@ Before your first deploy, make sure you have:
   ```
 - **Bedrock model access** — enable the models we use in the Bedrock console → *Model access*:
   - `amazon.titan-embed-text-v2:0` (embeddings for the KB)
-  - `us.anthropic.claude-opus-4-7` (the *Improve with AI* button and the wiki generator — requires a Marketplace subscription, done once via the "Request access" flow)
+  - `us.anthropic.claude-opus-4-7` (the *Improve with AI* button, and the wiki generator's default Bedrock model — the wiki model is configurable per brain in Settings, but this is the out-of-the-box default; requires a Marketplace subscription, done once via the "Request access" flow)
 
   Without these, `cdk deploy` will still succeed, but writes to `/improve` and wiki regen will 403.
 
@@ -634,16 +634,20 @@ The wiki auto-regenerates every 10 hours via an EventBridge schedule. The schedu
 **What gets written to S3:**
 - `wiki/<slug>.md` — one page per topic, full markdown with Mermaid blocks and `Sources: [file.md]()` citations
 - `wiki/<slug>.md.metadata.json` — Bedrock KB sidecar tagging the page `source=wiki` (+ `generated_at`, `page_slug`, `source_files`). This is what `search_knowledge` filters on — see [Two-tier retrieval](#two-tier-retrieval-canonical-vs-raw)
-- `wiki/_index.json` — nav order, titles, descriptions, source mappings per page
-- `wiki/_meta.json` — timestamps + page/source counts + `corpus_sha` (drives the "Last indexed" badge and the no-change guard described below)
+- `wiki/_index.json` — nav order, titles, descriptions, source mappings per page (+ per-page `provenance`: which sources, with their `modified_at`/`etag`, the page was built from)
+- `wiki/_meta.json` — timestamps + page/source counts + `corpus_sha` (drives the "Last indexed" badge and the no-change guard described below) + `drift_count` + `total_cost_usd`
+- `wiki/_drift.json` — conflict/review queue: sources that disagreed (within a page or across pages) that recency couldn't silently resolve
+- `wiki/_runs/<run_id>.json` — per-run cost record: per-stage token counts + estimated dollars (surfaced in the **Costs** settings tab)
 
 Generated pages land in the same bucket as raw docs and the auto-ingest Lambda picks them up the same way. At retrieval time the `source=wiki` sidecar filter is what separates canonical chunks from raw — **`search_knowledge` only returns wiki pages; raw docs are reachable via `read_knowledge`.**
 
-Cost: ~$0.30–0.80 per full regen (one Opus call for the structure + one per page). Fargate runtime is ~3-5 min at $0.04/hr-ish for a 0.5 vCPU / 1 GB task — negligible compared to the Opus spend.
+The generator is **model-agnostic** (`MODEL_ID` / `MODEL_PROVIDER`, routed to Bedrock or any LiteLLM provider) and resolves source conflicts at generation time, always preferring the **newer** source by recency: within a page when its own sources disagree (Level 1, the judge step) and across pages that share sources (Level 3, the cross-page reduce step). Recency comes from the `source_modified_at` the connectors stamp on each source's sidecar.
+
+Cost: per page, calls go from 1 → `WIKI_CANDIDATES` drafts + 1 judge (default 2+1), plus one structure call and one call per source-overlapping page-pair. Single-source pages and `WIKI_CANDIDATES=1` collapse back to one call per page (the old cost). The global no-change guard remains the primary saver. Every run records its exact token usage and an **estimated** dollar cost per stage to `wiki/_runs/` — view it in the Costs tab to see where to tune. Fargate runtime is a few minutes at $0.04/hr-ish for a 0.5 vCPU / 1 GB task — negligible next to the model spend.
 
 ### Manual-only regen + no-change guard
 
-Wiki regen is **off the schedule by default** to keep Opus spend predictable. The team-wiki EventBridge rule (`WikiGenSchedule`) is created with `enabled: false`, and the GitHub connector's auto-fire after sync is gated on the Lambda env var `AUTO_TRIGGER_CODE_WIKI` (unset by default). So today:
+Wiki regen is **off the schedule by default** to keep model spend predictable. The team-wiki EventBridge rule (`WikiGenSchedule`) is created with `enabled: false`, and the GitHub connector's auto-fire after sync is gated on the Lambda env var `AUTO_TRIGGER_CODE_WIKI` (unset by default). So today:
 
 - Team wiki regenerates only when a human clicks **Refresh now** on `/wiki`.
 - Code wikis regenerate only via the manual `start-wiki-gen` invoke (see below) or by flipping `AUTO_TRIGGER_CODE_WIKI=true` on `connector-sync-github` and waiting for the next 6h connector tick.
@@ -651,7 +655,7 @@ Wiki regen is **off the schedule by default** to keep Opus spend predictable. Th
 If you want the schedule back, flip `enabled: true` on `WikiGenSchedule` in `cdk/lib/context101-stack.ts`. If you want post-sync code-wiki regen back, set the Lambda env var to `true`. The cost-saving plumbing below stays useful either way:
 
 - Each successful regen records a **corpus fingerprint** in `wiki/_meta.json` — SHA-256 over sorted `(key, ETag)` pairs of every input file. Mode-aware: main mode hashes the whole bucket excluding top-level `wiki/<slug>.md`; code mode hashes `sources/github/<repo-slug>/`. ETags are MD5s S3 already computes server-side, so the hash needs **no body downloads** — one `ListObjectsV2` paginate is enough.
-- A run lists the corpus, computes the new fingerprint, reads the old one from `_meta.json`. **Same hash → exit 0 without calling Opus.** A no-op invocation costs ~3-5s of Fargate boot + 1-2 S3 calls; nothing is overwritten.
+- A run lists the corpus, computes the new fingerprint, reads the old one from `_meta.json`. **Same hash → exit 0 without calling the model.** A no-op invocation costs ~3-5s of Fargate boot + 1-2 S3 calls; nothing is overwritten.
 - The manual **Refresh now** button passes `WIKI_FORCE=1` to the container (via `start-wiki-gen` Lambda → `containerOverrides.environment`), which bypasses the guard. So:
   - **User click** → forced → always regenerates (e.g. when you've edited prompts in `wiki-generator/prompts.py` and want the existing corpus re-synthesized with the new prompt).
   - **Re-enabled schedule / auto-fire** → guarded → no-op when nothing changed.
@@ -679,7 +683,9 @@ DOCS_BUCKET=<DocsBucketName> \
 python generate.py
 ```
 
-Env knobs (all optional): `WIKI_PREFIX` (default `wiki/`), `MODEL_ID` (default `us.anthropic.claude-opus-4-7`), `MIN_PAGES` / `MAX_PAGES` (default 4 / 8), `CORPUS_PREVIEW_CHARS` (default 600 — how much of each source doc feeds into the structure call), `MAX_TOKENS` (default 8192 per Opus call), `WIKI_FORCE=1` (bypass the corpus-hash guard described above).
+Env knobs (all optional): `WIKI_PREFIX` (default `wiki/`), `MODEL_ID` (configurable; deployments set it via CDK / per-brain — the in-code fallback is a neutral Sonnet profile, e.g. `us.anthropic.claude-sonnet-4-5-20250929-v1:0`), `MIN_PAGES` / `MAX_PAGES` (default 4 / 8), `CORPUS_PREVIEW_CHARS` (default 600 — how much of each source doc feeds into the structure call), `MAX_TOKENS` (default 8192 per model call), `WIKI_FORCE=1` (bypass the corpus-hash guard described above).
+
+Conflict-resolution + cost knobs: `WIKI_CANDIDATES` (drafts per multi-source page before the judge; default 2, cap 3; `=1` reproduces the old single-pass cost), `DRAFT_MODEL_ID` (model for candidate drafts only — defaults to `MODEL_ID`, so drafts use the strong model until you point this at a cheaper same-provider model), `MODEL_PRICE_INPUT_PER_1M` / `MODEL_PRICE_OUTPUT_PER_1M` (override the configured model's rate for the cost estimate; unknown models report tokens only), `WIKI_DRIFT_WRITEBACK` / `WIKI_DRIFT_DRYRUN` (drift write-back, off / dry-run by default).
 
 Set `WIKI_PREFIX=wiki-preview/` to iterate on prompts without overwriting the live wiki.
 
@@ -714,7 +720,7 @@ Connecting a GitHub repo gets you two layers of automatic synthesis:
 ### What gets retrieved when
 
 - `search_knowledge(query)` — only returns top-level wiki chunks (`source=wiki`). Code-wiki pages stay in the index but are filtered out so they don't dominate results.
-- The team wiki's structure prompt sees `wiki/code/<repo-slug>/<page>.md` files in its corpus, so it can pick them as `relevant_files` and cite them — that's how code understanding propagates up without re-feeding raw code to Opus.
+- The team wiki's structure prompt sees `wiki/code/<repo-slug>/<page>.md` files in its corpus, so it can pick them as `relevant_files` and cite them — that's how code understanding propagates up without re-feeding raw code to the model.
 - `read_knowledge(s3_key)` — escape hatch to read a code-wiki page or a raw `sources/github/…` file directly when an agent needs to dive deeper than what the team wiki cited.
 
 ### One Fargate task, two modes
@@ -732,9 +738,9 @@ The same `start-wiki-gen` Lambda starts both. SSR `/api/wiki/refresh` invokes it
 
 ### Costs + auto-trigger gating
 
-Per code-wiki regen: ~$0.30-0.80 in Opus calls (one structure call + one per page) + ~3-5 min of Fargate at ~$0.04/hr.
+Per code-wiki regen: model calls scale with pages and `WIKI_CANDIDATES` (structure + drafts + judge + cross-page; see the team-wiki cost note above) + ~3-5 min of Fargate at ~$0.04/hr. The exact per-stage token/dollar breakdown for each run is recorded under `wiki/code/<repo>/_runs/` and the Costs tab.
 
-By default, **the GitHub connector does not auto-fire code-wiki regens** — the env var `AUTO_TRIGGER_CODE_WIKI` is unset on `connector-sync-github`, and the per-sync code path bails before any Opus call. Code wikis only regenerate when *you* trigger them (via the manual `start-wiki-gen` invoke command below). Sources still sync content into `sources/github/<repo>/` every 6h — only the expensive synthesis is gated.
+By default, **the GitHub connector does not auto-fire code-wiki regens** — the env var `AUTO_TRIGGER_CODE_WIKI` is unset on `connector-sync-github`, and the per-sync code path bails before any model call. Code wikis only regenerate when *you* trigger them (via the manual `start-wiki-gen` invoke command below). Sources still sync content into `sources/github/<repo>/` every 6h — only the expensive synthesis is gated.
 
 To opt back into the original auto-regen behavior, set the Lambda env var to `true`:
 
@@ -876,7 +882,7 @@ knowledge/databases.md                   (local markdown)
          │
          ▼
 ┌──────────────────────┐
-│  Opus call #1        │  ← structure prompt
+│  Model call #1       │  ← structure prompt
 │  "plan the wiki"     │    returns <wiki_structure> XML:
 └────────┬─────────────┘    { pages: [{title, description,
          │                     relevant_files, related}] }
@@ -885,11 +891,17 @@ knowledge/databases.md                   (local markdown)
          │
          ▼
 ┌──────────────────────┐
-│  Opus call per page  │  ← per-page prompt + relevant source MDs
-│  "write the page"    │    returns markdown with Mermaid blocks
-└────────┬─────────────┘    and Sources: [file.md]() citations
+│  Per page:           │  ← N candidate drafts (per-page prompt +
+│  N drafts → judge    │    relevant source MDs), then a judge call
+└────────┬─────────────┘    that merges them + resolves intra-page
+         │                  source conflicts (newer wins) → markdown
+         │                  with Mermaid + Sources: [file.md]() cites.
+         │                  (single-source pages skip to 1 call)
          │
-         │  4. Write each generated page + _index.json + _meta.json
+         │  4. Cross-page reduce: reconcile source-overlapping pages
+         │
+         │  5. Write pages + _index.json + _meta.json + _drift.json
+         │     + _runs/<id>.json (per-stage cost)
          │
          ▼
 ┌──────────────────────┐
@@ -897,6 +909,8 @@ knowledge/databases.md                   (local markdown)
 │  wiki/*.md           │  ← the artifact (markdown, not XML)
 │  wiki/_index.json    │
 │  wiki/_meta.json     │
+│  wiki/_drift.json    │  ← conflict/review queue
+│  wiki/_runs/*.json   │  ← per-run cost records
 └────────┬─────────────┘
          │  S3 PutObject event
          ▼
@@ -905,9 +919,9 @@ knowledge/databases.md                   (local markdown)
         become retrievable via search_knowledge)
 ```
 
-**Why two LLM calls instead of one?** The structure call plans topically using just filenames + first-N-chars of each source — cheap, wide context. The per-page call gets the full content of that page's `relevant_files` — deep context, narrow scope. Generating the whole wiki in one prompt would blow the context window on anything beyond a handful of docs and produce worse structure.
+**Why split structure from page generation?** The structure call plans topically using just filenames + first-N-chars of each source — cheap, wide context. The per-page calls get the full content of that page's `relevant_files` — deep context, narrow scope. Generating the whole wiki in one prompt would blow the context window on anything beyond a handful of docs and produce worse structure. Each multi-source page then runs as N candidate drafts + a judge merge so the editor can pick the strongest material and reconcile sources that disagree (preferring the newer one); a cross-page pass does the same across pages that share sources.
 
-**Why XML for the plan?** Nested lists-of-lists (sections → pages → relevant_files + related_pages) serialize cleanly in XML and Opus emits it reliably without JSON-mode. The XML is scratch — only the generated markdown lands in S3.
+**Why XML for the plan?** Nested lists-of-lists (sections → pages → relevant_files + related_pages) serialize cleanly in XML and models emit it reliably without JSON-mode. The XML is scratch — only the generated markdown lands in S3.
 
 **Source citations.** Each page's per-page prompt requires `Sources: [file.md]()` lines under every claim. Combined with the `sources[]` array in `_index.json`, this gives the Wiki tab the "Synthesized from" footer and preserves the provenance chain back to the raw docs (which are still there, unchanged).
 
