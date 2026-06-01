@@ -5,27 +5,28 @@
   --color-foreground: var(--fg);
   --color-card: var(--card);
   --color-card-foreground: var(--fg);
-  --color-muted: #141c26;
+  --color-muted: var(--muted-bg);
   --color-muted-foreground: var(--muted);
   --color-primary: var(--accent);
-  --color-primary-foreground: #090807;
+  --color-primary-foreground: #fafafa;
   --color-border: var(--line);
   --color-ring: var(--accent-2);
 }
 
 :root {
   color-scheme: dark;
-  --bg: #07090c;
-  --bg-2: #0b1016;
-  --fg: #f0ede4;
-  --muted: #87919b;
-  --line: #26313c;
-  --card: #101720;
-  --card-2: #0d131a;
-  --accent: #c48a42;
-  --accent-2: #5f7484;
-  --accent-soft: #1d1710;
-  --code: #0a0f15;
+  --bg: #060509;
+  --bg-2: #09060c;
+  --fg: #f2eef8;
+  --muted: #a89eb4;
+  --muted-bg: #15101c;
+  --line: #3b2d48;
+  --card: #120e18;
+  --card-2: #0e0a14;
+  --accent: #d946ef;
+  --accent-2: #a855f7;
+  --accent-soft: #140818;
+  --code: #0a0810;
 }
 
 * {
@@ -39,19 +40,7 @@ body {
 }
 
 body {
-  background:
-    radial-gradient(
-      ellipse 90% 50% at 50% -10%,
-      rgba(127, 155, 173, 0.18),
-      transparent 62%
-    ),
-    radial-gradient(
-      ellipse 70% 45% at 80% 18%,
-      rgba(196, 138, 66, 0.13),
-      transparent 58%
-    ),
-    linear-gradient(180deg, var(--bg-2), var(--bg) 32%, #050608),
-    var(--bg);
+  background: var(--bg);
   color: var(--fg);
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
@@ -59,6 +48,46 @@ body {
 a {
   color: inherit;
   text-decoration: none;
+}
+
+.surface-card {
+  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  background: linear-gradient(
+    165deg,
+    color-mix(in srgb, var(--accent-soft) 72%, var(--card)) 0%,
+    color-mix(in srgb, var(--card) 88%, var(--bg)) 100%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 10%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 4%, transparent);
+}
+
+.surface-card--stat {
+  border-radius: 1.5rem;
+}
+
+.surface-card--wide {
+  border-radius: 28px;
+}
+
+.surface-card--flat {
+  background: color-mix(in srgb, var(--accent-soft) 48%, var(--card));
+}
+
+.surface-card [data-icon],
+.surface-card > svg[aria-hidden="true"] {
+  color: var(--accent);
+}
+
+.surface-callout {
+  border-radius: 22px;
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 82%, transparent);
+}
+
+.section-divider {
+  border-color: color-mix(in srgb, var(--accent) 12%, var(--line));
 }
 
 .fade-in {
@@ -87,6 +116,39 @@ a {
   50% {
     opacity: 0;
   }
+}
+
+@keyframes brain-beam-flow {
+  to {
+    stroke-dashoffset: -48;
+  }
+}
+
+@keyframes brain-node-pulse {
+  0%,
+  100% {
+    opacity: 0.06;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.16;
+    transform: scale(1.15);
+  }
+}
+
+.brain-beams {
+  opacity: 0.7;
+}
+
+.brain-beams__link {
+  stroke-dasharray: 6 42;
+  animation: brain-beam-flow 4.5s linear infinite;
+}
+
+.brain-beams__pulse {
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: brain-node-pulse 3.5s ease-in-out infinite;
 }
 
 .marquee-wrap {
@@ -144,5 +206,9 @@ a {
     -webkit-mask-image: none;
     mask-image: none;
     overflow-x: auto;
+  }
+  .brain-beams__link,
+  .brain-beams__pulse {
+    animation: none;
   }
 }

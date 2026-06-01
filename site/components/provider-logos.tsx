@@ -23,7 +23,7 @@ export function ProviderMarquee() {
       {PROVIDERS.map(({ name, Icon }) => (
         <div
           key={name}
-          className="flex items-center gap-2.5 text-foreground/70 transition-colors hover:text-foreground"
+          className="flex items-center gap-2.5 text-muted-foreground transition-colors hover:text-primary"
           title={name}
         >
           <Icon size={24} />

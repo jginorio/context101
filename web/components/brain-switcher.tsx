@@ -37,7 +37,7 @@ export function BrainSwitcher() {
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" size="sm" className="gap-1">
+          <Button variant="ghost" size="sm" className="gap-1 text-primary hover:bg-primary/10 hover:text-primary">
             <Brain className="h-3.5 w-3.5" />
             <span className="max-w-[12ch] truncate">{label}</span>
             <ChevronDown className="h-3 w-3 opacity-60" />
@@ -64,7 +64,7 @@ export function BrainSwitcher() {
               >
                 <span className="truncate">{b.display_name}</span>
                 {b.brain_id === currentBrainId ? (
-                  <Check className="h-3.5 w-3.5 ml-2 shrink-0" />
+                  <Check className="ml-2 h-3.5 w-3.5 shrink-0 text-primary" />
                 ) : null}
               </DropdownMenuItem>
             ))

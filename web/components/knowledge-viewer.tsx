@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FileText, Pencil, Save, Sparkles, Trash2, X } from "lucide-react";
+import { Brain, FileText, Pencil, Save, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -136,10 +136,18 @@ export function KnowledgeViewer({
 
   if (!fileKey) {
     return (
-      <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        <div className="flex flex-col items-center gap-2 opacity-50">
-          <FileText className="h-8 w-8" />
-          <span>Select a file to view</span>
+      <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_50%_40%,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_55%)] p-6 text-sm text-muted-foreground">
+        <div className="flex max-w-xs flex-col items-center gap-3 text-center">
+          <div className="flex size-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-[0_0_24px_color-mix(in_oklch,var(--primary)_25%,transparent)]">
+            <Brain className="h-5 w-5" />
+          </div>
+          <div>
+            <p className="font-medium text-foreground">Select a file to view</p>
+            <p className="mt-1 text-xs leading-relaxed">
+              Choose a document from uploaded files or connected sources in the
+              sidebar.
+            </p>
+          </div>
         </div>
       </div>
     );

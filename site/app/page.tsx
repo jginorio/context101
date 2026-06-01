@@ -107,7 +107,7 @@ export default function HomePage() {
           className="inline-flex min-w-0 items-center gap-2 font-bold tracking-[-0.02em]"
         >
           <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary shadow-[0_0_22px_rgba(196,138,66,0.4)]"
+            className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary shadow-[0_0_22px_rgba(217,70,239,0.45)]"
             aria-hidden
           />
           <span className="truncate">Context101</span>
@@ -163,7 +163,7 @@ export default function HomePage() {
                     </>
                   );
                   const cls =
-                    "inline-flex items-center gap-1.5 rounded-full border border-border bg-card px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:text-foreground";
+                    "inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--accent)_16%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_55%,var(--card))] px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-[color-mix(in_srgb,var(--accent)_28%,var(--line))] hover:text-foreground";
                   return href ? (
                     <a
                       key={name}
@@ -206,7 +206,7 @@ export default function HomePage() {
         </FadeIn>
       </section>
 
-      <section className="border-t border-border py-14">
+      <section className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
             The website and app are separate.
@@ -222,7 +222,7 @@ export default function HomePage() {
         <div className="mt-7 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
           {features.map(({ title, body, Icon }) => (
             <FadeIn
-              className="rounded-[22px] border border-border bg-card p-5"
+              className="surface-card p-5"
               key={title}
             >
               <Icon aria-hidden size={22} />
@@ -237,7 +237,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="border-t border-border py-14">
+      <section className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
             Built for teams, with real access control.
@@ -250,7 +250,7 @@ export default function HomePage() {
           </p>
         </FadeIn>
         <div className="mt-7 grid gap-3.5 md:grid-cols-3">
-          <FadeIn className="rounded-[22px] border border-border bg-card p-5">
+          <FadeIn className="surface-card p-5">
             <UserPlus aria-hidden size={22} />
             <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
               Invite & onboard
@@ -262,7 +262,7 @@ export default function HomePage() {
             </p>
           </FadeIn>
           <FadeIn
-            className="rounded-[22px] border border-border bg-card p-5"
+            className="surface-card p-5"
             delayMs={80}
           >
             <ShieldCheck aria-hidden size={22} />
@@ -276,7 +276,7 @@ export default function HomePage() {
             </p>
           </FadeIn>
           <FadeIn
-            className="rounded-[22px] border border-border bg-card p-5"
+            className="surface-card p-5"
             delayMs={160}
           >
             <Building2 aria-hidden size={22} />
@@ -292,7 +292,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="border-t border-border py-14">
+      <section className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
             Write once. Retrieve from everywhere.
@@ -303,14 +303,14 @@ export default function HomePage() {
           </p>
         </FadeIn>
         <FadeIn
-          className="mt-7 overflow-x-auto overflow-y-hidden rounded-[30px] border border-border bg-[radial-gradient(circle_at_50%_50%,rgba(95,116,132,0.13),transparent_38%),color-mix(in_srgb,var(--card-2)_92%,transparent)] p-7"
+          className="mt-7 overflow-x-auto overflow-y-hidden rounded-[30px] border border-[color-mix(in_srgb,var(--accent)_20%,var(--line))] bg-[radial-gradient(circle_at_50%_50%,rgba(217,70,239,0.12),transparent_42%),color-mix(in_srgb,var(--accent-soft)_65%,var(--card-2))] p-7"
           delayMs={100}
         >
           <ConnectionDiagram />
         </FadeIn>
       </section>
 
-      <section className="border-t border-border py-14">
+      <section className="border-t section-divider py-14">
         <div className="grid gap-6">
           <FadeIn>
             <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
@@ -324,7 +324,7 @@ export default function HomePage() {
               disconnected chunks.
             </p>
             <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-[22px] border border-border bg-card p-5">
+              <div className="surface-card p-5">
                 <Sparkles aria-hidden size={22} />
                 <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
                   Reconciled pages
@@ -334,7 +334,7 @@ export default function HomePage() {
                   pages with citations back to the source material.
                 </p>
               </div>
-              <div className="rounded-[22px] border border-border bg-card p-5">
+              <div className="surface-card p-5">
                 <RefreshCw aria-hidden size={22} />
                 <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
                   Manual refresh
@@ -349,7 +349,7 @@ export default function HomePage() {
           </FadeIn>
 
           <FadeIn delayMs={120}>
-            <figure className="overflow-hidden rounded-[28px] border border-border bg-card">
+            <figure className="surface-card surface-card--wide overflow-hidden">
               <Image
                 src="/wiki-preview.png"
                 alt="Context101 generated wiki page showing synthesized prose, source citations, a Mermaid diagram, and code wiki navigation."
@@ -359,7 +359,7 @@ export default function HomePage() {
                 sizes="(min-width: 1024px) 520px, 100vw"
               />
             </figure>
-            <div className="mt-4 rounded-[22px] border border-[color-mix(in_srgb,var(--accent)_28%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_78%,transparent)] p-5">
+            <div className="mt-4 surface-callout p-5">
               <p className="font-mono text-xs text-muted-foreground">
                 Current caveat
               </p>
@@ -378,7 +378,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="border-t border-border py-14">
+      <section className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
             Your wiki, your model.
@@ -391,13 +391,13 @@ export default function HomePage() {
           </p>
         </FadeIn>
         <FadeIn
-          className="mt-7 overflow-hidden rounded-[22px] border border-border bg-card py-5"
+          className="mt-7 overflow-hidden surface-card surface-card--flat py-5"
           delayMs={60}
         >
           <ProviderMarquee />
         </FadeIn>
         <div className="mt-3.5 grid gap-3.5 md:grid-cols-3">
-          <FadeIn className="rounded-[22px] border border-border bg-card p-5">
+          <FadeIn className="surface-card p-5">
             <SlidersHorizontal aria-hidden size={22} />
             <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
               Per-brain model
@@ -409,7 +409,7 @@ export default function HomePage() {
             </p>
           </FadeIn>
           <FadeIn
-            className="rounded-[22px] border border-border bg-card p-5"
+            className="surface-card p-5"
             delayMs={80}
           >
             <KeyRound aria-hidden size={22} />
@@ -423,7 +423,7 @@ export default function HomePage() {
             </p>
           </FadeIn>
           <FadeIn
-            className="rounded-[22px] border border-border bg-card p-5"
+            className="surface-card p-5"
             delayMs={160}
           >
             <LockKeyhole aria-hidden size={22} />
@@ -438,7 +438,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section className="border-t border-border py-14">
+      <section className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
             Agents can suggest. Humans still decide.
@@ -452,7 +452,7 @@ export default function HomePage() {
         </FadeIn>
 
         <FadeIn className="mt-7" delayMs={80}>
-          <figure className="overflow-hidden rounded-[28px] border border-border bg-card">
+          <figure className="surface-card surface-card--wide overflow-hidden">
             <Image
               src="/suggestions-review-preview.png"
               alt="Context101 suggestions review drawer showing an agent-proposed update with a side-by-side diff and approve or reject actions."
@@ -465,7 +465,7 @@ export default function HomePage() {
         </FadeIn>
 
         <div className="mt-7 grid gap-3.5 md:grid-cols-3">
-          <FadeIn className="rounded-[22px] border border-border bg-card p-5">
+          <FadeIn className="surface-card p-5">
             <MessageSquarePlus aria-hidden size={22} />
             <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
               Propose from any MCP client
@@ -478,7 +478,7 @@ export default function HomePage() {
           </FadeIn>
 
           <FadeIn
-            className="rounded-[22px] border border-border bg-card p-5"
+            className="surface-card p-5"
             delayMs={80}
           >
             <Inbox aria-hidden size={22} />
@@ -493,7 +493,7 @@ export default function HomePage() {
           </FadeIn>
 
           <FadeIn
-            className="rounded-[22px] border border-border bg-card p-5"
+            className="surface-card p-5"
             delayMs={160}
           >
             <CheckCircle2 aria-hidden size={22} />
@@ -507,7 +507,7 @@ export default function HomePage() {
           </FadeIn>
         </div>
 
-        <FadeIn className="mt-7 rounded-[22px] border border-[color-mix(in_srgb,var(--accent)_28%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_78%,transparent)] p-5">
+        <FadeIn className="mt-7 surface-callout p-5">
           <strong>External-source caveat:</strong> if a suggestion improves
           content that originally came from Google Docs, Notion, GitHub, or
           another connector, Context101 does not push that fix back to the
@@ -517,14 +517,14 @@ export default function HomePage() {
         </FadeIn>
       </section>
 
-      <section className="border-t border-border py-14 text-center">
+      <section className="border-t section-divider py-14 text-center">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
             Small enough to try, real enough to evolve.
           </h2>
         </FadeIn>
         <div className="mt-7 grid gap-3.5 md:grid-cols-3">
-          <FadeIn className="rounded-3xl border border-border bg-card px-4 py-6">
+          <FadeIn className="surface-card surface-card--stat px-4 py-6">
             <strong className="block text-[clamp(38px,6vw,58px)] leading-[0.95] font-bold tracking-[-0.055em]">
               <Counter to={5} />+
             </strong>
@@ -533,7 +533,7 @@ export default function HomePage() {
             </span>
           </FadeIn>
           <FadeIn
-            className="rounded-3xl border border-border bg-card px-4 py-6"
+            className="surface-card surface-card--stat px-4 py-6"
             delayMs={80}
           >
             <strong className="block text-[clamp(38px,6vw,58px)] leading-[0.95] font-bold tracking-[-0.055em]">
@@ -544,7 +544,7 @@ export default function HomePage() {
             </span>
           </FadeIn>
           <FadeIn
-            className="rounded-3xl border border-border bg-card px-4 py-6"
+            className="surface-card surface-card--stat px-4 py-6"
             delayMs={160}
           >
             <strong className="block text-[clamp(38px,6vw,58px)] leading-[0.95] font-bold tracking-[-0.055em]">
@@ -557,7 +557,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <section id="caveats" className="border-t border-border py-14">
+      <section id="caveats" className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
             Useful now, honest about limits.
@@ -571,7 +571,7 @@ export default function HomePage() {
         <div className="mt-7 grid gap-3.5 md:grid-cols-3">
           {caveats.map((body, index) => (
             <FadeIn
-              className="rounded-[22px] border border-border bg-card p-5"
+              className="surface-card p-5"
               key={body}
               delayMs={index * 80}
             >
@@ -591,7 +591,7 @@ export default function HomePage() {
             </FadeIn>
           ))}
         </div>
-        <FadeIn className="mt-7 rounded-[22px] border border-[color-mix(in_srgb,var(--accent)_28%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_86%,transparent)] p-5">
+        <FadeIn className="mt-7 surface-callout p-5">
           <strong>Hosted alpha:</strong> the hosted app is moving toward paid
           access, but billing gates are not live yet. Until then, access should
           stay invite/allowlist controlled, with comped orgs like Platea handled
@@ -599,7 +599,7 @@ export default function HomePage() {
         </FadeIn>
       </section>
 
-      <section className="border-t border-border py-14">
+      <section className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
             Good to know.
@@ -615,7 +615,7 @@ export default function HomePage() {
         <div className="mt-7 grid gap-3.5 md:grid-cols-2">
           {faqs.map((item, index) => (
             <FadeIn
-              className="rounded-[22px] border border-border bg-card p-5"
+              className="surface-card p-5"
               key={item.question}
               delayMs={index * 60}
             >
@@ -649,7 +649,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-border py-6 text-[13px] text-muted-foreground">
+      <footer className="flex flex-wrap items-center justify-between gap-3 border-t section-divider py-6 text-[13px] text-muted-foreground">
         <span>Context101 alpha. Open-source first.</span>
         <span>
           Marketing site in <code>site/</code>; deployable app in{" "}

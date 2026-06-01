@@ -73,7 +73,7 @@ function SidebarSection({
   children: React.ReactNode;
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border bg-card/40">
+    <section className="app-surface">
       <div className="flex items-center gap-1 border-b border-border/60 px-1.5 py-1">
         <button
           type="button"

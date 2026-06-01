@@ -6,6 +6,7 @@ import { getAuth } from "@/lib/auth/server";
 import { db } from "@/lib/db/client";
 import { organization } from "@/lib/db/auth-schema";
 import { LoginForm } from "@/components/login-form";
+import { LoginShell } from "@/components/login-shell";
 
 async function hasAnyOrganization() {
   if (!db) return false;
@@ -24,17 +25,9 @@ async function LoginContent() {
   const setupAvailable = !(await hasAnyOrganization());
 
   return (
-    <main className="flex min-h-screen items-center justify-center bg-background p-4 sm:p-6">
-      <div className="w-full max-w-sm">
-        <div className="mb-6 text-center">
-          <h1 className="text-xl font-semibold tracking-tight">Context101</h1>
-          <p className="text-sm text-muted-foreground">
-            Sign in to manage the team knowledge base
-          </p>
-        </div>
-        <LoginForm setupAvailable={setupAvailable} />
-      </div>
-    </main>
+    <LoginShell>
+      <LoginForm setupAvailable={setupAvailable} />
+    </LoginShell>
   );
 }
 

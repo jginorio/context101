@@ -272,7 +272,7 @@ function ConnectionDiagramHorizontal({ className }: { className?: string }) {
 
       {/* Center hub */}
       <div
-        className="absolute flex flex-col items-center justify-center rounded-2xl border bg-card text-card-foreground shadow-sm ring-1 ring-primary/20"
+        className="absolute flex flex-col items-center justify-center rounded-2xl border border-[color-mix(in_srgb,var(--accent)_18%,var(--line))] bg-[linear-gradient(165deg,color-mix(in_srgb,var(--accent-soft)_65%,var(--card))_0%,var(--card)_100%)] text-card-foreground shadow-sm ring-1 ring-primary/25"
         style={{
           left: `${HUB.x}%`,
           top: `${HUB.y}%`,
@@ -376,7 +376,7 @@ function NodeColumn({ nodes }: { nodes: Node[] }) {
 
 function Hub() {
   return (
-    <div className="mx-auto flex w-full max-w-[16rem] flex-col items-center justify-center rounded-2xl border bg-card px-4 py-4 text-card-foreground shadow-sm ring-1 ring-primary/20">
+    <div className="mx-auto flex w-full max-w-[16rem] flex-col items-center justify-center rounded-2xl border border-[color-mix(in_srgb,var(--accent)_18%,var(--line))] bg-[linear-gradient(165deg,color-mix(in_srgb,var(--accent-soft)_65%,var(--card))_0%,var(--card)_100%)] px-4 py-4 text-card-foreground shadow-sm ring-1 ring-primary/25">
       <div className="flex items-center gap-2">
         <Brain className="size-5 text-primary" />
         <span className="font-semibold text-sm">Context101</span>

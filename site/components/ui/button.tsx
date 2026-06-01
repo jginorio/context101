@@ -12,7 +12,7 @@ const buttonVariants = cva(
         default:
           "border-primary bg-primary text-primary-foreground hover:bg-primary/90",
         outline:
-          "border-border bg-white/3 text-foreground hover:bg-white/6 hover:text-foreground",
+          "border-[color-mix(in_srgb,var(--accent)_16%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_35%,transparent)] text-foreground hover:border-[color-mix(in_srgb,var(--accent)_28%,var(--line))] hover:bg-[color-mix(in_srgb,var(--accent-soft)_55%,transparent)] hover:text-foreground",
         ghost: "border-transparent bg-transparent text-foreground hover:bg-white/6",
       },
       size: {

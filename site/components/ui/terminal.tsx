@@ -47,9 +47,9 @@ export function Terminal({
   return (
     <div
       ref={ref}
-      className={`overflow-hidden rounded-[28px] border border-border bg-card/90 ${className}`}
+      className={`surface-card surface-card--wide overflow-hidden ${className}`}
     >
-      <div className="flex items-center gap-1.5 border-b border-border px-4 py-3">
+      <div className="flex items-center gap-1.5 border-b border-[color-mix(in_srgb,var(--accent)_14%,var(--line))] px-4 py-3">
         <span className="h-3 w-3 rounded-full bg-[#ff5f57]" />
         <span className="h-3 w-3 rounded-full bg-[#febc2e]" />
         <span className="h-3 w-3 rounded-full bg-[#28c840]" />

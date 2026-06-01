@@ -40,6 +40,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
+import { BRAIN_ACCENT_RGB } from "@/lib/brain-accent";
 
 const NAV_ITEMS = [
   { href: "/knowledge", label: "Knowledge", icon: FolderTree },
@@ -77,8 +78,8 @@ function AppNav({ onNavigate }: { onNavigate?: () => void }) {
             className={cn(
               "flex flex-1 flex-col items-center gap-1 rounded-md px-1 py-1.5 text-[10px] leading-none transition-colors",
               active
-                ? "bg-muted font-medium text-foreground"
-                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+                ? "app-nav-active font-medium"
+                : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             )}
           >
             <Icon className="h-4 w-4 shrink-0" />
@@ -121,7 +122,10 @@ function AccountMenu() {
           />
         }
       >
-        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
+        <span
+          className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary ring-1 ring-primary/25"
+          style={{ boxShadow: `0 0 16px rgba(${BRAIN_ACCENT_RGB}, 0.2)` }}
+        >
           <User className="h-4 w-4" />
         </span>
         <span className="flex min-w-0 flex-1 flex-col items-start text-left">
@@ -182,26 +186,35 @@ function SidebarInner({
   onNavigate?: () => void;
 }) {
   return (
-    <div className="flex h-full flex-col">
-      <div className="space-y-2 border-b px-3 py-3">
-        <Link href="/knowledge" onClick={onNavigate} className="block min-w-0">
+    <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
+      <div className="space-y-2 border-b border-sidebar-border px-3 py-3">
+        <Link
+          href="/knowledge"
+          onClick={onNavigate}
+          className="flex min-w-0 items-center gap-2"
+        >
+          <span
+            className="h-2 w-2 shrink-0 rounded-full bg-primary"
+            style={{ boxShadow: `0 0 14px rgba(${BRAIN_ACCENT_RGB}, 0.55)` }}
+            aria-hidden
+          />
           <span className="text-base font-semibold tracking-tight">
             Context101
           </span>
         </Link>
         <BrainSwitcher />
       </div>
-      <div className="py-2">
+      <div className="border-b border-sidebar-border/60 py-2">
         <AppNav onNavigate={onNavigate} />
       </div>
       {contextPanel ? (
-        <div className="min-h-0 flex-1 overflow-y-auto border-t p-2">
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-sidebar-border/60 p-2">
           {contextPanel}
         </div>
       ) : (
         <div className="min-h-0 flex-1" />
       )}
-      <div className="border-t p-2">
+      <div className="border-t border-sidebar-border p-2">
         <AccountMenu />
       </div>
     </div>
@@ -227,12 +240,12 @@ export function AppShell({
   return (
     <AppShellContext.Provider value={{ closeMobileNav }}>
       <main className="flex h-screen overflow-hidden">
-        <aside className="hidden w-72 shrink-0 flex-col border-r md:flex">
+        <aside className="hidden w-72 shrink-0 flex-col border-r border-sidebar-border bg-sidebar md:flex">
           <SidebarInner contextPanel={contextPanel} />
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex shrink-0 items-center justify-between gap-2 border-b px-3 py-3 sm:px-6">
+          <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background/80 px-3 py-3 backdrop-blur-sm sm:px-6">
             <div className="flex min-w-0 items-center gap-2">
               <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
                 <SheetTrigger
