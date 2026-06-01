@@ -101,6 +101,33 @@ async function fetchDoc(accessToken, documentId) {
   return r.json();
 }
 
+// One Drive metadata GET to capture the source's true last-edited time +
+// editor (the Docs/Slides/Sheets APIs don't return modifiedTime). Reuses the
+// existing access token; best-effort — returns {} on failure so a metadata
+// hiccup never fails the sync. Feeds the wiki generator's recency rule.
+async function fetchDriveMeta(accessToken, fileId) {
+  try {
+    const r = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+        fileId
+      )}?fields=modifiedTime,lastModifyingUser,webViewLink`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!r.ok) return {};
+    const m = await r.json();
+    return {
+      source_modified_at: m.modifiedTime ?? null,
+      source_author:
+        m.lastModifyingUser?.displayName ??
+        m.lastModifyingUser?.emailAddress ??
+        null,
+      source_url: m.webViewLink ?? null,
+    };
+  } catch {
+    return {};
+  }
+}
+
 // ── Renderer ─────────────────────────────────────────────────────────
 
 function paragraphText(paragraph) {
@@ -332,6 +359,7 @@ export const handler = async (event) => {
 
     const accessToken = await refreshAccessToken(refreshToken);
     const doc = await fetchDoc(accessToken, documentId);
+    const driveMeta = await fetchDriveMeta(accessToken, documentId);
     const title = doc.title ?? documentId;
     const docSlug = slugify(title);
     const prefix = `${SOURCES_PREFIX}${docSlug}/`;
@@ -357,6 +385,9 @@ export const handler = async (event) => {
         connector_id: connectorId,
         document_id: documentId,
         last_synced: new Date().toISOString(),
+        source_modified_at: driveMeta.source_modified_at ?? null,
+        source_author: driveMeta.source_author ?? null,
+        source_url: driveMeta.source_url ?? row.external_url ?? null,
       },
     });
 

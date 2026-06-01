@@ -452,6 +452,12 @@ export const handler = async (event) => {
           notion_workspace: workspaceName,
           kind,
           last_synced: new Date().toISOString(),
+          // The source's true last-edited time + editor — already on the page
+          // object (no extra API call). Feeds the wiki generator's "newer
+          // source wins" conflict resolution + drift attribution.
+          source_modified_at: page.last_edited_time ?? null,
+          source_author: page.last_edited_by?.id ?? null,
+          source_url: page.url ?? row.external_url ?? null,
         },
       });
       freshKeys.add(key);

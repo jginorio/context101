@@ -97,6 +97,32 @@ async function fetchPresentation(accessToken, presentationId) {
   return r.json();
 }
 
+// One Drive metadata GET for the source's true last-edited time + editor
+// (the Slides API doesn't return modifiedTime). Reuses the access token;
+// best-effort. Feeds the wiki generator's "newer source wins" rule.
+async function fetchDriveMeta(accessToken, fileId) {
+  try {
+    const r = await fetch(
+      `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(
+        fileId
+      )}?fields=modifiedTime,lastModifyingUser,webViewLink`,
+      { headers: { Authorization: `Bearer ${accessToken}` } }
+    );
+    if (!r.ok) return {};
+    const m = await r.json();
+    return {
+      source_modified_at: m.modifiedTime ?? null,
+      source_author:
+        m.lastModifyingUser?.displayName ??
+        m.lastModifyingUser?.emailAddress ??
+        null,
+      source_url: m.webViewLink ?? null,
+    };
+  } catch {
+    return {};
+  }
+}
+
 // ── Renderer ─────────────────────────────────────────────────────────
 
 function shapeLines(shape) {
@@ -259,6 +285,7 @@ export const handler = async (event) => {
 
     const accessToken = await refreshAccessToken(refreshToken);
     const deck = await fetchPresentation(accessToken, presentationId);
+    const driveMeta = await fetchDriveMeta(accessToken, presentationId);
     const title = deck.title ?? presentationId;
     const deckSlug = slugify(title);
     const prefix = `${SOURCES_PREFIX}${deckSlug}/`;
@@ -283,6 +310,9 @@ export const handler = async (event) => {
         connector_id: connectorId,
         presentation_id: presentationId,
         last_synced: new Date().toISOString(),
+        source_modified_at: driveMeta.source_modified_at ?? null,
+        source_author: driveMeta.source_author ?? null,
+        source_url: driveMeta.source_url ?? row.external_url ?? null,
       },
     });
 

@@ -454,6 +454,15 @@ export const handler = async (event) => {
     const now = new Date().toISOString();
     const freshKeys = new Set();
 
+    // v1 source freshness: use the repo's pushed_at (already in `meta`, no
+    // extra calls) for every file, with the repo owner as a coarse author.
+    // This feeds the wiki generator's "newer source wins" conflict rule.
+    // DEFERRED v2 (GITHUB_PER_FILE_MTIME): per-path `GET /commits?path=...`
+    // for true per-file last-edited time + commit author — accurate but one
+    // extra API call per file. Not built; v1 repo-level recency is the default.
+    const repoModifiedAt = meta.pushed_at ?? now;
+    const repoAuthor = owner;
+
     // Fetch + write with bounded concurrency
     let written = 0;
     await pmap(files, 8, async (f) => {
@@ -488,6 +497,9 @@ export const handler = async (event) => {
             commit_sha: f.sha,
             branch,
             last_synced: now,
+            source_modified_at: repoModifiedAt,
+            source_author: repoAuthor,
+            source_url: htmlUrl,
           },
         });
         freshKeys.add(key);
