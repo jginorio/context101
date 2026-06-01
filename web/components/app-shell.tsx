@@ -124,7 +124,7 @@ function AccountMenu() {
       >
         <span
           className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary ring-1 ring-primary/25"
-          style={{ boxShadow: `0 0 16px rgba(${BRAIN_ACCENT_RGB}, 0.2)` }}
+          style={{ boxShadow: `0 0 16px rgba(${BRAIN_ACCENT_RGB}, 0.14)` }}
         >
           <User className="h-4 w-4" />
         </span>
@@ -195,7 +195,7 @@ function SidebarInner({
         >
           <span
             className="h-2 w-2 shrink-0 rounded-full bg-primary"
-            style={{ boxShadow: `0 0 14px rgba(${BRAIN_ACCENT_RGB}, 0.55)` }}
+            style={{ boxShadow: `0 0 14px rgba(${BRAIN_ACCENT_RGB}, 0.35)` }}
             aria-hidden
           />
           <span className="text-base font-semibold tracking-tight">

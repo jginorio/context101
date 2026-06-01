@@ -107,7 +107,7 @@ export default function HomePage() {
           className="inline-flex min-w-0 items-center gap-2 font-bold tracking-[-0.02em]"
         >
           <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary shadow-[0_0_22px_rgba(217,70,239,0.45)]"
+            className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary shadow-[0_0_22px_rgba(184,85,201,0.28)]"
             aria-hidden
           />
           <span className="truncate">Context101</span>
@@ -163,7 +163,7 @@ export default function HomePage() {
                     </>
                   );
                   const cls =
-                    "inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--accent)_16%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_55%,var(--card))] px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-[color-mix(in_srgb,var(--accent)_28%,var(--line))] hover:text-foreground";
+                    "inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--accent)_12%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_42%,var(--card))] px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] hover:text-foreground";
                   return href ? (
                     <a
                       key={name}
@@ -303,7 +303,7 @@ export default function HomePage() {
           </p>
         </FadeIn>
         <FadeIn
-          className="mt-7 overflow-x-auto overflow-y-hidden rounded-[30px] border border-[color-mix(in_srgb,var(--accent)_20%,var(--line))] bg-[radial-gradient(circle_at_50%_50%,rgba(217,70,239,0.12),transparent_42%),color-mix(in_srgb,var(--accent-soft)_65%,var(--card-2))] p-7"
+          className="mt-7 overflow-x-auto overflow-y-hidden rounded-[30px] border border-[color-mix(in_srgb,var(--accent)_14%,var(--line))] bg-[radial-gradient(circle_at_50%_50%,rgba(184,85,201,0.06),transparent_42%),color-mix(in_srgb,var(--accent-soft)_52%,var(--card-2))] p-7"
           delayMs={100}
         >
           <ConnectionDiagram />

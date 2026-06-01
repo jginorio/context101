@@ -15,6 +15,9 @@
 
 :root {
   color-scheme: dark;
+  --brain: #b855c9;
+  --brain-2: #8b5cf6;
+  --brain-soft: #140818;
   --bg: #060509;
   --bg-2: #09060c;
   --fg: #f2eef8;
@@ -23,9 +26,9 @@
   --line: #3b2d48;
   --card: #120e18;
   --card-2: #0e0a14;
-  --accent: #d946ef;
-  --accent-2: #a855f7;
-  --accent-soft: #140818;
+  --accent: var(--brain);
+  --accent-2: var(--brain-2);
+  --accent-soft: var(--brain-soft);
   --code: #0a0810;
 }
 
@@ -52,15 +55,15 @@ a {
 
 .surface-card {
   border-radius: 22px;
-  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
   background: linear-gradient(
     165deg,
-    color-mix(in srgb, var(--accent-soft) 72%, var(--card)) 0%,
+    color-mix(in srgb, var(--accent-soft) 55%, var(--card)) 0%,
     color-mix(in srgb, var(--card) 88%, var(--bg)) 100%
   );
   box-shadow:
-    inset 0 1px 0 color-mix(in srgb, var(--accent) 10%, transparent),
-    0 0 0 1px color-mix(in srgb, var(--accent) 4%, transparent);
+    inset 0 1px 0 color-mix(in srgb, var(--accent) 7%, transparent),
+    0 0 0 1px color-mix(in srgb, var(--accent) 3%, transparent);
 }
 
 .surface-card--stat {
@@ -72,7 +75,7 @@ a {
 }
 
 .surface-card--flat {
-  background: color-mix(in srgb, var(--accent-soft) 48%, var(--card));
+  background: color-mix(in srgb, var(--accent-soft) 38%, var(--card));
 }
 
 .surface-card [data-icon],
@@ -82,8 +85,8 @@ a {
 
 .surface-callout {
   border-radius: 22px;
-  border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line));
-  background: color-mix(in srgb, var(--accent-soft) 82%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent) 22%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 68%, transparent);
 }
 
 .section-divider {
@@ -131,13 +134,13 @@ a {
     transform: scale(1);
   }
   50% {
-    opacity: 0.16;
+    opacity: 0.12;
     transform: scale(1.15);
   }
 }
 
 .brain-beams {
-  opacity: 0.7;
+  opacity: 0.42;
 }
 
 .brain-beams__link {

@@ -7,7 +7,7 @@ import Aurora from "@/components/Aurora";
 import BlurText from "@/components/BlurText";
 import { BrainConnectionBeams } from "@/components/brain-connection-beams";
 import { ThemeToggle } from "@/components/theme-toggle";
-import { BRAIN_ACCENT } from "@/lib/brain-accent";
+import { BRAIN_ACCENT, BRAIN_ACCENT_RGB } from "@/lib/brain-accent";
 
 export function LoginShell({
   children,
@@ -23,7 +23,7 @@ export function LoginShell({
           amplitude={0.85}
           blend={0.45}
           speed={0.35}
-          colorStops={["#d946ef", "#a855f7", "#120812"]}
+          colorStops={["#b855c9", "#8b5cf6", "#120812"]}
         />
       </div>
       <div
@@ -43,7 +43,7 @@ export function LoginShell({
         <div className="mb-8 text-center">
           <div
             className="mx-auto mb-4 flex size-11 items-center justify-center rounded-2xl border border-border/60 bg-card/70 shadow-lg backdrop-blur-sm"
-            style={{ boxShadow: `0 0 28px rgba(217, 70, 239, 0.22)` }}
+            style={{ boxShadow: `0 0 28px rgba(${BRAIN_ACCENT_RGB}, 0.16)` }}
           >
             <Brain className="size-5" style={{ color: BRAIN_ACCENT }} aria-hidden />
           </div>

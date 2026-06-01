@@ -68,7 +68,7 @@ export function BrainConnectionBeams() {
     >
       <defs>
         <radialGradient id="synapse-glow" cx="50%" cy="35%" r="70%">
-          <stop offset="0%" stopColor={BRAIN_ACCENT} stopOpacity="0.16" />
+          <stop offset="0%" stopColor={BRAIN_ACCENT} stopOpacity="0.11" />
           <stop offset="100%" stopColor={BRAIN_ACCENT} stopOpacity="0" />
         </radialGradient>
       </defs>
@@ -81,7 +81,7 @@ export function BrainConnectionBeams() {
           stroke={BRAIN_ACCENT}
           strokeWidth="1.25"
           strokeLinecap="round"
-          opacity={0.35 + (i % 3) * 0.12}
+          opacity={0.28 + (i % 3) * 0.08}
           className="brain-beams__link"
           style={{ animationDelay: `${i * 0.35}s` }}
         />
@@ -93,7 +93,7 @@ export function BrainConnectionBeams() {
             cy={n.cy}
             r={(n.r ?? 2.5) * 2.2}
             fill={BRAIN_ACCENT}
-            opacity={0.08}
+            opacity={0.06}
             className="brain-beams__pulse"
           />
           <circle
@@ -101,7 +101,7 @@ export function BrainConnectionBeams() {
             cy={n.cy}
             r={n.r ?? 2.5}
             fill={BRAIN_ACCENT}
-            opacity={0.75}
+            opacity={0.58}
           />
         </g>
       ))}
