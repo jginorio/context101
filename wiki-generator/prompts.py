@@ -224,3 +224,142 @@ Description: {page_description}
 [RELEVANT_SOURCE_CONTENT]
 {source_content}
 """
+
+
+# Appended to the base page prompt for candidate drafts after the first
+# (deterministic) one. Kept to a single directive so the candidates explore
+# different organizations of the *same* sourced facts — never different facts.
+VARIANT_DIRECTIVE = """\
+[VARIANT INSTRUCTION]
+Produce an alternative version of this page that reorganizes and reframes the
+same sourced material differently (different section ordering, emphasis, or
+diagram choices) while staying strictly grounded in the provided sources. Do
+not introduce any facts, names, or claims not present in the source content.
+"""
+
+
+# ── Judge / merge (Level 1: within-page conflict resolution) ──────────
+# The judge receives N candidate drafts of one page plus a freshness table
+# (each source's last-edited timestamp) and returns ONE merged page. When the
+# page's own sources disagree, it must prefer the NEWER source by recency and
+# flag the conflict. Output contract (parsed by generate.py): the merged page
+# markdown starting with `# <title>`, then OPTIONALLY a trailing
+# <drift_findings> XML block (omitted entirely when there are no conflicts).
+# _DRIFT_FINDINGS_SPEC is concatenated in (not a format placeholder) because it
+# contains literal XML; the page prompts only .format() the named fields.
+_DRIFT_FINDINGS_SPEC = """\
+After the page, if (and only if) the sources conflicted, append a single XML
+block documenting each conflict. Use EXACTLY this schema and nothing else:
+
+<drift_findings>
+  <finding>
+    <conflicting_keys>
+      <key>[S3 key of a source involved in the conflict]</key>
+      <key>[another source key]</key>
+    </conflicting_keys>
+    <description>[what the sources disagree about, in one or two sentences]</description>
+    <suggested_action>[what a human should do to resolve it at the source]</suggested_action>
+  </finding>
+</drift_findings>
+
+Rules for conflicts:
+- Use the <sources> freshness table: when two sources disagree on a fact, write
+  the page using the source with the NEWER `modified` timestamp, and record a
+  finding noting which sources disagreed.
+- If the conflicting sources have equal or unknown timestamps, do NOT silently
+  pick one — present the discrepancy neutrally in the page AND record a finding.
+- Only list source keys that actually appear in the freshness table.
+- If there are no conflicts, output NOTHING after the page (no empty block).
+"""
+
+
+JUDGE_PROMPT = """\
+You are the editor merging several independently-written drafts of one wiki
+page into a single best version. All drafts cover the same topic from the same
+source files.
+
+Page title: {page_title}
+
+Here are the source freshness timestamps (used to break conflicts — newer wins):
+{freshness_table}
+
+Here are the candidate drafts:
+{candidates}
+
+Produce ONE final page in Markdown that takes the strongest, most accurate and
+best-organized material from across the drafts. The first line MUST be the H1
+heading `# {page_title}` — no preamble. Preserve the source-citation format
+(`Sources: [key.md]()`) and ensure every source cited by any draft is still
+cited. Do not introduce facts that none of the drafts grounded in the sources.
+
+""" + _DRIFT_FINDINGS_SPEC
+
+
+CODE_JUDGE_PROMPT = """\
+You are the editor merging several independently-written drafts of one code
+wiki page into a single best version. All drafts document the same aspect of
+the codebase from the same source files.
+
+Page title: {page_title}
+
+Source freshness timestamps (used to break conflicts — newer wins):
+{freshness_table}
+
+Candidate drafts:
+{candidates}
+
+Produce ONE final page in Markdown taking the most technically accurate and
+clearly-organized material from across the drafts. The first line MUST be the
+H1 heading `# {page_title}` — no preamble. Preserve code snippets, Mermaid
+diagrams, and the source-citation format (`Sources: [key.md]()`); every source
+cited by any draft must remain cited. Do not invent function names, types, env
+vars, or behaviors that no draft grounded in the sources.
+
+""" + _DRIFT_FINDINGS_SPEC
+
+
+# ── Cross-page consistency (Level 3: page-vs-page reconciliation) ─────
+# Two already-generated pages that share source files are checked for
+# contradictions. If they disagree on a shared fact, reconcile both toward the
+# NEWER shared source. Output contract (parsed by generate.py): a
+# <reconciled id="<page-id>"> block per page actually changed (full corrected
+# markdown), plus an OPTIONAL trailing <drift_findings> block for
+# contradictions recency can't resolve. Nothing at all when already consistent.
+CROSS_PAGE_PROMPT = """\
+You are checking two related wiki pages for contradictions. They share one or
+more source files, so they must not disagree about the same facts.
+
+Page A — id="{page_a_id}", title="{page_a_title}"
+Page B — id="{page_b_id}", title="{page_b_title}"
+
+Shared source freshness timestamps (newer wins when they conflict):
+{freshness_table}
+
+--- PAGE A ---
+{page_a_body}
+
+--- PAGE B ---
+{page_b_body}
+
+Compare the two pages. If they contradict each other on a shared fact, correct
+the page(s) so both agree, grounding the corrected statement in the source with
+the NEWER `modified` timestamp. Preserve each page's structure, H1 heading, and
+`Sources: [key.md]()` citations — only change what is needed to remove the
+contradiction. Do not introduce new facts.
+
+Output ONLY the following, and nothing else:
+- For each page you changed, a block (omit it for a page you did not change):
+  <reconciled id="PAGE-ID">
+  ...full corrected page markdown starting with its H1...
+  </reconciled>
+- If a contradiction cannot be resolved by recency (equal or unknown
+  timestamps), append a <drift_findings> block using EXACTLY this schema:
+  <drift_findings>
+    <finding>
+      <conflicting_keys><key>shared-source-key.md</key></conflicting_keys>
+      <description>[what the two pages disagree about]</description>
+      <suggested_action>[how a human should resolve it]</suggested_action>
+    </finding>
+  </drift_findings>
+- If the pages are already consistent, output nothing at all.
+"""
