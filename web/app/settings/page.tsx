@@ -20,6 +20,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { OrganizationSettings } from "@/components/settings/organization-settings";
 import { WikiModelSettings } from "@/components/settings/wiki-model-settings";
+import { CostsSettings } from "@/components/settings/costs-settings";
 
 type SectionId =
   | "organization"
@@ -43,7 +44,7 @@ const SECTIONS: Section[] = [
   { id: "embeddings", label: "Embeddings", icon: Boxes, available: false },
   { id: "wiki", label: "Wiki regeneration", icon: FileText, available: false },
   { id: "sources", label: "Source sync", icon: Plug, available: false },
-  { id: "costs", label: "Costs", icon: DollarSign, available: false },
+  { id: "costs", label: "Costs", icon: DollarSign, available: true },
   { id: "analytics", label: "Analytics", icon: BarChart3, available: false },
 ];
 
@@ -128,11 +129,18 @@ export default function SettingsPage() {
                 Bedrock, or bring your own Anthropic / OpenAI / Grok / Gemini
                 key.
               </p>
+            ) : active === "costs" ? (
+              <p className="text-sm text-muted-foreground">
+                Per-run wiki generation cost, broken down by pipeline stage
+                (structure, drafts, judge, cross-page). Token counts are exact;
+                dollar figures are estimates from a rate table.
+              </p>
             ) : null}
           </div>
 
           {active === "organization" ? <OrganizationSettings /> : null}
           {active === "model" ? <WikiModelSettings /> : null}
+          {active === "costs" ? <CostsSettings /> : null}
         </section>
       </div>
     </main>
