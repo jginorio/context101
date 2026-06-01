@@ -1,26 +1,17 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
-  ArrowLeft,
-  BookOpen,
   Check,
   ExternalLink,
-  FileText,
-  GitBranch,
   Loader2,
-  Plug,
   Plus,
-  Presentation,
   RefreshCw,
-  Sheet,
   Trash2,
 } from "lucide-react";
 import { toast } from "sonner";
 
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,7 +32,14 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AddSourceDialog } from "@/components/add-source-dialog";
+import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
+import {
+  PROVIDER_GROUPS,
+  SOURCE_TYPES,
+  TypeIcon,
+  type ConnectorType,
+} from "@/lib/source-providers";
 import { cn } from "@/lib/utils";
 
 type Status =
@@ -53,7 +51,7 @@ type Status =
 
 type Connector = {
   id: string;
-  type: "sheets" | "docs" | "slides" | "notion" | "github";
+  type: ConnectorType;
   status: Status;
   label: string;
   resource_url: string;
@@ -88,16 +86,6 @@ function StatusPill({ s }: { s: Status }) {
   );
 }
 
-function TypeIcon({ type }: { type: Connector["type"] }) {
-  if (type === "sheets") return <Sheet className="h-4 w-4 opacity-80" />;
-  if (type === "docs") return <FileText className="h-4 w-4 opacity-80" />;
-  if (type === "slides")
-    return <Presentation className="h-4 w-4 opacity-80" />;
-  if (type === "notion") return <BookOpen className="h-4 w-4 opacity-80" />;
-  if (type === "github") return <GitBranch className="h-4 w-4 opacity-80" />;
-  return <Plug className="h-4 w-4 opacity-80" />;
-}
-
 export default function SourcesPage() {
   return (
     <React.Suspense fallback={null}>
@@ -112,9 +100,7 @@ function SourcesContent() {
   const [items, setItems] = React.useState<Connector[] | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
-  const [addType, setAddType] = React.useState<
-    "sheets" | "docs" | "slides" | "notion" | "github" | null
-  >(null);
+  const [addType, setAddType] = React.useState<ConnectorType | null>(null);
   const [confirmRemove, setConfirmRemove] = React.useState<Connector | null>(
     null
   );
@@ -186,232 +172,229 @@ function SourcesContent() {
     }
   }
 
-  return (
-    <main className="flex min-h-screen flex-col">
-      <header className="border-b px-3 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <Link href="/knowledge">
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
-              <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back
-            </Button>
-            <Button variant="ghost" size="icon-sm" className="sm:hidden" aria-label="Back">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
-              Data sources
-            </h1>
-            <p className="text-xs text-muted-foreground hidden sm:block truncate">
-              Connected systems — synced into the brain every 6 hours
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={load}
-            disabled={loading}
-          >
-            <RefreshCw
-              className={cn("sm:mr-1 h-3.5 w-3.5", loading && "animate-spin")}
-            />
-            <span className="hidden sm:inline">Refresh</span>
-          </Button>
-          <DropdownMenu>
-            <DropdownMenuTrigger>
-              <span className="inline-flex items-center gap-1 h-9 px-2 sm:px-3 text-sm rounded-md bg-primary text-primary-foreground hover:opacity-90">
-                <Plus className="h-3.5 w-3.5" />
-                <span className="hidden sm:inline">Add new source</span>
-                <span className="sm:hidden">Add</span>
-              </span>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setAddType("sheets")}>
-                <Sheet className="mr-2 h-3.5 w-3.5" /> Google Sheets
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setAddType("docs")}>
-                <FileText className="mr-2 h-3.5 w-3.5" /> Google Docs
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setAddType("slides")}>
-                <Presentation className="mr-2 h-3.5 w-3.5" /> Google Slides
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setAddType("notion")}>
-                <BookOpen className="mr-2 h-3.5 w-3.5" /> Notion
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => setAddType("github")}>
-                <GitBranch className="mr-2 h-3.5 w-3.5" /> GitHub
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-          <ThemeToggle />
-        </div>
-      </header>
-
-      <BrainStatusGate>
-      <article className="mx-auto w-full max-w-4xl px-3 sm:px-6 py-4 sm:py-6 space-y-4">
-        {error && (
-          <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
-            {error}
-          </div>
-        )}
-
-        {items === null &&
-          loading &&
-          Array.from({ length: 4 }).map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-4">
-                <div className="flex items-start gap-3">
-                  <Skeleton className="mt-0.5 h-8 w-8 rounded" />
-                  <div className="min-w-0 flex-1 space-y-2">
-                    <Skeleton className="h-4 w-48" />
-                    <Skeleton className="h-3 w-64" />
-                    <Skeleton className="h-3 w-32" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+  const toolbar = (
+    <>
+      <Button variant="outline" size="sm" onClick={load} disabled={loading}>
+        <RefreshCw
+          className={cn("sm:mr-1 h-3.5 w-3.5", loading && "animate-spin")}
+        />
+        <span className="hidden sm:inline">Refresh</span>
+      </Button>
+      <DropdownMenu>
+        <DropdownMenuTrigger>
+          <span className="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-2 text-sm text-primary-foreground hover:opacity-90 sm:px-3">
+            <Plus className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Add new source</span>
+            <span className="sm:hidden">Add</span>
+          </span>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          {PROVIDER_GROUPS.flatMap((g) => g.types).map((t) => (
+            <DropdownMenuItem key={t} onClick={() => setAddType(t)}>
+              <TypeIcon type={t} className="mr-2 h-3.5 w-3.5" />
+              {SOURCE_TYPES[t].menuLabel}
+            </DropdownMenuItem>
           ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    </>
+  );
 
-        {items && items.length === 0 && (
-          <Card>
-            <CardContent className="p-6 text-center text-sm text-muted-foreground">
-              No data sources yet. Click <strong>Add new source</strong> to
-              connect a Google Sheet, Doc, Slides deck, Notion workspace, or
-              GitHub repo.
-            </CardContent>
-          </Card>
-        )}
-
-        {items?.map((c) => (
-          <Card key={c.id}>
-            <CardContent className="p-4 space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
-                  <div className="mt-0.5">
-                    <TypeIcon type={c.type} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="font-medium text-sm truncate">{c.label}</p>
-                    <p className="text-xs text-muted-foreground truncate">
-                      {c.resource_title ?? c.resource_url}
-                    </p>
-                  </div>
-                </div>
-                <StatusPill s={c.status} />
-              </div>
-
-              <dl className="grid grid-cols-[auto_1fr] gap-x-3 sm:gap-x-4 gap-y-1 text-xs">
-                <dt className="text-muted-foreground">Added by</dt>
-                <dd>{c.created_by ?? "unknown"}</dd>
-                <dt className="text-muted-foreground">
-                  {c.type === "notion"
-                    ? "Notion workspace"
-                    : c.type === "github"
-                      ? "GitHub user"
-                      : "Google account"}
-                </dt>
-                <dd className="truncate">
-                  {c.type === "notion"
-                    ? (c.notion_workspace_name ?? "—")
-                    : c.type === "github"
-                      ? (c.github_account_login ?? "—")
-                      : (c.google_account_email ?? "—")}
-                </dd>
-                <dt className="text-muted-foreground">Last synced</dt>
-                <dd>
-                  {c.last_synced_at
-                    ? new Date(c.last_synced_at).toLocaleString()
-                    : "—"}
-                </dd>
-                <dt className="text-muted-foreground">Items</dt>
-                <dd>
-                  {typeof c.item_count === "number" ? c.item_count : "—"}
-                </dd>
-              </dl>
-
-              {c.status === "error" && c.last_error && (
-                <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
-                  {c.last_error}
-                </div>
-              )}
-
-              <div className="flex items-center gap-2 justify-end pt-1 border-t">
-                <a
-                  href={c.resource_url}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Open source <ExternalLink className="h-3 w-3" />
-                </a>
-                <div className="flex-1" />
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => syncNow(c.id)}
-                  disabled={c.status === "syncing"}
-                >
-                  {c.status === "syncing" ? (
-                    <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Check className="mr-1 h-3.5 w-3.5" />
-                  )}
-                  Sync now
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="text-destructive hover:text-destructive"
-                  onClick={() => setConfirmRemove(c)}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
+  const sourcesPanel = (
+    <div className="space-y-1">
+      <p className="px-1.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Add a source
+      </p>
+      <nav className="flex flex-col gap-0.5">
+        {PROVIDER_GROUPS.flatMap((g) => g.types).map((t) => (
+          <button
+            key={t}
+            onClick={() => setAddType(t)}
+            className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+          >
+            <TypeIcon type={t} className="h-4 w-4 shrink-0" />
+            <span className="flex-1 truncate">{SOURCE_TYPES[t].menuLabel}</span>
+            <Plus className="h-3.5 w-3.5 shrink-0 opacity-50 transition-opacity group-hover:opacity-100" />
+          </button>
         ))}
-      </article>
+      </nav>
+    </div>
+  );
 
-      <AddSourceDialog
-        open={!!addType}
-        onOpenChange={(v) => !v && setAddType(null)}
-        type={addType ?? "sheets"}
-      />
+  return (
+    <AppShell
+      title="Data sources"
+      subtitle="Connected systems — synced into the brain every 6 hours"
+      toolbar={toolbar}
+      contextPanel={sourcesPanel}
+    >
+      <BrainStatusGate>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <article className="mx-auto w-full max-w-4xl space-y-4 px-3 py-4 sm:px-6 sm:py-6">
+            {error && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
+                {error}
+              </div>
+            )}
 
-      <AlertDialog
-        open={!!confirmRemove}
-        onOpenChange={(v) => !v && setConfirmRemove(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Remove source?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This revokes the saved access token, deletes all synced files
-              under{" "}
-              <code className="font-mono">
-                sources/{confirmRemove?.type}/…
-              </code>{" "}
-              in S3, and removes the connection. Bedrock will re-index on
-              the next PutObject/Delete event.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                if (confirmRemove) removeConnector(confirmRemove.id);
-              }}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              Remove
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+            {items === null &&
+              loading &&
+              Array.from({ length: 4 }).map((_, i) => (
+                <Card key={i}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start gap-3">
+                      <Skeleton className="mt-0.5 h-8 w-8 rounded" />
+                      <div className="min-w-0 flex-1 space-y-2">
+                        <Skeleton className="h-4 w-48" />
+                        <Skeleton className="h-3 w-64" />
+                        <Skeleton className="h-3 w-32" />
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+
+            {items && items.length === 0 && (
+              <Card>
+                <CardContent className="p-6 text-center text-sm text-muted-foreground">
+                  No data sources yet. Click <strong>Add new source</strong> to
+                  connect a Google Sheet, Doc, Slides deck, Notion workspace, or
+                  GitHub repo.
+                </CardContent>
+              </Card>
+            )}
+
+            {items?.map((c) => (
+              <Card key={c.id}>
+                <CardContent className="space-y-3 p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-start gap-3">
+                      <div className="mt-0.5">
+                        <TypeIcon type={c.type} />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-medium">
+                          {c.label}
+                        </p>
+                        <p className="truncate text-xs text-muted-foreground">
+                          {c.resource_title ?? c.resource_url}
+                        </p>
+                      </div>
+                    </div>
+                    <StatusPill s={c.status} />
+                  </div>
+
+                  <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-xs sm:gap-x-4">
+                    <dt className="text-muted-foreground">Added by</dt>
+                    <dd>{c.created_by ?? "unknown"}</dd>
+                    <dt className="text-muted-foreground">
+                      {c.type === "notion"
+                        ? "Notion workspace"
+                        : c.type === "github"
+                          ? "GitHub user"
+                          : "Google account"}
+                    </dt>
+                    <dd className="truncate">
+                      {c.type === "notion"
+                        ? (c.notion_workspace_name ?? "—")
+                        : c.type === "github"
+                          ? (c.github_account_login ?? "—")
+                          : (c.google_account_email ?? "—")}
+                    </dd>
+                    <dt className="text-muted-foreground">Last synced</dt>
+                    <dd>
+                      {c.last_synced_at
+                        ? new Date(c.last_synced_at).toLocaleString()
+                        : "—"}
+                    </dd>
+                    <dt className="text-muted-foreground">Items</dt>
+                    <dd>
+                      {typeof c.item_count === "number" ? c.item_count : "—"}
+                    </dd>
+                  </dl>
+
+                  {c.status === "error" && c.last_error && (
+                    <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
+                      {c.last_error}
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-end gap-2 border-t pt-1">
+                    <a
+                      href={c.resource_url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+                    >
+                      Open source <ExternalLink className="h-3 w-3" />
+                    </a>
+                    <div className="flex-1" />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => syncNow(c.id)}
+                      disabled={c.status === "syncing"}
+                    >
+                      {c.status === "syncing" ? (
+                        <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Check className="mr-1 h-3.5 w-3.5" />
+                      )}
+                      Sync now
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={() => setConfirmRemove(c)}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </article>
+        </div>
+
+        <AddSourceDialog
+          open={!!addType}
+          onOpenChange={(v) => !v && setAddType(null)}
+          type={addType ?? "docs"}
+        />
+
+        <AlertDialog
+          open={!!confirmRemove}
+          onOpenChange={(v) => !v && setConfirmRemove(null)}
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Remove source?</AlertDialogTitle>
+              <AlertDialogDescription>
+                This revokes the saved access token, deletes all synced files
+                under{" "}
+                <code className="font-mono">
+                  sources/{confirmRemove?.type}/…
+                </code>{" "}
+                in S3, and removes the connection. Bedrock will re-index on the
+                next PutObject/Delete event.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={(e) => {
+                  e.preventDefault();
+                  if (confirmRemove) removeConnector(confirmRemove.id);
+                }}
+                className="bg-destructive text-white hover:bg-destructive/90"
+              >
+                Remove
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </BrainStatusGate>
-    </main>
+    </AppShell>
   );
 }

@@ -1,29 +1,12 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import {
-  BookOpen,
-  ChevronDown,
-  ChevronLeft,
-  ChevronRight,
-  Code2,
-  Menu,
-  RefreshCw,
-} from "lucide-react";
+import { ChevronDown, ChevronRight, Code2, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 
-import { ThemeToggle } from "@/components/theme-toggle";
-import { SignOutButton } from "@/components/sign-out-button";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
 import { OpenInChat } from "@/components/open-in-chat";
 import { WikiMarkdown } from "@/components/previews/wiki-markdown";
@@ -120,7 +103,6 @@ export default function WikiPage() {
   const [collapsedRepos, setCollapsedRepos] = React.useState<
     Record<string, boolean>
   >({});
-  const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
 
   // Default selection: first team-wiki page if user hasn't picked anything.
   const activeSelection: Selection | null = React.useMemo(
@@ -321,7 +303,6 @@ export default function WikiPage() {
 
   const selectPage = (sel: Selection) => {
     setUserSelection(sel);
-    setMobileNavOpen(false);
   };
 
   const navContent = (
@@ -485,63 +466,15 @@ export default function WikiPage() {
   );
 
   return (
-    <main className="flex h-screen flex-col">
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b px-3 sm:px-6 py-3">
-        <div className="flex items-center gap-2 sm:gap-4 min-w-0">
-          <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
-            <SheetTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="md:hidden shrink-0"
-                  aria-label="Open wiki navigation"
-                />
-              }
-            >
-              <Menu className="h-4 w-4" />
-            </SheetTrigger>
-            <SheetContent side="left" className="w-[85vw] max-w-sm p-0 flex flex-col">
-              <SheetHeader>
-                <SheetTitle className="flex items-center gap-2">
-                  <BookOpen className="h-4 w-4" /> Wiki
-                </SheetTitle>
-              </SheetHeader>
-              <div className="flex-1 min-h-0 overflow-y-auto px-3 pb-3">
-                {navContent}
-              </div>
-            </SheetContent>
-          </Sheet>
-          <Link href="/knowledge">
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
-              <ChevronLeft className="mr-1 h-3.5 w-3.5" /> Back
-            </Button>
-            <Button variant="ghost" size="icon-sm" className="sm:hidden" aria-label="Back">
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="min-w-0">
-            <h1 className="flex items-center gap-2 text-base sm:text-lg font-semibold tracking-tight">
-              <BookOpen className="h-4 w-4 hidden sm:inline-block" /> Wiki
-            </h1>
-            <p className="text-xs text-muted-foreground hidden md:block truncate">
-              {index?.description ?? "Read-only synthesis of the knowledge base"}
-            </p>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <ThemeToggle />
-          <SignOutButton next="/wiki" className="hidden sm:inline-flex" />
-        </div>
-      </header>
-
+    <AppShell
+      title="Wiki"
+      subtitle={
+        index?.description ?? "Read-only synthesis of the knowledge base"
+      }
+      contextPanel={navContent}
+    >
       <BrainStatusGate>
       <div className="flex min-h-0 flex-1">
-        {/* Nav sidebar — desktop only; mobile uses Sheet from header */}
-        <aside className="hidden md:block w-72 shrink-0 overflow-y-auto border-r p-3">
-          {navContent}
-        </aside>
-
         {/* Main content + right-side meta panel */}
         <section className="flex min-w-0 flex-1 overflow-hidden">
           <div className="min-w-0 flex-1 overflow-auto p-4 sm:p-6 lg:p-8">
@@ -598,6 +531,6 @@ export default function WikiPage() {
         </section>
       </div>
       </BrainStatusGate>
-    </main>
+    </AppShell>
   );
 }

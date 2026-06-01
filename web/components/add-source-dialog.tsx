@@ -1,15 +1,7 @@
 "use client";
 
 import * as React from "react";
-import {
-  BookOpen,
-  FileText,
-  GitBranch,
-  Loader2,
-  Presentation,
-  Sheet,
-  type LucideIcon,
-} from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -22,11 +14,11 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { SOURCE_TYPES, type ConnectorType } from "@/lib/source-providers";
 
-type SourceType = "sheets" | "docs" | "slides" | "notion" | "github";
+type SourceType = ConnectorType;
 
 type Copy = {
-  icon: LucideIcon;
   title: string;
   description: string;
   urlLabel: string;
@@ -36,7 +28,6 @@ type Copy = {
 
 const COPY: Record<SourceType, Copy> = {
   sheets: {
-    icon: Sheet,
     title: "Add a Google Sheet",
     description:
       "Paste a spreadsheet URL and give it a friendly label. You'll be redirected to Google to authorize read access. After you approve, every tab is pulled into the brain as markdown and re-synced every 6 hours.",
@@ -45,7 +36,6 @@ const COPY: Record<SourceType, Copy> = {
     labelPlaceholder: "Quarterly metrics dashboard",
   },
   docs: {
-    icon: FileText,
     title: "Add a Google Doc",
     description:
       "Paste a doc URL and give it a friendly label. After you approve Google read access, the doc is rendered to markdown and re-synced every 6 hours.",
@@ -54,7 +44,6 @@ const COPY: Record<SourceType, Copy> = {
     labelPlaceholder: "Q2 strategy memo",
   },
   slides: {
-    icon: Presentation,
     title: "Add a Google Slides deck",
     description:
       "Paste a deck URL and give it a friendly label. After you approve Google read access, slide text + speaker notes are rendered to markdown and re-synced every 6 hours.",
@@ -63,7 +52,6 @@ const COPY: Record<SourceType, Copy> = {
     labelPlaceholder: "All-hands kickoff deck",
   },
   notion: {
-    icon: BookOpen,
     title: "Add a Notion page or database",
     description:
       "Paste a page or database URL and give it a friendly label. After you approve Notion read access (pick which pages the integration can see), we walk the block tree and render to markdown, re-syncing every 6 hours. Database URLs pull every page as a separate markdown file.",
@@ -72,7 +60,6 @@ const COPY: Record<SourceType, Copy> = {
     labelPlaceholder: "Engineering handbook",
   },
   github: {
-    icon: GitBranch,
     title: "Add a GitHub repo",
     description:
       "Paste a repo URL and a Personal Access Token with `repo` scope (or `public_repo` for public-only). We pull every markdown + code file (skipping lockfiles, node_modules, builds), wrap them in fenced markdown, and re-sync every 6 hours. The token is stored in Secrets Manager — never sent to the client again.",
@@ -106,7 +93,7 @@ export function AddSourceDialog({
   }, [open]);
 
   const copy = COPY[type];
-  const Icon = copy.icon;
+  const Icon = SOURCE_TYPES[type].icon;
   const needsPat = type === "github";
   const ready =
     !!label.trim() && !!url.trim() && (!needsPat || !!pat.trim());

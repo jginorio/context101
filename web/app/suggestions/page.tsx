@@ -1,18 +1,9 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
-import {
-  ArrowLeft,
-  Check,
-  Filter,
-  RefreshCw,
-  Sparkles,
-  X,
-} from "lucide-react";
+import { Check, Filter, RefreshCw, Sparkles, X } from "lucide-react";
 import { toast } from "sonner";
 
-import { ThemeToggle } from "@/components/theme-toggle";
 import { Button } from "@/components/ui/button";
 import {
   Table,
@@ -24,6 +15,7 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
 import { SuggestionReviewSheet } from "@/components/suggestion-review-sheet";
 import { cn } from "@/lib/utils";
@@ -121,72 +113,60 @@ export default function SuggestionsPage() {
     }
   }
 
-  return (
-    <main className="flex min-h-screen flex-col">
-      <header className="border-b px-3 sm:px-6 py-3 flex items-center justify-between gap-2 shrink-0">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <Link href="/knowledge">
-            <Button variant="ghost" size="sm" className="hidden sm:inline-flex">
-              <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back
-            </Button>
-            <Button variant="ghost" size="icon-sm" className="sm:hidden" aria-label="Back">
-              <ArrowLeft className="h-4 w-4" />
-            </Button>
-          </Link>
-          <div className="min-w-0">
-            <h1 className="text-base sm:text-lg font-semibold tracking-tight truncate">
-              Suggestions
-            </h1>
-            <p className="text-xs text-muted-foreground hidden sm:block truncate">
-              Knowledge proposals from agents — review, approve, or reject
-            </p>
-          </div>
-        </div>
-        <ThemeToggle />
-      </header>
+  const filterPanel = (
+    <div className="space-y-1">
+      <p className="px-1.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+        Status
+      </p>
+      <nav className="flex flex-col gap-0.5">
+        {TABS.map((t) => (
+          <button
+            key={t.value}
+            onClick={() => setStatus(t.value)}
+            className={cn(
+              "rounded-md px-2 py-1.5 text-left text-sm transition-colors",
+              status === t.value
+                ? "bg-muted font-medium text-foreground"
+                : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+            )}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
+    </div>
+  );
 
+  return (
+    <AppShell
+      title="Suggestions"
+      subtitle="Knowledge proposals from agents — review, approve, or reject"
+      contextPanel={filterPanel}
+    >
       <BrainStatusGate>
       <div className="mx-auto w-full max-w-6xl px-3 sm:px-6 py-4 sm:py-6 space-y-4 flex-1 min-h-0 flex flex-col">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 sm:gap-3">
-          <div className="flex items-center gap-1 overflow-x-auto -mx-1 px-1">
-            {TABS.map((t) => (
-              <button
-                key={t.value}
-                onClick={() => setStatus(t.value)}
-                className={cn(
-                  "px-3 py-1 text-sm rounded-md transition-colors whitespace-nowrap shrink-0",
-                  status === t.value
-                    ? "bg-muted font-medium"
-                    : "text-muted-foreground hover:bg-muted/60"
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
+        <div className="flex items-center justify-end gap-2">
+          <div className="relative flex-1 sm:flex-initial">
+            <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search suggestions…"
+              className="h-8 pl-7 w-full sm:w-64"
+            />
           </div>
-          <div className="flex items-center gap-2">
-            <div className="relative flex-1 sm:flex-initial">
-              <Filter className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Search suggestions…"
-                className="h-8 pl-7 w-full sm:w-64"
-              />
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={load}
-              disabled={loading}
-              className="shrink-0"
-            >
-              <RefreshCw
-                className={cn("sm:mr-1 h-3.5 w-3.5", loading && "animate-spin")}
-              />
-              <span className="hidden sm:inline">Refresh</span>
-            </Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={load}
+            disabled={loading}
+            className="shrink-0"
+          >
+            <RefreshCw
+              className={cn("sm:mr-1 h-3.5 w-3.5", loading && "animate-spin")}
+            />
+            <span className="hidden sm:inline">Refresh</span>
+          </Button>
         </div>
 
         {error && (
@@ -344,7 +324,7 @@ export default function SuggestionsPage() {
         onActioned={load}
       />
       </BrainStatusGate>
-    </main>
+    </AppShell>
   );
 }
 

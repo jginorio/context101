@@ -19,18 +19,7 @@ import {
   ContextMenuTrigger,
   ContextMenuSeparator,
 } from "@/components/ui/context-menu";
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from "@/components/ui/alert-dialog";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type Entry =
@@ -53,16 +42,16 @@ type ListResponse = {
 // We use a single custom MIME type so drag events from outside the app
 // (e.g. dragging a .md file from the OS) don't accidentally trigger a
 // move. If the payload isn't our MIME type, we don't handle the drop.
-const DRAG_MIME = "application/x-context101";
-type DragPayload = { key: string; isFolder: boolean };
+export const DRAG_MIME = "application/x-context101";
+export type DragPayload = { key: string; isFolder: boolean };
 
-async function fetchList(prefix: string): Promise<ListResponse> {
+export async function fetchList(prefix: string): Promise<ListResponse> {
   const r = await fetch(`/api/files/list?prefix=${encodeURIComponent(prefix)}`);
   if (!r.ok) throw new Error(`list ${prefix} failed: ${r.status}`);
   return r.json();
 }
 
-async function moveItem(from: string, to: string): Promise<void> {
+export async function moveItem(from: string, to: string): Promise<void> {
   const r = await fetch("/api/files/move", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -105,7 +94,7 @@ async function downloadFile(key: string) {
 
 // ── Tree context shared between nodes ────────────────────────────────
 
-type TreeContext = {
+export type TreeContext = {
   selectedKey: string | null;
   refreshKey: number;
   onSelectFile: (key: string) => void;
@@ -123,7 +112,7 @@ type TreeContext = {
 // Compute the destination key when dropping `src` into folder `destPrefix`.
 // Returns null if the drop should be rejected (same parent, moving folder
 // into itself/descendant, etc).
-function computeMoveTarget(
+export function computeMoveTarget(
   src: DragPayload,
   destPrefix: string
 ): string | null {
@@ -143,16 +132,20 @@ function computeMoveTarget(
 
 // ── Folder node (recursive) ──────────────────────────────────────────
 
-function FolderNode({
+export function FolderNode({
   prefix,
   name,
   depth,
   ctx,
+  hideRootFolders,
 }: {
   prefix: string;
   name: string;
   depth: number;
   ctx: TreeContext;
+  // Folder names to hide at depth 0 only (used to keep connector-managed
+  // `sources/` and generated `wiki/` out of the "Your files" section).
+  hideRootFolders?: string[];
 }) {
   const [open, setOpen] = React.useState(depth === 0);
   const [data, setData] = React.useState<ListResponse | null>(null);
@@ -197,6 +190,11 @@ function FolderNode({
       toast.error(err instanceof Error ? err.message : String(err));
     }
   };
+
+  const visibleFolders =
+    data?.folders.filter(
+      (f) => !(depth === 0 && hideRootFolders?.includes(f.name))
+    ) ?? [];
 
   const header =
     depth === 0 ? null : (
@@ -275,7 +273,7 @@ function FolderNode({
               {error}
             </p>
           )}
-          {data?.folders.map((f) => (
+          {visibleFolders.map((f) => (
             <FolderNode
               key={f.key}
               prefix={f.key}
@@ -338,7 +336,7 @@ function FolderNode({
               </ContextMenuContent>
             </ContextMenu>
           ))}
-          {data && data.folders.length === 0 && data.files.length === 0 && (
+          {data && visibleFolders.length === 0 && data.files.length === 0 && (
             <p
               className="text-xs text-muted-foreground italic px-2 py-1"
               style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
@@ -349,268 +347,5 @@ function FolderNode({
         </div>
       )}
     </div>
-  );
-}
-
-// ── Root ─────────────────────────────────────────────────────────────
-
-export function KnowledgeTree({
-  selectedKey,
-  refreshKey,
-  onSelectFile,
-  onNewFile,
-  onNewFolder,
-  onRename,
-  onDeleted,
-}: {
-  selectedKey: string | null;
-  refreshKey: number;
-  onSelectFile: (key: string) => void;
-  onNewFile: (parentPrefix: string) => void;
-  onNewFolder: (parentPrefix: string) => void;
-  onRename: (key: string, isFolder: boolean) => void;
-  onDeleted: (key: string, isFolder: boolean) => void;
-}) {
-  const [deleteTarget, setDeleteTarget] = React.useState<{
-    key: string;
-    isFolder: boolean;
-  } | null>(null);
-  const [deleting, setDeleting] = React.useState(false);
-  const [rootDragOver, setRootDragOver] = React.useState(false);
-  const [localRefresh, setLocalRefresh] = React.useState(0);
-
-  // Multi-select for zip export. Keys follow S3 convention — folders
-  // end with "/", files don't. The /api/files/zip route expands folder
-  // prefixes on the server.
-  const [checked, setChecked] = React.useState<Set<string>>(new Set());
-  const [zipping, setZipping] = React.useState(false);
-
-  const toggleCheck = React.useCallback((key: string) => {
-    setChecked((prev) => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
-  }, []);
-
-  async function selectAll() {
-    try {
-      const r = await fetch("/api/files/list?prefix=");
-      if (!r.ok) throw new Error(`list failed: ${r.status}`);
-      const j = (await r.json()) as {
-        folders?: { key: string }[];
-        files?: { key: string }[];
-      };
-      const all = new Set<string>();
-      for (const f of j.folders ?? []) all.add(f.key);
-      for (const f of j.files ?? []) all.add(f.key);
-      setChecked(all);
-      if (all.size === 0) toast.info("Nothing to select");
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    }
-  }
-
-  async function downloadZip() {
-    if (checked.size === 0) return;
-    setZipping(true);
-    try {
-      const res = await fetch("/api/files/zip", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ keys: [...checked] }),
-      });
-      if (!res.ok) {
-        const j = await res.json().catch(() => ({ error: res.statusText }));
-        throw new Error(j.error ?? `zip failed: ${res.status}`);
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      const stamp = new Date().toISOString().slice(0, 10);
-      a.download = `context101-export-${stamp}.zip`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success(`Downloaded ${checked.size} item(s)`);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setZipping(false);
-    }
-  }
-
-  // When the parent bumps refreshKey, or we need to refresh internally
-  // (e.g. after a drag-and-drop move), we merge them here.
-  const mergedRefreshKey = refreshKey + localRefresh;
-
-  async function confirmDelete() {
-    if (!deleteTarget) return;
-    setDeleting(true);
-    try {
-      const res = await fetch("/api/files/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          key: deleteTarget.key,
-          recursive: deleteTarget.isFolder,
-        }),
-      });
-      const j = await res.json();
-      if (!res.ok) throw new Error(j.error ?? "delete failed");
-      toast.success(
-        deleteTarget.isFolder
-          ? `Deleted folder (${j.deleted} files)`
-          : "Deleted"
-      );
-      const target = deleteTarget;
-      setDeleteTarget(null);
-      onDeleted(target.key, target.isFolder);
-    } catch (e) {
-      toast.error(e instanceof Error ? e.message : String(e));
-    } finally {
-      setDeleting(false);
-    }
-  }
-
-  // Root drop = move to root (prefix "")
-  const handleRootDragOver = (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setRootDragOver(true);
-  };
-  const handleRootDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setRootDragOver(false);
-    const raw = e.dataTransfer.getData(DRAG_MIME);
-    if (!raw) return;
-    let payload: DragPayload;
-    try {
-      payload = JSON.parse(raw);
-    } catch {
-      return;
-    }
-    const to = computeMoveTarget(payload, "");
-    if (!to) return;
-    try {
-      await moveItem(payload.key, to);
-      toast.success("Moved to /");
-      setLocalRefresh((n) => n + 1);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
-    }
-  };
-
-  const ctx: TreeContext = {
-    selectedKey,
-    refreshKey: mergedRefreshKey,
-    onSelectFile,
-    onNewFile,
-    onNewFolder,
-    onRename,
-    onDeleteRequest: (key, isFolder) => setDeleteTarget({ key, isFolder }),
-    onMoved: () => setLocalRefresh((n) => n + 1),
-    checked,
-    onToggleCheck: toggleCheck,
-  };
-
-  return (
-    <>
-      <div className="sticky top-0 z-10 mb-1 flex items-center justify-between gap-2 rounded-md border bg-background/95 backdrop-blur px-2 py-1.5">
-        {checked.size === 0 ? (
-          <Button
-            size="sm"
-            variant="ghost"
-            className="h-6 text-xs"
-            onClick={selectAll}
-          >
-            Select all
-          </Button>
-        ) : (
-          <span className="text-xs text-muted-foreground pl-1">
-            {checked.size} selected
-          </span>
-        )}
-        {checked.size > 0 && (
-          <div className="flex items-center gap-1">
-            <Button
-              size="sm"
-              variant="ghost"
-              onClick={() => setChecked(new Set())}
-              disabled={zipping}
-            >
-              Clear
-            </Button>
-            <Button size="sm" onClick={downloadZip} disabled={zipping}>
-              <Download className="mr-1 h-3.5 w-3.5" />
-              {zipping ? "Zipping…" : "Download ZIP"}
-            </Button>
-          </div>
-        )}
-      </div>
-
-      <ContextMenu>
-        <ContextMenuTrigger>
-          <div
-            onDragOver={handleRootDragOver}
-            onDragLeave={() => setRootDragOver(false)}
-            onDrop={handleRootDrop}
-            className={cn(
-              "space-y-0.5 min-h-full rounded",
-              rootDragOver && "bg-accent/40 ring-1 ring-ring"
-            )}
-          >
-            <FolderNode prefix="" name="/" depth={0} ctx={ctx} />
-          </div>
-        </ContextMenuTrigger>
-        <ContextMenuContent>
-          <ContextMenuItem onClick={() => onNewFile("")}>
-            <FilePlus className="mr-2 h-3.5 w-3.5" /> New file at root
-          </ContextMenuItem>
-          <ContextMenuItem onClick={() => onNewFolder("")}>
-            <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder at root
-          </ContextMenuItem>
-        </ContextMenuContent>
-      </ContextMenu>
-
-      <AlertDialog
-        open={!!deleteTarget}
-        onOpenChange={(v) => !v && setDeleteTarget(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              Delete {deleteTarget?.isFolder ? "folder" : "file"}?
-            </AlertDialogTitle>
-            <AlertDialogDescription className="font-mono text-xs break-all">
-              {deleteTarget?.key}
-              {deleteTarget?.isFolder && (
-                <span className="block mt-2 font-sans text-sm">
-                  Everything under this folder will be deleted. This can&apos;t be
-                  undone.
-                </span>
-              )}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={(e) => {
-                e.preventDefault();
-                confirmDelete();
-              }}
-              disabled={deleting}
-              className="bg-destructive text-white hover:bg-destructive/90"
-            >
-              {deleting ? "Deleting…" : "Delete"}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-    </>
   );
 }
