@@ -54,6 +54,24 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+
+  @keyframes expand {
+    from {
+      height: var(--collapsed-height, 0);
+    }
+    to {
+      height: var(--height);
+    }
+  }
+
+  @keyframes collapse {
+    from {
+      height: var(--height);
+    }
+    to {
+      height: var(--collapsed-height, 0);
+    }
+  }
 }
 
 :root {

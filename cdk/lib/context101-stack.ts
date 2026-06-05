@@ -699,6 +699,15 @@ export class Context101Stack extends cdk.Stack {
     const marketingUrl = this.node.tryGetContext("MARKETING_URL") as
       | string
       | undefined;
+    const sesRegion = this.node.tryGetContext("SES_REGION") as
+      | string
+      | undefined;
+    const sesFromEmail = this.node.tryGetContext("SES_FROM_EMAIL") as
+      | string
+      | undefined;
+    const sesReplyToEmail = this.node.tryGetContext("SES_REPLY_TO_EMAIL") as
+      | string
+      | undefined;
     let defaultBrainTokenSecret: secretsmanager.Secret | undefined;
     let mcpServiceUrl: string | undefined;
     const mcpEnvVars: Array<{ name: string; value: string }> = [];
@@ -728,6 +737,13 @@ export class Context101Stack extends cdk.Stack {
         : []),
       ...(appUrl ? [{ name: "APP_URL", value: appUrl }] : []),
       ...(marketingUrl ? [{ name: "MARKETING_URL", value: marketingUrl }] : []),
+      ...(sesRegion ? [{ name: "SES_REGION", value: sesRegion }] : []),
+      ...(sesFromEmail
+        ? [{ name: "SES_FROM_EMAIL", value: sesFromEmail }]
+        : []),
+      ...(sesReplyToEmail
+        ? [{ name: "SES_REPLY_TO_EMAIL", value: sesReplyToEmail }]
+        : []),
     ];
 
     const brainShared = new BrainShared(this, "BrainShared", {
@@ -1021,6 +1037,13 @@ export class Context101Stack extends cdk.Stack {
           sid: "RwDocsObjects",
           actions: ["s3:GetObject", "s3:PutObject", "s3:DeleteObject"],
           resources: [`${docsBucket.bucketArn}/*`],
+        })
+      );
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "SendTransactionalEmail",
+          actions: ["ses:SendEmail"],
+          resources: ["*"],
         })
       );
       // CloudWatch Logs perms. DescribeLogGroups needs resource "*"

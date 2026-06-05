@@ -1,25 +1,20 @@
 "use client";
 
 import * as React from "react";
-import {
-  ChevronRight,
-  ChevronDown,
-  FileText,
-  Folder,
-  FilePlus,
-  FolderPlus,
-  Download,
-} from "lucide-react";
-import { toast } from "sonner";
+import { FileText, LoaderCircle, TriangleAlert } from "lucide-react";
 
 import {
-  ContextMenu,
-  ContextMenuContent,
-  ContextMenuItem,
-  ContextMenuTrigger,
-  ContextMenuSeparator,
-} from "@/components/ui/context-menu";
-import { Checkbox } from "@/components/ui/checkbox";
+  TreeView,
+  TreeViewBranch,
+  TreeViewBranchContent,
+  TreeViewBranchItem,
+  TreeViewContent,
+  TreeViewItem,
+  TreeViewNode,
+  TreeViewTree,
+  createTreeCollection,
+  type TreeNodeType,
+} from "@/components/ui/tree-view";
 import { cn } from "@/lib/utils";
 
 type Entry =
@@ -67,47 +62,14 @@ function lastSegment(key: string, isFolder: boolean): string {
   return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
 }
 
-function downloadBlob(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/plain;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }, 0);
-}
-
-async function downloadFile(key: string) {
-  try {
-    const r = await fetch(`/api/files/get?key=${encodeURIComponent(key)}`);
-    const j = await r.json();
-    if (!r.ok) throw new Error(j.error ?? `download failed: ${r.status}`);
-    downloadBlob(lastSegment(key, false), j.content ?? "");
-  } catch (e) {
-    toast.error(e instanceof Error ? e.message : String(e));
-  }
-}
-
 // ── Tree context shared between nodes ────────────────────────────────
 
 export type TreeContext = {
   selectedKey: string | null;
   refreshKey: number;
   onSelectFile: (key: string) => void;
-  onNewFile: (parentPrefix: string) => void;
-  onNewFolder: (parentPrefix: string) => void;
-  onRename: (key: string, isFolder: boolean) => void;
-  onDeleteRequest: (key: string, isFolder: boolean) => void;
-  onMoved: () => void; // refresh after a successful move
-  // Multi-select for ZIP export. Keys use the S3 convention: files are
-  // e.g. "foo/bar.md", folders end with "/".
-  checked: Set<string>;
-  onToggleCheck: (key: string) => void;
-  // Connector-synced files are browse-only: no checkboxes, drag, or edits.
+  // Connector-synced files are browse-only; the tree still supports opening
+  // them in the viewer.
   mode?: "editable" | "browse";
 };
 
@@ -132,7 +94,93 @@ export function computeMoveTarget(
   return src.isFolder ? `${destPrefix}${name}/` : `${destPrefix}${name}`;
 }
 
-// ── Folder node (recursive) ──────────────────────────────────────────
+type LoadState =
+  | { status: "loading" }
+  | { status: "loaded"; data: ListResponse }
+  | { status: "error"; message: string };
+
+type KnowledgeTreeNode = Omit<TreeNodeType, "children"> & {
+  children?: KnowledgeTreeNode[];
+  headerIcon?: React.ReactNode;
+  key: string;
+  kind: "folder" | "file" | "status";
+  status?: "loading" | "error" | "empty";
+};
+
+function statusNode(
+  parentPrefix: string,
+  status: NonNullable<KnowledgeTreeNode["status"]>,
+  name: string
+): KnowledgeTreeNode {
+  return {
+    id: `${parentPrefix || "ROOT"}::__${status}`,
+    key: parentPrefix,
+    kind: "status",
+    name,
+    status,
+  };
+}
+
+const LoadingIcon = () => <LoaderCircle className="animate-spin" />;
+
+function TreeNode({
+  node,
+  indexPath,
+}: {
+  node: KnowledgeTreeNode;
+  indexPath: number[];
+}) {
+  if (node.kind === "folder") {
+    const label = node.headerIcon ? (
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span className="shrink-0 opacity-90">{node.headerIcon}</span>
+        <span className="truncate">{node.name}</span>
+      </span>
+    ) : (
+      node.name
+    );
+
+    return (
+      <TreeViewNode indexPath={indexPath} node={node}>
+        <TreeViewBranch>
+          <TreeViewBranchItem icon={node.headerIcon ? null : undefined}>
+            {label}
+          </TreeViewBranchItem>
+          <TreeViewBranchContent>
+            {node.children?.map((child, index) => (
+              <TreeNode
+                indexPath={[...indexPath, index]}
+                key={child.id}
+                node={child}
+              />
+            ))}
+          </TreeViewBranchContent>
+        </TreeViewBranch>
+      </TreeViewNode>
+    );
+  }
+
+  const disabled = node.kind === "status";
+  const icon =
+    node.status === "loading"
+      ? LoadingIcon
+      : node.status === "error"
+        ? TriangleAlert
+        : FileText;
+
+  return (
+    <TreeViewNode indexPath={indexPath} node={node}>
+      <TreeViewContent
+        className={cn(
+          disabled && "pointer-events-none italic text-muted-foreground",
+          node.status === "error" && "text-destructive"
+        )}
+      >
+        <TreeViewItem icon={icon}>{node.name}</TreeViewItem>
+      </TreeViewContent>
+    </TreeViewNode>
+  );
+}
 
 export function FolderNode({
   prefix,
@@ -162,250 +210,174 @@ export function FolderNode({
   // Load listing even while collapsed (needed to hide empty connector roots).
   prefetch?: boolean;
 }) {
-  const browse = ctx.mode === "browse";
-  const [open, setOpen] = React.useState(defaultOpen ?? depth === 0);
-  const [data, setData] = React.useState<ListResponse | null>(null);
-  const [error, setError] = React.useState<string | null>(null);
-  const [dragOver, setDragOver] = React.useState(false);
+  const showRoot = depth > 0 || forceHeader;
+  const initialExpanded = React.useMemo(
+    () => (showRoot && defaultOpen ? [prefix] : []),
+    [defaultOpen, prefix, showRoot]
+  );
+  const requestVersion = React.useRef(0);
+  const listingsRef = React.useRef<Record<string, LoadState>>({});
+  const [expanded, setExpanded] = React.useState<string[]>(initialExpanded);
+  const [listings, setListings] = React.useState<Record<string, LoadState>>({});
+
+  const setListingState = React.useCallback(
+    (targetPrefix: string, state: LoadState) => {
+      const next = { ...listingsRef.current, [targetPrefix]: state };
+      listingsRef.current = next;
+      setListings(next);
+    },
+    []
+  );
+
+  const loadPrefix = React.useCallback(async (targetPrefix: string) => {
+    const current = listingsRef.current[targetPrefix];
+    if (current?.status === "loading" || current?.status === "loaded") return;
+
+    const version = requestVersion.current;
+    setListingState(targetPrefix, { status: "loading" });
+
+    try {
+      const data = await fetchList(targetPrefix);
+      if (requestVersion.current !== version) return;
+      setListingState(targetPrefix, { status: "loaded", data });
+    } catch (error) {
+      if (requestVersion.current !== version) return;
+      setListingState(targetPrefix, {
+        status: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }, [setListingState]);
 
   React.useEffect(() => {
-    if (!open && !prefetch) return;
-    setError(null);
-    fetchList(prefix)
-      .then(setData)
-      .catch((e) => setError(e.message));
-  }, [open, prefetch, prefix, ctx.refreshKey]);
+    requestVersion.current += 1;
+    listingsRef.current = {};
+    setListings({});
+    setExpanded(initialExpanded);
+  }, [ctx.refreshKey, initialExpanded]);
 
-  // ── D&D handlers for dropping into this folder ─────────────────────
-  const handleDragOver = (e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes(DRAG_MIME)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = "move";
-    setDragOver(true);
-  };
-  const handleDragLeave = () => setDragOver(false);
-  const handleDrop = async (e: React.DragEvent) => {
-    e.preventDefault();
-    setDragOver(false);
-    const raw = e.dataTransfer.getData(DRAG_MIME);
-    if (!raw) return;
-    let payload: DragPayload;
-    try {
-      payload = JSON.parse(raw);
-    } catch {
-      return;
+  React.useEffect(() => {
+    if (!showRoot || prefetch || defaultOpen) {
+      void loadPrefix(prefix);
     }
-    const to = computeMoveTarget(payload, prefix);
-    if (!to) return;
-    try {
-      await moveItem(payload.key, to);
-      toast.success(`Moved to ${prefix || "/"}`);
-      ctx.onMoved();
-      if (!open) setOpen(true);
-    } catch (err) {
-      toast.error(err instanceof Error ? err.message : String(err));
+  }, [defaultOpen, loadPrefix, prefix, prefetch, showRoot, ctx.refreshKey]);
+
+  function buildChildren(parentPrefix: string): KnowledgeTreeNode[] {
+    const state = listings[parentPrefix];
+    if (!state || state.status === "loading") {
+      return [statusNode(parentPrefix, "loading", "Loading...")];
     }
+
+    if (state.status === "error") {
+      return [statusNode(parentPrefix, "error", state.message)];
+    }
+
+    const visibleFolders = state.data.folders.filter(
+      (folder) =>
+        !(
+          parentPrefix === prefix &&
+          !showRoot &&
+          hideRootFolders?.includes(folder.name)
+        )
+    );
+
+    const children: KnowledgeTreeNode[] = [
+      ...visibleFolders.map((folder) => ({
+        children: buildChildren(folder.key),
+        id: folder.key,
+        key: folder.key,
+        kind: "folder" as const,
+        name: folder.name,
+      })),
+      ...state.data.files.map((file) => ({
+        id: file.key,
+        key: file.key,
+        kind: "file" as const,
+        name: file.name,
+      })),
+    ];
+
+    return children.length > 0
+      ? children
+      : [
+          statusNode(
+            parentPrefix,
+            "empty",
+            ctx.mode === "browse" ? "No synced files" : "empty"
+          ),
+        ];
+  }
+
+  const rootChildren = buildChildren(prefix);
+  const rootState = listings[prefix];
+  const loadedRootChildren =
+    rootState?.status === "loaded"
+      ? rootChildren.filter((child) => child.kind !== "status")
+      : rootChildren;
+
+  if (
+    hideWhenEmpty &&
+    rootState?.status === "loaded" &&
+    loadedRootChildren.length === 0
+  ) {
+    return null;
+  }
+
+  const rootNode: KnowledgeTreeNode = {
+    children: showRoot
+      ? [
+          {
+            children: rootChildren,
+            headerIcon,
+            id: prefix,
+            key: prefix,
+            kind: "folder",
+            name,
+          },
+        ]
+      : rootChildren,
+    id: "ROOT",
+    key: prefix,
+    kind: "folder",
+    name: "",
   };
 
-  const visibleFolders =
-    data?.folders.filter(
-      (f) => !(depth === 0 && hideRootFolders?.includes(f.name))
-    ) ?? [];
+  const collection = createTreeCollection<KnowledgeTreeNode>({ rootNode });
+  const nodeById = new Map<string, KnowledgeTreeNode>();
+  const indexNodes = (nodes: KnowledgeTreeNode[]) => {
+    for (const node of nodes) {
+      nodeById.set(node.id, node);
+      if (node.children) indexNodes(node.children);
+    }
+  };
+  indexNodes(rootNode.children ?? []);
 
-  const isEmpty =
-    data !== null && visibleFolders.length === 0 && data.files.length === 0;
-
-  if (hideWhenEmpty && isEmpty) return null;
-
-  const showHeader = depth > 0 || forceHeader;
-  const indent = showHeader ? depth * 12 + 8 : 8;
-
-  const folderToggle = (
-    <button
-      onClick={() => setOpen((o) => !o)}
-      draggable={!browse}
-      onDragStart={
-        browse
-          ? undefined
-          : (e) => {
-              e.dataTransfer.setData(
-                DRAG_MIME,
-                JSON.stringify({ key: prefix, isFolder: true } as DragPayload)
-              );
-              e.dataTransfer.effectAllowed = "move";
-            }
-      }
-      className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-    >
-      {open ? (
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
-      ) : (
-        <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
-      )}
-      {headerIcon ?? <Folder className="h-3.5 w-3.5 shrink-0 opacity-70" />}
-      <span className="truncate">{name}</span>
-    </button>
-  );
-
-  const folderRow = (
-    <div
-      onDragOver={browse ? undefined : handleDragOver}
-      onDragLeave={browse ? undefined : handleDragLeave}
-      onDrop={browse ? undefined : handleDrop}
-      className={cn(
-        "flex w-full items-center gap-1 rounded px-2 py-1 text-sm hover:bg-muted",
-        dragOver && "bg-accent ring-1 ring-ring"
-      )}
-      style={{ paddingLeft: `${indent}px` }}
-    >
-      {!browse && (
-        <Checkbox
-          checked={ctx.checked.has(prefix)}
-          onCheckedChange={() => ctx.onToggleCheck(prefix)}
-          onClick={(e) => e.stopPropagation()}
-          className="h-3.5 w-3.5 shrink-0"
-          aria-label={`select folder ${name}`}
-        />
-      )}
-      {folderToggle}
-    </div>
-  );
-
-  const header = !showHeader ? null : browse ? (
-    folderRow
-  ) : (
-    <ContextMenu>
-      <ContextMenuTrigger>{folderRow}</ContextMenuTrigger>
-      <ContextMenuContent>
-        <ContextMenuItem onClick={() => ctx.onNewFile(prefix)}>
-          <FilePlus className="mr-2 h-3.5 w-3.5" /> New file here
-        </ContextMenuItem>
-        <ContextMenuItem onClick={() => ctx.onNewFolder(prefix)}>
-          <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder here
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => ctx.onRename(prefix, true)}>
-          Rename
-        </ContextMenuItem>
-        <ContextMenuItem
-          variant="destructive"
-          onClick={() => ctx.onDeleteRequest(prefix, true)}
-        >
-          Delete folder
-        </ContextMenuItem>
-      </ContextMenuContent>
-    </ContextMenu>
-  );
+  const selectedValue = ctx.selectedKey ? [ctx.selectedKey] : [];
 
   return (
-    <div>
-      {header}
-      {open && (
-        <div>
-          {error && (
-            <p
-              className="text-xs text-destructive px-2 py-1"
-              style={{ paddingLeft: `${(depth + 1) * 12 + 8}px` }}
-            >
-              {error}
-            </p>
-          )}
-          {visibleFolders.map((f) => (
-            <FolderNode
-              key={f.key}
-              prefix={f.key}
-              name={f.name}
-              depth={depth + 1}
-              ctx={ctx}
-            />
-          ))}
-          {data?.files.map((file) => {
-            const fileRow = (
-              <div
-                className={cn(
-                  "flex w-full items-center gap-1 rounded px-2 py-1 text-sm hover:bg-muted",
-                  ctx.selectedKey === file.key && "bg-muted"
-                )}
-                style={{ paddingLeft: `${(showHeader ? depth + 1 : depth) * 12 + 8}px` }}
-              >
-                {!browse && (
-                  <Checkbox
-                    checked={ctx.checked.has(file.key)}
-                    onCheckedChange={() => ctx.onToggleCheck(file.key)}
-                    onClick={(e) => e.stopPropagation()}
-                    className="h-3.5 w-3.5 shrink-0"
-                    aria-label={`select ${file.name}`}
-                  />
-                )}
-                <button
-                  onClick={() => ctx.onSelectFile(file.key)}
-                  draggable={!browse}
-                  onDragStart={
-                    browse
-                      ? undefined
-                      : (e) => {
-                          e.dataTransfer.setData(
-                            DRAG_MIME,
-                            JSON.stringify({
-                              key: file.key,
-                              isFolder: false,
-                            } as DragPayload)
-                          );
-                          e.dataTransfer.effectAllowed = "move";
-                        }
-                  }
-                  className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-                >
-                  <FileText className="h-3.5 w-3.5 shrink-0 opacity-70" />
-                  <span className="truncate">{file.name}</span>
-                </button>
-              </div>
-            );
-
-            if (browse) {
-              return (
-                <ContextMenu key={file.key}>
-                  <ContextMenuTrigger>{fileRow}</ContextMenuTrigger>
-                  <ContextMenuContent>
-                    <ContextMenuItem onClick={() => downloadFile(file.key)}>
-                      <Download className="mr-2 h-3.5 w-3.5" /> Download
-                    </ContextMenuItem>
-                  </ContextMenuContent>
-                </ContextMenu>
-              );
-            }
-
-            return (
-              <ContextMenu key={file.key}>
-                <ContextMenuTrigger>{fileRow}</ContextMenuTrigger>
-                <ContextMenuContent>
-                  <ContextMenuItem onClick={() => downloadFile(file.key)}>
-                    <Download className="mr-2 h-3.5 w-3.5" /> Download
-                  </ContextMenuItem>
-                  <ContextMenuSeparator />
-                  <ContextMenuItem onClick={() => ctx.onRename(file.key, false)}>
-                    Rename
-                  </ContextMenuItem>
-                  <ContextMenuItem
-                    variant="destructive"
-                    onClick={() => ctx.onDeleteRequest(file.key, false)}
-                  >
-                    Delete
-                  </ContextMenuItem>
-                </ContextMenuContent>
-              </ContextMenu>
-            );
-          })}
-          {isEmpty && (
-            <p
-              className="px-2 py-1 text-xs italic text-muted-foreground"
-              style={{ paddingLeft: `${(showHeader ? depth + 1 : depth) * 12 + 8}px` }}
-            >
-              {browse ? "No synced files" : "empty"}
-            </p>
-          )}
-        </div>
-      )}
-    </div>
+    <TreeView
+      collection={collection}
+      expandedValue={expanded}
+      onExpandedChange={({ expandedValue }) => {
+        setExpanded(expandedValue);
+        for (const value of expandedValue) {
+          const node = nodeById.get(value);
+          if (node?.kind === "folder") void loadPrefix(node.key);
+        }
+      }}
+      onSelectionChange={({ selectedValue }) => {
+        const selected = selectedValue.at(-1);
+        const node = selected ? nodeById.get(selected) : undefined;
+        if (node?.kind === "file") ctx.onSelectFile(node.key);
+      }}
+      selectedValue={selectedValue}
+      className="[--icon-size:--spacing(3.5)] [--indentation:--spacing(3)] gap-0"
+    >
+      <TreeViewTree className="text-sm">
+        {rootNode.children?.map((node, index) => (
+          <TreeNode indexPath={[index]} key={node.id} node={node} />
+        ))}
+      </TreeViewTree>
+    </TreeView>
   );
 }

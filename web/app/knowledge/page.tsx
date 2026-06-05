@@ -6,7 +6,6 @@ import { FilePlus, FolderPlus } from "lucide-react";
 import { KnowledgeSidebar } from "@/components/knowledge-sidebar";
 import { KnowledgeViewer } from "@/components/knowledge-viewer";
 import { NewItemDialog } from "@/components/new-item-dialog";
-import { RenameDialog } from "@/components/rename-dialog";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
@@ -29,10 +28,6 @@ export default function Home() {
     mode: "file" | "folder";
     parentPrefix: string;
   } | null>(null);
-  const [rename, setRename] = React.useState<{
-    key: string;
-    isFolder: boolean;
-  } | null>(null);
 
   const refresh = () => setRefreshKey((k) => k + 1);
 
@@ -45,11 +40,6 @@ export default function Home() {
       onNewFolder={(parentPrefix) =>
         setNewItem({ mode: "folder", parentPrefix })
       }
-      onRename={(key, isFolder) => setRename({ key, isFolder })}
-      onDeleted={(key) => {
-        if (selected === key) setSelected(null);
-        refresh();
-      }}
     />
   );
 
@@ -116,18 +106,6 @@ export default function Home() {
           />
         )}
 
-        {rename && (
-          <RenameDialog
-            open={!!rename}
-            currentKey={rename.key}
-            isFolder={rename.isFolder}
-            onOpenChange={(o) => !o && setRename(null)}
-            onRenamed={(newKey) => {
-              if (selected === rename.key) setSelected(newKey);
-              refresh();
-            }}
-          />
-        )}
       </BrainStatusGate>
     </AppShell>
   );

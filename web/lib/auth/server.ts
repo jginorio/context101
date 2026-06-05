@@ -7,6 +7,11 @@ import { eq } from "drizzle-orm";
 import { deploymentConfig } from "@/lib/deployment/config";
 import { db } from "@/lib/db/client";
 import * as authSchema from "@/lib/db/auth-schema";
+import {
+  sendOrganizationInvitationEmail,
+  sendPasswordResetEmail,
+  sendWelcomeEmail,
+} from "@/lib/email";
 
 type AuthRuntime = {
   handler: (request: Request) => Promise<Response>;
@@ -20,6 +25,10 @@ function requiredEnv(name: string): string {
   const value = process.env[name];
   if (!value) throw new Error(`${name} is not configured`);
   return value;
+}
+
+function appLink(path: string) {
+  return `${deploymentConfig.appUrl.replace(/\/$/, "")}${path}`;
 }
 
 function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
@@ -36,8 +45,28 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
     emailAndPassword: {
       enabled: true,
       disableSignUp,
+      revokeSessionsOnPasswordReset: true,
+      sendResetPassword: async ({
+        token,
+        user,
+      }: {
+        token: string;
+        user: { email: string };
+      }) => {
+        const resetUrl = appLink(
+          `/reset-password?token=${encodeURIComponent(token)}`
+        );
+        void sendPasswordResetEmail({ email: user.email, resetUrl });
+      },
     },
     databaseHooks: {
+      user: {
+        create: {
+          after: async (user: { email: string; name?: string | null }) => {
+            void sendWelcomeEmail({ email: user.email, name: user.name });
+          },
+        },
+      },
       session: {
         create: {
           before: async (session: { userId: string }) => {
@@ -66,21 +95,22 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
         // verification flow, so don't block invitation accept on a verified
         // email — this plugin option defaults to `true`.
         requireEmailVerificationOnInvitation: false,
-        // No transactional email infra yet. We still implement this so
-        // inviteMember succeeds and the accept link is captured in logs;
-        // the Settings UI surfaces a copyable link per pending invitation
-        // (built from listInvitations), so admins can share it manually.
         sendInvitationEmail: async (data: {
           id: string;
           email: string;
+          inviter?: { user?: { email?: string | null; name?: string | null } };
           role: string;
           organization: { name?: string };
         }) => {
-          const base = deploymentConfig.appUrl.replace(/\/$/, "");
-          const link = `${base}/accept-invitation/${data.id}`;
-          console.log(
-            `[org] invitation for ${data.email} (role=${data.role}) to "${data.organization?.name ?? "org"}": ${link}`
-          );
+          const inviteLink = appLink(`/accept-invitation/${data.id}`);
+          void sendOrganizationInvitationEmail({
+            email: data.email,
+            inviteLink,
+            invitedByEmail: data.inviter?.user?.email,
+            invitedByName: data.inviter?.user?.name,
+            organizationName: data.organization?.name,
+            role: data.role,
+          });
         },
       }),
       // Keep this last so Better Auth can apply Set-Cookie headers from

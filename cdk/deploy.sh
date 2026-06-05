@@ -31,7 +31,8 @@
 # Optional OpenSaaS env values can also live in the env file:
 #   DATABASE_URL, DATABASE_DRIVER, DATABASE_PREPARE,
 #   BETTER_AUTH_SECRET, BETTER_AUTH_URL, MCP_TOKEN_PEPPER,
-#   APP_MODE, ALLOW_PUBLIC_SIGNUP, BILLING_ENABLED, APP_URL, MARKETING_URL.
+#   APP_MODE, ALLOW_PUBLIC_SIGNUP, BILLING_ENABLED, APP_URL, MARKETING_URL,
+#   SES_REGION, SES_FROM_EMAIL, SES_REPLY_TO_EMAIL.
 
 set -euo pipefail
 
@@ -167,6 +168,9 @@ add_context_if_set "ALLOW_PUBLIC_SIGNUP"
 add_context_if_set "BILLING_ENABLED"
 add_context_if_set "APP_URL"
 add_context_if_set "MARKETING_URL"
+add_context_if_set "SES_REGION"
+add_context_if_set "SES_FROM_EMAIL"
+add_context_if_set "SES_REPLY_TO_EMAIL"
 
 if [[ "$SUBCOMMAND" == "deploy" ]]; then
   CDK_ARGS+=("--require-approval" "never")

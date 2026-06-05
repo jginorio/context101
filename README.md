@@ -202,6 +202,9 @@ BILLING_ENABLED="false"
 APP_URL="https://<your-web-domain>"
 MARKETING_URL="https://context101.dev"
 MCP_TOKEN_PEPPER="$(openssl rand -base64 32)"
+SES_REGION="us-east-1"
+SES_FROM_EMAIL="Context101 <no-reply@your-domain.com>"
+SES_REPLY_TO_EMAIL="support@your-domain.com" # optional
 ```
 
 For self-hosted deployments, visit `/setup` after the web app is live. It creates the first Better Auth user and organization. For hosted deployments, keep `ALLOW_PUBLIC_SIGNUP=false` until billing/onboarding gates exist, then invite or provision users intentionally.

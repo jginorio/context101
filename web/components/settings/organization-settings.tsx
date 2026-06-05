@@ -315,8 +315,8 @@ export function OrganizationSettings() {
               </Button>
             </form>
             <p className="mt-2 text-xs text-muted-foreground">
-              No email is sent yet — after inviting, copy the invite link below
-              and share it. The teammate accepts it while signed in.
+              We&apos;ll email the invite link. You can also copy it from pending
+              invitations below if you need to share it manually.
             </p>
           </CardContent>
         </Card>
