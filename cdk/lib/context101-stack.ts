@@ -699,6 +699,9 @@ export class Context101Stack extends cdk.Stack {
     const marketingUrl = this.node.tryGetContext("MARKETING_URL") as
       | string
       | undefined;
+    const mcpPublicHost = this.node.tryGetContext("MCP_PUBLIC_HOST") as
+      | string
+      | undefined;
     const sesRegion = this.node.tryGetContext("SES_REGION") as
       | string
       | undefined;
@@ -966,7 +969,10 @@ export class Context101Stack extends cdk.Stack {
           { name: "BRAIN_PROVISIONER_FN_NAME", value: brainShared.provisionerFn.functionName },
           // MCP host (no /mcp suffix; the /about page appends /brain/<id>/mcp
           // per brain). Empty string when teamToken wasn't passed on this deploy.
-          { name: "NEXT_PUBLIC_MCP_HOST", value: mcpServiceUrl ?? "" },
+          {
+            name: "NEXT_PUBLIC_MCP_HOST",
+            value: mcpPublicHost ?? mcpServiceUrl ?? "",
+          },
           // AWS_REGION can't be set — Amplify reserves the "AWS_" prefix.
           // Lambda's runtime sets it automatically, so utils/s3.ts picks
           // it up from process.env.AWS_REGION without us configuring it.

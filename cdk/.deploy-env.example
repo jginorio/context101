@@ -37,6 +37,7 @@ AWS_PROFILE="plateapr.com"
 # BILLING_ENABLED="false"
 # APP_URL="https://main.<amplify-app-id>.amplifyapp.com"
 # MARKETING_URL="https://context101.dev"
+# MCP_PUBLIC_HOST="https://mcp.context101.dev"
 #
 # Transactional email (hosted paid default: AWS SES).
 # SES_FROM_EMAIL must be a verified SES identity.
