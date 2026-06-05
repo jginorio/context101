@@ -4,7 +4,9 @@
  * Input: { connectorId: string }
  *
  * Fetches a Notion page (or every page in a database) via the Notion
- * API, walks each page's block tree recursively, and renders to markdown.
+ * API, walks each page's block tree recursively, renders to markdown, and
+ * crawls nested pages (child pages + child-database rows) so the whole
+ * connected subtree is synced — not just the top page.
  *
  * S3 layout:
  *   sources/notion/<workspace-slug>/<page-slug>.md
@@ -59,7 +61,7 @@ async function getJson(secretId) {
 
 // ── Notion API ───────────────────────────────────────────────────────
 
-async function notionFetch(token, path, init = {}) {
+async function notionFetch(token, path, init = {}, attempt = 0) {
   const r = await fetch(`https://api.notion.com/v1${path}`, {
     ...init,
     headers: {
@@ -70,6 +72,17 @@ async function notionFetch(token, path, init = {}) {
     },
   });
   if (!r.ok) {
+    // Recursive crawling fans out a lot of requests; back off on rate limits
+    // (429) and transient 5xx instead of failing the whole sync.
+    if ((r.status === 429 || r.status >= 500) && attempt < 5) {
+      const retryAfter = Number(r.headers.get("retry-after"));
+      const waitMs =
+        Number.isFinite(retryAfter) && retryAfter > 0
+          ? retryAfter * 1000
+          : Math.min(8000, 500 * 2 ** attempt);
+      await new Promise((res) => setTimeout(res, waitMs));
+      return notionFetch(token, path, init, attempt + 1);
+    }
     const body = await r.text().catch(() => "");
     const e = new Error(`notion ${path} ${r.status}: ${body}`);
     e.status = r.status;
@@ -132,7 +145,7 @@ function pageTitle(page) {
   return "Untitled";
 }
 
-async function renderBlocks(token, blocks, depth = 0) {
+async function renderBlocks(token, blocks, depth = 0, discovered = null) {
   const lines = [];
   const indent = "  ".repeat(depth);
   let numberedCounter = 0;
@@ -233,9 +246,13 @@ async function renderBlocks(token, blocks, depth = 0) {
       }
       case "child_page":
         lines.push(`${indent}- 📄 *${data.title || "Child page"}*`);
+        // A child_page block's id IS the subpage's page id — queue it so the
+        // handler crawls the nested page as its own document.
+        if (discovered) discovered.push({ id: b.id, type: "page" });
         break;
       case "child_database":
         lines.push(`${indent}- 🗃️ *${data.title || "Child database"}*`);
+        if (discovered) discovered.push({ id: b.id, type: "database" });
         break;
       case "synced_block":
       case "column_list":
@@ -258,7 +275,7 @@ async function renderBlocks(token, blocks, depth = 0) {
       t !== "child_database"
     ) {
       const children = await fetchBlockChildren(token, b.id);
-      const childLines = await renderBlocks(token, children, depth + 1);
+      const childLines = await renderBlocks(token, children, depth + 1, discovered);
       if (childLines) lines.push(childLines);
     }
   }
@@ -416,23 +433,55 @@ export const handler = async (event) => {
     const topTitle =
       kind === "page" ? pageTitle(resource) : richText(resource.title) || "Untitled database";
 
-    // Build the list of pages to render
-    const pages =
-      kind === "page"
-        ? [resource]
-        : await queryDatabasePages(accessToken, resourceId);
+    // Crawl the connected page (or database) and every Notion page nested
+    // beneath it — child pages, and the rows of any child databases. BFS with
+    // a visited set guards against cycles; MAX_PAGES bounds runtime so a huge
+    // space can't blow past the Lambda timeout.
+    const MAX_PAGES = 500;
+    const norm = (x) => String(x || "").replace(/-/g, "");
+    const visited = new Set();
+
+    const queue = [];
+    if (kind === "page") {
+      queue.push(resource);
+    } else {
+      visited.add(norm(resourceId));
+      for (const r of await queryDatabasePages(accessToken, resourceId)) {
+        queue.push(r);
+      }
+    }
 
     const freshKeys = new Set();
+    const usedSlugs = new Set();
     let totalBlocks = 0;
+    let truncated = false;
 
-    for (const page of pages) {
+    // Keep S3 keys stable but unique: prefer the title slug, and only fall
+    // back to an id suffix when two pages would collide on the same slug.
+    const uniqueKey = (title, id) => {
+      const base = slugify(title);
+      let slug = base;
+      if (usedSlugs.has(slug)) slug = `${base}-${norm(id).slice(-8)}`;
+      usedSlugs.add(slug);
+      return `${prefix}${slug}.md`;
+    };
+
+    while (queue.length) {
+      if (usedSlugs.size >= MAX_PAGES) {
+        truncated = true;
+        break;
+      }
+      const page = queue.shift();
+      if (visited.has(norm(page.id))) continue;
+      visited.add(norm(page.id));
+
       const title = pageTitle(page);
-      const pageSlug = slugify(title);
-      const key = `${prefix}${pageSlug}.md`;
+      const key = uniqueKey(title, page.id);
 
+      const discovered = [];
       const topBlocks = await fetchBlockChildren(accessToken, page.id);
       totalBlocks += topBlocks.length;
-      const rendered = await renderBlocks(accessToken, topBlocks);
+      const rendered = await renderBlocks(accessToken, topBlocks, 0, discovered);
 
       const content = [
         `# ${title}`,
@@ -450,21 +499,42 @@ export const handler = async (event) => {
           connector_id: connectorId,
           notion_page_id: page.id,
           notion_workspace: workspaceName,
-          kind,
+          kind: "page",
           last_synced: new Date().toISOString(),
         },
       });
       freshKeys.add(key);
       freshKeys.add(`${key}.metadata.json`);
+
+      // Enqueue nested pages / database rows discovered while rendering.
+      for (const d of discovered) {
+        if (visited.has(norm(d.id))) continue;
+        try {
+          if (d.type === "page") {
+            queue.push(await fetchPage(accessToken, d.id));
+          } else if (d.type === "database") {
+            visited.add(norm(d.id));
+            for (const r of await queryDatabasePages(accessToken, d.id)) {
+              queue.push(r);
+            }
+          }
+        } catch (e) {
+          // Child not shared with the integration, or deleted — skip it
+          // instead of failing the whole sync.
+          console.warn(`notion: skip child ${d.type} ${d.id}: ${e.message}`);
+        }
+      }
     }
+
+    const pageCount = usedSlugs.size;
 
     // Prune stale keys from a previous sync (page renamed, or database rows removed)
     const existing = await listKeysUnder(prefix);
     const stale = existing.filter((k) => !freshKeys.has(k));
     await deleteKeys(stale);
 
-    await markSuccess(connectorId, pages.length, topTitle);
-    return { ok: true, kind, pages: pages.length, blocks: totalBlocks };
+    await markSuccess(connectorId, pageCount, topTitle);
+    return { ok: true, kind, pages: pageCount, blocks: totalBlocks, truncated };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.error(`notion sync ${connectorId} failed:`, err);
