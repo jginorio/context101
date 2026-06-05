@@ -3,6 +3,7 @@ import type { NextRequest } from "next/server";
 import { DeleteSecretCommand } from "@aws-sdk/client-secrets-manager";
 import {
   DeleteObjectsCommand,
+  GetObjectCommand,
   ListObjectsV2Command,
 } from "@aws-sdk/client-s3";
 
@@ -22,7 +23,11 @@ import { bucketForBrain, s3 } from "@/utils/s3";
  * Removes (in the active brain):
  *   - the connector row
  *   - the per-connection secret (force delete, no recovery window)
- *   - all S3 files under sources/<type>/<spreadsheet-slug>/
+ *   - this connector's S3 files. Notion packs every connector in a workspace
+ *     under one shared prefix (sources/notion/<workspace-slug>/), so we delete
+ *     only the objects this connector wrote (matched via the sidecar's
+ *     connector_id). Other types use a per-resource prefix that belongs to a
+ *     single connector, so a wholesale prefix delete is safe there.
  */
 export async function POST(request: NextRequest) {
   const auth = await readAuthContext(request);
@@ -45,15 +50,69 @@ export async function POST(request: NextRequest) {
     }
     const row = toClientConnector(rowRaw);
 
-    // 1. Delete all S3 files under this connector's prefix
-    if (row.resource_title) {
-      const slug = (row.resource_title ?? "")
+    // 1. Delete this connector's S3 files.
+    const slugify = (s: string) =>
+      (s ?? "")
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, "-")
         .replace(/^-+|-+$/g, "")
         .slice(0, 64);
-      const prefix = `sources/${row.type}/${slug || "item"}/`;
 
+    const deleteInBatches = async (keys: string[]) => {
+      for (let i = 0; i < keys.length; i += 1000) {
+        await s3.send(
+          new DeleteObjectsCommand({
+            Bucket: docsBucket,
+            Delete: {
+              Objects: keys.slice(i, i + 1000).map((Key) => ({ Key })),
+              Quiet: true,
+            },
+          })
+        );
+      }
+    };
+
+    if (row.type === "notion") {
+      // Shared workspace prefix: delete only the objects whose sidecar
+      // connector_id matches this connector, so we don't nuke other Notion
+      // connectors that live under the same workspace.
+      const prefix = row.notion_workspace_name
+        ? `sources/notion/${slugify(row.notion_workspace_name) || "notion"}/`
+        : "sources/notion/";
+      const toDelete: string[] = [];
+      let token: string | undefined;
+      do {
+        const list = await s3.send(
+          new ListObjectsV2Command({
+            Bucket: docsBucket,
+            Prefix: prefix,
+            ContinuationToken: token,
+          })
+        );
+        for (const o of list.Contents ?? []) {
+          const key = o.Key;
+          if (!key || !key.endsWith(".md.metadata.json")) continue;
+          try {
+            const obj = await s3.send(
+              new GetObjectCommand({ Bucket: docsBucket, Key: key })
+            );
+            const text = (await obj.Body?.transformToString()) ?? "{}";
+            const cid = JSON.parse(text)?.metadataAttributes?.connector_id;
+            if (cid === body.id) {
+              toDelete.push(key); // the sidecar
+              toDelete.push(key.replace(/\.metadata\.json$/, "")); // the .md
+            }
+          } catch (e) {
+            console.warn(`sidecar read failed for ${key}:`, e);
+          }
+        }
+        token = list.IsTruncated ? list.NextContinuationToken : undefined;
+      } while (token);
+      await deleteInBatches(toDelete);
+    } else if (row.resource_title) {
+      // Per-resource exclusive prefix — safe to delete wholesale.
+      const slug = slugify(row.resource_title);
+      const prefix = `sources/${row.type}/${slug || "item"}/`;
       let token: string | undefined;
       do {
         const list = await s3.send(
@@ -66,17 +125,7 @@ export async function POST(request: NextRequest) {
         const keys = (list.Contents ?? [])
           .map((o) => o.Key)
           .filter((k): k is string => !!k);
-        if (keys.length > 0) {
-          await s3.send(
-            new DeleteObjectsCommand({
-              Bucket: docsBucket,
-              Delete: {
-                Objects: keys.map((Key) => ({ Key })),
-                Quiet: true,
-              },
-            })
-          );
-        }
+        await deleteInBatches(keys);
         token = list.IsTruncated ? list.NextContinuationToken : undefined;
       } while (token);
     }
