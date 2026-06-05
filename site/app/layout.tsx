@@ -19,10 +19,43 @@ const monoFont = JetBrains_Mono({
   variable: "--font-mono-code",
 });
 
+const SITE_URL = "https://context101.dev";
+const TITLE = "Context101 — One brain. Every AI tool.";
+const DESCRIPTION =
+  "Context101 is an MCP knowledge base that gives Cursor, Claude, Devin, and your own agents one shared, approved source of truth. Use the hosted app, or self-host the open source.";
+
 export const metadata: Metadata = {
-  title: "Context101",
-  description:
-    "An open-source alpha MCP knowledge base for trusted internal teams.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: TITLE,
+    template: "%s · Context101",
+  },
+  description: DESCRIPTION,
+  applicationName: "Context101",
+  keywords: [
+    "Context101",
+    "MCP",
+    "knowledge base",
+    "AI agents",
+    "Cursor",
+    "Claude",
+    "Devin",
+    "shared context",
+    "open source",
+  ],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    url: SITE_URL,
+    siteName: "Context101",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: TITLE,
+    description: DESCRIPTION,
+  },
 };
 
 export const viewport: Viewport = {
