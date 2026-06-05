@@ -33,10 +33,18 @@ function extOf(key: string): Ext {
   return "other";
 }
 
-function Preview({ ext, content }: { ext: Ext; content: string }) {
+function Preview({
+  ext,
+  content,
+  onOpenKey,
+}: {
+  ext: Ext;
+  content: string;
+  onOpenKey?: (key: string) => void;
+}) {
   switch (ext) {
     case "md":
-      return <MarkdownPreview content={content} />;
+      return <MarkdownPreview content={content} onOpenKey={onOpenKey} />;
     case "csv":
       return <CsvPreview content={content} />;
     case "json":
@@ -53,9 +61,12 @@ function Preview({ ext, content }: { ext: Ext; content: string }) {
 export function KnowledgeViewer({
   fileKey,
   onDeleted,
+  onOpenKey,
 }: {
   fileKey: string | null;
   onDeleted: () => void;
+  // Open a linked document (e.g. a Notion child page) in a tab.
+  onOpenKey?: (key: string) => void;
 }) {
   const [content, setContent] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<string>("");
@@ -245,7 +256,7 @@ export function KnowledgeViewer({
             </div>
 
             <TabsContent value="preview" className="flex-1 min-h-0 overflow-auto p-6">
-              <Preview ext={ext} content={text} />
+              <Preview ext={ext} content={text} onOpenKey={onOpenKey} />
             </TabsContent>
 
             <TabsContent value="raw" className="flex-1 min-h-0 overflow-auto">

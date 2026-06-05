@@ -145,7 +145,7 @@ function pageTitle(page) {
   return "Untitled";
 }
 
-async function renderBlocks(token, blocks, depth = 0, discovered = null) {
+async function renderBlocks(token, blocks, depth = 0, discovered = null, linkBase = "") {
   const lines = [];
   const indent = "  ".repeat(depth);
   let numberedCounter = 0;
@@ -244,12 +244,23 @@ async function renderBlocks(token, blocks, depth = 0, discovered = null) {
         // Table rows are rendered here — don't recurse into children.
         continue;
       }
-      case "child_page":
-        lines.push(`${indent}- 📄 *${data.title || "Child page"}*`);
+      case "child_page": {
+        const childTitle = data.title || "Child page";
+        // Link to the child's own synced doc (its key is <linkBase><slug>.md,
+        // matching the handler's per-page key) so the UI can open it in a tab.
+        // Fall back to a plain marker if we don't have the base prefix.
+        if (linkBase) {
+          lines.push(
+            `${indent}- 📄 [${childTitle}](${linkBase}${slugify(childTitle)}.md)`
+          );
+        } else {
+          lines.push(`${indent}- 📄 *${childTitle}*`);
+        }
         // A child_page block's id IS the subpage's page id — queue it so the
         // handler crawls the nested page as its own document.
         if (discovered) discovered.push({ id: b.id, type: "page" });
         break;
+      }
       case "child_database":
         lines.push(`${indent}- 🗃️ *${data.title || "Child database"}*`);
         if (discovered) discovered.push({ id: b.id, type: "database" });
@@ -275,7 +286,13 @@ async function renderBlocks(token, blocks, depth = 0, discovered = null) {
       t !== "child_database"
     ) {
       const children = await fetchBlockChildren(token, b.id);
-      const childLines = await renderBlocks(token, children, depth + 1, discovered);
+      const childLines = await renderBlocks(
+        token,
+        children,
+        depth + 1,
+        discovered,
+        linkBase
+      );
       if (childLines) lines.push(childLines);
     }
   }
@@ -481,7 +498,13 @@ export const handler = async (event) => {
       const discovered = [];
       const topBlocks = await fetchBlockChildren(accessToken, page.id);
       totalBlocks += topBlocks.length;
-      const rendered = await renderBlocks(accessToken, topBlocks, 0, discovered);
+      const rendered = await renderBlocks(
+        accessToken,
+        topBlocks,
+        0,
+        discovered,
+        prefix
+      );
 
       const content = [
         `# ${title}`,

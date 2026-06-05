@@ -71,12 +71,14 @@ export function KnowledgeSidebar({
   selectedKey,
   refreshKey,
   onSelectFile,
+  onOpenInNewTab,
   onNewFile,
   onNewFolder,
 }: {
   selectedKey: string | null;
   refreshKey: number;
   onSelectFile: (key: string) => void;
+  onOpenInNewTab?: (key: string) => void;
   onNewFile: (parentPrefix: string) => void;
   onNewFolder: (parentPrefix: string) => void;
 }) {
@@ -98,6 +100,7 @@ export function KnowledgeSidebar({
       onSelectFile(key);
       closeMobileNav();
     },
+    onOpenInNewTab,
     mode: "editable",
   };
 
@@ -108,6 +111,7 @@ export function KnowledgeSidebar({
       onSelectFile(key);
       closeMobileNav();
     },
+    onOpenInNewTab,
     mode: "browse",
   };
 

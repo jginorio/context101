@@ -1,7 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { FileText, LoaderCircle, TriangleAlert } from "lucide-react";
+import {
+  ExternalLink,
+  FileText,
+  LoaderCircle,
+  TriangleAlert,
+} from "lucide-react";
 
 import {
   TreeView,
@@ -15,6 +20,12 @@ import {
   createTreeCollection,
   type TreeNodeType,
 } from "@/components/ui/tree-view";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 
 type Entry =
@@ -68,6 +79,8 @@ export type TreeContext = {
   selectedKey: string | null;
   refreshKey: number;
   onSelectFile: (key: string) => void;
+  // Open a file in a background tab (right-click → "Open in new tab").
+  onOpenInNewTab?: (key: string) => void;
   // Connector-synced files are browse-only; the tree still supports opening
   // them in the viewer.
   mode?: "editable" | "browse";
@@ -126,9 +139,11 @@ const LoadingIcon = () => <LoaderCircle className="animate-spin" />;
 function TreeNode({
   node,
   indexPath,
+  ctx,
 }: {
   node: KnowledgeTreeNode;
   indexPath: number[];
+  ctx: TreeContext;
 }) {
   if (node.kind === "folder") {
     const label = node.headerIcon ? (
@@ -152,6 +167,7 @@ function TreeNode({
                 indexPath={[...indexPath, index]}
                 key={child.id}
                 node={child}
+                ctx={ctx}
               />
             ))}
           </TreeViewBranchContent>
@@ -168,7 +184,7 @@ function TreeNode({
         ? TriangleAlert
         : FileText;
 
-  return (
+  const row = (
     <TreeViewNode indexPath={indexPath} node={node}>
       <TreeViewContent
         className={cn(
@@ -179,6 +195,26 @@ function TreeNode({
         <TreeViewItem icon={icon}>{node.name}</TreeViewItem>
       </TreeViewContent>
     </TreeViewNode>
+  );
+
+  // Files get a right-click menu (Open / Open in new tab). Status/loading
+  // rows don't.
+  if (node.kind !== "file") return row;
+
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger>{row}</ContextMenuTrigger>
+      <ContextMenuContent>
+        <ContextMenuItem onClick={() => ctx.onSelectFile(node.key)}>
+          <FileText /> Open
+        </ContextMenuItem>
+        {ctx.onOpenInNewTab ? (
+          <ContextMenuItem onClick={() => ctx.onOpenInNewTab?.(node.key)}>
+            <ExternalLink /> Open in new tab
+          </ContextMenuItem>
+        ) : null}
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }
 
@@ -375,7 +411,7 @@ export function FolderNode({
     >
       <TreeViewTree className="text-sm">
         {rootNode.children?.map((node, index) => (
-          <TreeNode indexPath={[index]} key={node.id} node={node} />
+          <TreeNode indexPath={[index]} key={node.id} node={node} ctx={ctx} />
         ))}
       </TreeViewTree>
     </TreeView>
