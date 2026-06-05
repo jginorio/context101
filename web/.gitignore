@@ -44,6 +44,3 @@ next-env.d.ts
 .amplify/
 amplify_outputs.json
 /public/install-mcps.sh
-
-# agent skills (vendored locally; skills-lock.json is the source of truth)
-/.agents/skills/
