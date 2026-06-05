@@ -65,6 +65,15 @@ LLM_KEY_SECRET_ARN = os.environ.get("LLM_KEY_SECRET_ARN")
 MIN_PAGES = int(os.environ.get("MIN_PAGES", "4"))
 MAX_PAGES = int(os.environ.get("MAX_PAGES", "8"))
 CORPUS_PREVIEW_CHARS = int(os.environ.get("CORPUS_PREVIEW_CHARS", "600"))
+# Cap the structure-pass corpus summary. A large corpus (thousands of docs)
+# can overflow the model's context, and because keys are sorted the *tail*
+# (e.g. sources/notion/…, which sorts after sources/github/…) is what gets
+# truncated — so freshly connected sources silently never reach the planner.
+# Docs are selected round-robin across source areas to stay within this budget
+# while keeping every area represented.
+CORPUS_SUMMARY_MAX_CHARS = int(
+    os.environ.get("CORPUS_SUMMARY_MAX_CHARS", "240000")
+)
 MAX_TOKENS = int(os.environ.get("MAX_TOKENS", "8192"))
 # WIKI_FORCE=1 bypasses the no-change corpus-hash guard. Set by the
 # /api/wiki/refresh POST path (manual button) but NOT by the EventBridge
@@ -213,12 +222,63 @@ def load_source_docs(keys: list[str]) -> list[SourceDoc]:
     return docs
 
 
-def build_corpus_summary(docs: list[SourceDoc]) -> str:
-    parts = []
+def _source_area(key: str) -> str:
+    """Group a corpus key into a "source area" for representative sampling.
+
+    sources/<provider>/<container>/...  -> "sources/<provider>/<container>"
+        (each GitHub repo and each Notion/Google workspace is its own area)
+    <top>/...                           -> "<top>/"
+    bare-file.md                        -> "(root)"
+    """
+    parts = key.split("/")
+    if parts[0] == "sources" and len(parts) >= 3:
+        return "/".join(parts[:3])
+    if len(parts) >= 2:
+        return parts[0] + "/"
+    return "(root)"
+
+
+def build_corpus_summary(docs: list[SourceDoc]) -> tuple[str, int]:
+    """Render the structure-pass corpus summary, budgeted and representative.
+
+    Rather than concatenating every preview in key order (which lets a huge
+    area like a code repo crowd out — or truncate — small areas like a freshly
+    connected Notion workspace), group docs by source area and fill the summary
+    round-robin: every area contributes its first doc before any area
+    contributes its second, until CORPUS_SUMMARY_MAX_CHARS is reached.
+
+    Returns (summary_xml, included_doc_count).
+    """
+    groups: dict[str, list[SourceDoc]] = {}
     for d in docs:
-        preview = d.body.strip()[:CORPUS_PREVIEW_CHARS]
-        parts.append(f"<doc path=\"{d.key}\">\n{preview}\n</doc>")
-    return "\n\n".join(parts)
+        groups.setdefault(_source_area(d.key), []).append(d)
+    for g in groups.values():
+        g.sort(key=lambda d: d.key)
+    ordered_groups = [groups[k] for k in sorted(groups)]
+
+    parts: list[str] = []
+    used = 0
+    included = 0
+    idx = 0
+    while True:
+        progressed = False
+        for g in ordered_groups:
+            if idx >= len(g):
+                continue
+            progressed = True
+            d = g[idx]
+            preview = d.body.strip()[:CORPUS_PREVIEW_CHARS]
+            block = f"<doc path=\"{d.key}\">\n{preview}\n</doc>"
+            # Always include at least one doc; otherwise honor the budget.
+            if included > 0 and used + len(block) > CORPUS_SUMMARY_MAX_CHARS:
+                return "\n\n".join(parts), included
+            parts.append(block)
+            used += len(block) + 2
+            included += 1
+        if not progressed:
+            break
+        idx += 1
+    return "\n\n".join(parts), included
 
 
 # ── Bedrock call ──────────────────────────────────────────────────────
@@ -565,7 +625,13 @@ def main() -> int:
 
     docs = load_source_docs([k for k, _ in entries])
     docs_by_key = {d.key: d for d in docs}
-    corpus_summary = build_corpus_summary(docs)
+    corpus_summary, summary_docs = build_corpus_summary(docs)
+    if summary_docs < len(docs):
+        print(
+            f"  structure corpus: {summary_docs}/{len(docs)} docs "
+            f"(round-robin across source areas, capped at "
+            f"{CORPUS_SUMMARY_MAX_CHARS} chars)"
+        )
 
     print(f"Requesting wiki structure from Opus (mode={WIKI_MODE})…")
     structure_template = (
