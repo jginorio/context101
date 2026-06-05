@@ -56,14 +56,14 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
         const resetUrl = appLink(
           `/reset-password?token=${encodeURIComponent(token)}`
         );
-        void sendPasswordResetEmail({ email: user.email, resetUrl });
+        await sendPasswordResetEmail({ email: user.email, resetUrl });
       },
     },
     databaseHooks: {
       user: {
         create: {
           after: async (user: { email: string; name?: string | null }) => {
-            void sendWelcomeEmail({ email: user.email, name: user.name });
+            await sendWelcomeEmail({ email: user.email, name: user.name });
           },
         },
       },
@@ -103,7 +103,7 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
           organization: { name?: string };
         }) => {
           const inviteLink = appLink(`/accept-invitation/${data.id}`);
-          void sendOrganizationInvitationEmail({
+          await sendOrganizationInvitationEmail({
             email: data.email,
             inviteLink,
             invitedByEmail: data.inviter?.user?.email,
