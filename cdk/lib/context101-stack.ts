@@ -858,6 +858,7 @@ export class Context101Stack extends cdk.Stack {
           sid: "ReadBrainTokenSecrets",
           actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
           resources: [
+            `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-bearer-token*`,
             `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-brain-*`,
           ],
         })
@@ -1284,6 +1285,7 @@ export class Context101Stack extends cdk.Stack {
           sid: "ReadBrainTokenSecrets",
           actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
           resources: [
+            `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-bearer-token*`,
             `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-brain-*`,
           ],
         })
