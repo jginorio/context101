@@ -103,6 +103,9 @@ export function OrganizationSettings() {
   const [newPassword, setNewPassword] = React.useState("");
   const [resetting, setResetting] = React.useState(false);
   const [copiedId, setCopiedId] = React.useState<string | null>(null);
+  const [resendingInviteId, setResendingInviteId] = React.useState<
+    string | null
+  >(null);
 
   const currentRole = members?.find((m) => m.userId === currentUserId)?.role;
   const canManage = isPrivileged(currentRole);
@@ -260,6 +263,27 @@ export function OrganizationSettings() {
     }
   }
 
+  async function handleResendInvite(invitation: Invitation) {
+    setResendingInviteId(invitation.id);
+    try {
+      const role = ASSIGNABLE_ROLES.includes(invitation.role as OrgRole)
+        ? (invitation.role as OrgRole)
+        : "member";
+      const { error } = await authClient.organization.inviteMember({
+        email: invitation.email,
+        role,
+        resend: true,
+      });
+      if (error) throw new Error(error.message ?? "Resend failed");
+      toast.success(`Resent invite to ${invitation.email}`);
+      await loadInvitations();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : String(err));
+    } finally {
+      setResendingInviteId(null);
+    }
+  }
+
   async function copyInviteLink(invitation: Invitation) {
     try {
       await navigator.clipboard.writeText(acceptLink(invitation.id));
@@ -342,6 +366,19 @@ export function OrganizationSettings() {
                   {inv.role ? <RoleBadge role={inv.role} /> : null}
                 </div>
                 <div className="flex items-center gap-2">
+                  <Button
+                    disabled={resendingInviteId === inv.id}
+                    size="sm"
+                    variant="outline"
+                    onClick={() => handleResendInvite(inv)}
+                  >
+                    {resendingInviteId === inv.id ? (
+                      <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                    ) : (
+                      <Mail className="mr-1 h-3.5 w-3.5" />
+                    )}
+                    Resend
+                  </Button>
                   <Button
                     size="sm"
                     variant="outline"
