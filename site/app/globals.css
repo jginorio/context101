@@ -11,6 +11,9 @@
   --color-primary-foreground: #fafafa;
   --color-border: var(--line);
   --color-ring: var(--accent-2);
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-mono-code), ui-monospace, SFMono-Regular, Menlo,
+    monospace;
 }
 
 :root {
@@ -46,6 +49,13 @@ body {
   background: var(--bg);
   color: var(--fg);
   font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), var(--font-body), ui-sans-serif, system-ui,
+    sans-serif;
 }
 
 a {

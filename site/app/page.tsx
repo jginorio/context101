@@ -1,6 +1,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import {
+  ArrowRight,
   Brain,
   Building2,
   CheckCircle2,
@@ -18,20 +19,17 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
+import { BrainGlobe } from "@/components/brain-globe";
 import { ConnectionDiagram } from "@/components/connection-diagram";
 import { Counter } from "@/components/counter";
 import { FadeIn } from "@/components/fade-in";
 import { ProviderMarquee } from "@/components/provider-logos";
-import { GithubLogo, STACK_GROUPS } from "@/components/stack-logos";
-import { TypingRotate } from "@/components/typing-rotate";
+import { GithubLogo, SOURCES } from "@/components/stack-logos";
 import { Button } from "@/components/ui/button";
-import {
-  AnimatedSpan,
-  Terminal,
-  TypingAnimation,
-} from "@/components/ui/terminal";
+import { Marquee } from "@/components/ui/marquee";
 
 const REPO_URL = "https://github.com/jginorio/context101";
+const WAITLIST_URL = "https://tally.so/r/eqzrzO";
 
 const features = [
   {
@@ -106,103 +104,68 @@ export default function HomePage() {
           href="/"
           className="inline-flex min-w-0 items-center gap-2 font-bold tracking-[-0.02em]"
         >
-          <span
-            className="h-2.5 w-2.5 shrink-0 rounded-full bg-primary shadow-[0_0_22px_rgba(184,85,201,0.28)]"
-            aria-hidden
-          />
           <span className="truncate">Context101</span>
         </Link>
-        <Button asChild variant="outline" size="sm">
-          <a href={REPO_URL}>
-            <GithubLogo className="size-4" />
-            View on GitHub
+        <Button asChild size="sm">
+          <a href={WAITLIST_URL} target="_blank" rel="noreferrer">
+            Get started
           </a>
         </Button>
       </nav>
 
-      <section className="grid gap-9 py-16 sm:py-24 lg:grid-cols-[minmax(0,1.15fr)_minmax(300px,0.85fr)]">
-        <FadeIn>
-          <h1 className="text-[clamp(48px,8vw,86px)] leading-[0.95] font-bold tracking-[-0.06em]">
+      <section className="relative overflow-x-clip py-16 text-center sm:py-24">
+        <BrainGlobe className="pointer-events-none absolute left-1/2 top-[54%] -z-10 h-[min(135vw,860px)] w-[min(135vw,860px)] -translate-x-1/2 -translate-y-1/2 opacity-70 mask-[radial-gradient(circle_at_center,#000_34%,transparent_70%)]" />
+
+        <FadeIn className="mx-auto flex max-w-3xl flex-col items-center">
+          <h1 className="text-[clamp(44px,8vw,82px)] leading-[0.95] font-bold tracking-[-0.06em]">
             One brain.
             <br />
             <span className="text-primary">Every AI tool.</span>
           </h1>
-          <p className="mt-6 max-w-2xl text-lg leading-8 text-muted-foreground">
-            Context101 is an MCP knowledge base for teams that want Cursor,
-            Claude, Devin, and internal agents to retrieve from the same
-            approved context. It is open-source alpha software: self-hostable
-            today, with a hosted app path emerging at app.context101.dev.
+
+          <p className="mt-6 max-w-xl text-lg leading-8 text-balance text-muted-foreground">
+            The hosted knowledge base that feeds Cursor, Claude, Devin, and your
+            own agents the same approved context. Want to run it yourself? It&apos;s
+            open source.
           </p>
-          <p className="mt-5 text-sm leading-7 text-muted-foreground">
-            So now{" "}
-            <TypingRotate
-              className="font-semibold text-foreground"
-              phrases={[
-                "Cursor knows this.",
-                "Claude Code knows this.",
-                "Claude Desktop knows this.",
-                "Devin knows this.",
-                "your custom agent knows this.",
-              ]}
-            />
-          </p>
-          <div className="mt-6 space-y-2.5">
-            {STACK_GROUPS.map(({ label, items }) => (
-              <div
-                key={label}
-                className="flex flex-wrap items-center gap-x-2.5 gap-y-2"
-              >
-                <span className="text-xs font-medium text-muted-foreground/70">
-                  {label}
-                </span>
-                {items.map(({ name, Logo, href }) => {
-                  const inner = (
-                    <>
-                      <Logo className="h-3.5 w-3.5 shrink-0" />
-                      {name}
-                    </>
-                  );
-                  const cls =
-                    "inline-flex items-center gap-1.5 rounded-full border border-[color-mix(in_srgb,var(--accent)_12%,var(--line))] bg-[color-mix(in_srgb,var(--accent-soft)_42%,var(--card))] px-3 py-1 text-xs font-medium text-muted-foreground transition-colors hover:border-[color-mix(in_srgb,var(--accent)_22%,var(--line))] hover:text-foreground";
-                  return href ? (
-                    <a
-                      key={name}
-                      className={cls}
-                      href={href}
-                      rel="noreferrer"
-                      target="_blank"
-                    >
-                      {inner}
-                    </a>
-                  ) : (
-                    <span key={name} className={cls}>
-                      {inner}
-                    </span>
-                  );
-                })}
-              </div>
-            ))}
+
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <Button asChild size="lg">
+              <a href={WAITLIST_URL} target="_blank" rel="noreferrer">
+                Join the waitlist
+                <ArrowRight className="size-4" />
+              </a>
+            </Button>
+            <Button asChild variant="outline" size="lg">
+              <a href={REPO_URL}>
+                <GithubLogo className="size-4" />
+                View source
+              </a>
+            </Button>
           </div>
         </FadeIn>
 
-        <FadeIn className="self-end" delayMs={120}>
-          <Terminal>
-            <TypingAnimation>{`$ git clone ${REPO_URL}.git`}</TypingAnimation>
-            <AnimatedSpan className="text-emerald-400">
-              ✔ Cloned context101
-            </AnimatedSpan>
-            <TypingAnimation>{`$ cd context101/cdk && npm install`}</TypingAnimation>
-            <AnimatedSpan className="text-emerald-400">
-              ✔ Dependencies installed
-            </AnimatedSpan>
-            <TypingAnimation>{`$ ./deploy.sh --seed`}</TypingAnimation>
-            <AnimatedSpan className="text-emerald-400">
-              ✔ Brain provisioned · MCP endpoint live
-            </AnimatedSpan>
-            <AnimatedSpan className="text-muted-foreground">
-              ℹ Open the app and sign in to start writing knowledge.
-            </AnimatedSpan>
-          </Terminal>
+        <FadeIn
+          className="mt-14 flex flex-col items-center gap-5"
+          delayMs={140}
+        >
+          <span className="text-xs font-medium uppercase tracking-[0.18em] text-muted-foreground/70">
+            Connects the tools your team already uses
+          </span>
+          <Marquee className="w-full max-w-2xl py-1 [--duration:28s] [--gap:3rem]">
+            {SOURCES.map(({ name, Logo }) => (
+              <div
+                key={name}
+                className="flex items-center gap-2 text-muted-foreground transition-colors hover:text-foreground"
+                title={name}
+              >
+                <Logo className="h-4 w-4 shrink-0" />
+                <span className="whitespace-nowrap text-sm font-medium tracking-[-0.01em]">
+                  {name}
+                </span>
+              </div>
+            ))}
+          </Marquee>
         </FadeIn>
       </section>
 
