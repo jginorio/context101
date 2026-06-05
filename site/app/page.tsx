@@ -6,7 +6,6 @@ import {
   Building2,
   CheckCircle2,
   Cloud,
-  Database,
   Inbox,
   KeyRound,
   LockKeyhole,
@@ -17,7 +16,6 @@ import {
   SlidersHorizontal,
   Sparkles,
   UserPlus,
-  Users,
 } from "lucide-react";
 import { BrainGlobe } from "@/components/brain-globe";
 import { ConnectionDiagram } from "@/components/connection-diagram";
@@ -33,24 +31,14 @@ const WAITLIST_URL = "https://tally.so/r/eqzrzO";
 
 const features = [
   {
-    title: "One shared context layer",
-    body: "Teams write and approve knowledge once, then expose it through MCP to Cursor, Claude Desktop, Claude Code, Devin, and custom agents.",
+    title: "Connect your sources",
+    body: "Bring your team's knowledge in from the tools you already use — Google Docs, Notion, GitHub, or plain markdown. Add a source once and Context101 keeps it all together in one brain.",
+    Icon: Plug,
+  },
+  {
+    title: "Read from one place",
+    body: "Every AI tool — Cursor, Claude, Devin, or your own agents — reads from that same brain through MCP. One source of truth, instead of scattered docs and copy-pasted context.",
     Icon: Brain,
-  },
-  {
-    title: "Organizations & roles",
-    body: "Real multi-tenant orgs with owners, admins, and members. Invite teammates, manage roles, remove access, and reset member passwords from the app.",
-    Icon: Users,
-  },
-  {
-    title: "Multiple isolated brains",
-    body: "Separate brains for teams, projects, or customers — each with its own docs, sources, suggestions queue, model config, and MCP bearer token.",
-    Icon: Database,
-  },
-  {
-    title: "Bring your own model",
-    body: "Generate wikis with Amazon Bedrock, or your own key for Claude, GPT, Gemini, or Grok. Keys are stored encrypted in AWS Secrets Manager, never the database.",
-    Icon: KeyRound,
   },
 ];
 
@@ -172,17 +160,15 @@ export default function HomePage() {
       <section className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            The website and app are separate.
+            Connect your sources. Read from one place.
           </h2>
           <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-            This site explains the project. The product app lives in{" "}
-            <code> web/</code> for self-hosted deployments, and the hosted app
-            is intended to live separately at <code>app.context101.dev</code>.
-            That keeps the marketing surface separate from the private knowledge
-            app.
+            Plug in the tools your team already uses, and every AI tool reads
+            from one shared source — no more scattered docs or copy-pasting
+            context into each tool.
           </p>
         </FadeIn>
-        <div className="mt-7 grid gap-3.5 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-7 grid gap-3.5 md:grid-cols-2">
           {features.map(({ title, body, Icon }) => (
             <FadeIn
               className="surface-card p-5"
@@ -614,10 +600,6 @@ export default function HomePage() {
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t section-divider py-6 text-[13px] text-muted-foreground">
         <span>Context101 alpha. Open-source first.</span>
-        <span>
-          Marketing site in <code>site/</code>; deployable app in{" "}
-          <code>web/</code>.
-        </span>
       </footer>
     </main>
   );
