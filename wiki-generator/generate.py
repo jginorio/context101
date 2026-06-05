@@ -575,28 +575,23 @@ def delete_keys(keys: list[str]) -> None:
         s3.delete_objects(Bucket=DOCS_BUCKET, Delete={"Objects": batch, "Quiet": True})
 
 
-# Filterable metadata on S3 Vectors is capped at 2 KB/vector (summed across
-# all attributes). `source`, `generated_at`, `page_slug` are tiny; only
-# `source_files` can grow. Truncate it to leave headroom for the others.
-_SOURCE_FILES_MAX_CHARS = 1500
 
 
-def build_wiki_sidecar(
-    slug: str, relevant_files: list[str], started_at: str
-) -> dict:
-    source_files = ",".join(relevant_files)
-    if len(source_files) > _SOURCE_FILES_MAX_CHARS:
-        source_files = source_files[: _SOURCE_FILES_MAX_CHARS - 3] + "..."
-    # `source` drives search_knowledge's filter — only "wiki" is canonical
-    # for top-level retrieval. "code-wiki" pages stay in the index but are
-    # not returned by search_knowledge unless the agent reads them via
-    # citations (the team wiki) or read_knowledge directly.
+def build_wiki_sidecar(slug: str, started_at: str) -> dict:
+    # Bedrock S3 Vectors *ignores a metadata sidecar entirely* if the file
+    # exceeds 1024 bytes — which silently strips `source`, making the page
+    # invisible to search_knowledge's `source=wiki` filter. So keep this tiny:
+    # only the attributes we actually filter on. Page provenance lives in the
+    # body's inline `Sources: [file]()` citations, not here.
+    #
+    # `source` drives search_knowledge's filter — only "wiki" is canonical for
+    # top-level retrieval. "code-wiki" pages stay in the index but aren't
+    # returned by search_knowledge unless read via citations or read_knowledge.
     source_tag = "code-wiki" if WIKI_MODE == "code" else "wiki"
     attrs: dict = {
         "source": source_tag,
         "generated_at": started_at,
         "page_slug": slug,
-        "source_files": source_files,
     }
     if WIKI_MODE == "code" and REPO_FULL_NAME:
         attrs["repo"] = REPO_FULL_NAME
@@ -620,10 +615,10 @@ def write_wiki_outputs(
     for spec in specs:
         body = page_bodies[spec.id]
         md_key = f"{WIKI_PREFIX}{spec.slug}.md"
-        sidecar = build_wiki_sidecar(spec.slug, spec.relevant_files, started_at)
+        sidecar = build_wiki_sidecar(spec.slug, started_at)
         put_object(
             f"{md_key}.metadata.json",
-            json.dumps(sidecar, indent=2),
+            json.dumps(sidecar),
             "application/json",
         )
         put_object(md_key, body, "text/markdown; charset=utf-8")
