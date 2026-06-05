@@ -572,6 +572,10 @@ export class Context101Stack extends cdk.Stack {
           // this name resolves to a non-existent fn and the sync just
           // logs a warning (the github sync itself still succeeds).
           START_WIKI_GEN_FN_NAME: `${namePrefix}-start-wiki-gen`,
+          // Auto-regenerate a repo's isolated code wiki when its tree changes,
+          // throttled per repo so a busy repo regenerates at most ~twice a day.
+          AUTO_TRIGGER_CODE_WIKI: "true",
+          CODE_WIKI_MIN_INTERVAL_HOURS: "12",
         },
       }
     );

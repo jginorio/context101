@@ -526,51 +526,66 @@ export const handler = async (event) => {
 
     await markSuccess(connectorId, written, repoFullName);
 
-    // Persist the tree SHA so the next sync can compare. Done after
-    // markSuccess so the row only carries an SHA we actually finished
-    // processing — a crash mid-write doesn't poison the next run.
-    if (treeSha) {
-      await mergeMetadata(connectorId, { last_synced_tree_sha: treeSha });
-    }
-
-    // Layer 2: optionally kick off the per-repo code-wiki Fargate task.
-    //
-    // OFF by default — wiki regens cost ~$0.30-0.80 in Opus per run
-    // and we'd rather pay only when a human asks. Set the Lambda env
-    // var AUTO_TRIGGER_CODE_WIKI=true to opt back into the original
-    // behavior (auto-regen after every successful github sync, gated
-    // by tree SHA change).
-    //
-    // Manual paths still work: invoking start-wiki-gen directly
-    // (`{ mode: "code", repo: "owner/repo" }`) or hitting the wiki UI
-    // refresh button regenerates regardless of this flag.
+    // Layer 2: per-repo code-wiki regen, gated by (a) the repo's tree SHA
+    // changing since last sync and (b) a per-repo throttle so a burst of
+    // commits can't trigger many expensive Opus regens in one day.
+    // AUTO_TRIGGER_CODE_WIKI master-switches the behavior; manual regens
+    // (wiki UI refresh / direct start-wiki-gen invoke) always work regardless.
     const autoTrigger =
       (process.env.AUTO_TRIGGER_CODE_WIKI ?? "").toLowerCase() === "true";
     const startWikiGenFn = process.env.START_WIKI_GEN_FN_NAME;
+    const minIntervalH = Number(
+      process.env.CODE_WIKI_MIN_INTERVAL_HOURS ?? "12"
+    );
+    const lastCodeWikiAt = metadata.last_code_wiki_at
+      ? Date.parse(metadata.last_code_wiki_at)
+      : 0;
+    const hoursSinceCodeWiki = lastCodeWikiAt
+      ? (Date.now() - lastCodeWikiAt) / 3_600_000
+      : Infinity;
+    const throttled = hoursSinceCodeWiki < minIntervalH;
+
     let codeWikiFired = false;
+    // Persist the new tree SHA only when we won't need to retry the regen.
+    // If a real change is throttled, leave the old SHA so the next sync still
+    // sees treeChanged and can regen once the throttle window clears.
+    let persistTreeSha = true;
+
     if (autoTrigger && startWikiGenFn && written > 0 && treeChanged) {
-      await lambdaClient
-        .send(
-          new InvokeCommand({
-            FunctionName: startWikiGenFn,
-            InvocationType: "Event",
-            Payload: new TextEncoder().encode(
-              JSON.stringify({
-                mode: "code",
-                repo: repoFullName,
-                // Carry the brain id so the wiki generator writes back to
-                // the same brain's docs bucket. `event.brainId` is set by
-                // the dispatcher; the row also stores brain_id so we fall
-                // back to it if invoked directly.
-                brain_id: event.brainId ?? row.brain_id ?? "default",
-              })
-            ),
-          })
-        )
-        .then(() => {
+      if (throttled) {
+        persistTreeSha = false;
+        console.log(
+          `code-wiki throttled for ${repoFullName}: last regen ${hoursSinceCodeWiki.toFixed(
+            1
+          )}h ago < ${minIntervalH}h; will retry next sync`
+        );
+      } else {
+        try {
+          await lambdaClient.send(
+            new InvokeCommand({
+              FunctionName: startWikiGenFn,
+              InvocationType: "Event",
+              Payload: new TextEncoder().encode(
+                JSON.stringify({
+                  mode: "code",
+                  repo: repoFullName,
+                  // Carry the brain id so the wiki generator writes back to
+                  // the same brain's docs bucket. `event.brainId` is set by
+                  // the dispatcher; the row also stores brain_id so we fall
+                  // back to it if invoked directly.
+                  brain_id: event.brainId ?? row.brain_id ?? "default",
+                })
+              ),
+            })
+          );
           codeWikiFired = true;
-        })
-        .catch((e) => console.error("code-wiki dispatch failed:", e));
+          await mergeMetadata(connectorId, {
+            last_code_wiki_at: new Date().toISOString(),
+          });
+        } catch (e) {
+          console.error("code-wiki dispatch failed:", e);
+        }
+      }
     } else if (autoTrigger && !treeChanged) {
       console.log(
         `tree SHA unchanged (${treeSha}) — skipping code-wiki regen for ${repoFullName}`
@@ -579,6 +594,12 @@ export const handler = async (event) => {
       console.log(
         "AUTO_TRIGGER_CODE_WIKI not set — skipping code-wiki dispatch (manual only)"
       );
+    }
+
+    // Persist the tree SHA (after markSuccess so a crash mid-write doesn't
+    // poison the next run; skipped when a throttled change must be retried).
+    if (treeSha && persistTreeSha) {
+      await mergeMetadata(connectorId, { last_synced_tree_sha: treeSha });
     }
 
     return {

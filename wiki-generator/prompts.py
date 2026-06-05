@@ -22,6 +22,12 @@ The knowledge base is a collection of markdown documents maintained by a small t
 {corpus_summary}
 </corpus>
 
+Separately, the team maintains isolated per-repo "code wikis" (generated from the source code repositories). These are NOT part of the corpus above — they are listed here only so that, when a corpus topic directly relates to a repository, a page can link to the relevant code wiki. Do NOT create pages that merely re-document code; code lives in its own wikis.
+
+<available_code_wikis>
+{code_wikis}
+</available_code_wikis>
+
 I want to create a wiki that organizes and synthesizes this knowledge into a coherent, cross-referenced structure. Determine the most logical structure based on the content of the documents.
 
 When designing the wiki structure, include pages that would benefit from visual diagrams, such as:
@@ -61,10 +67,11 @@ IMPORTANT FORMATTING INSTRUCTIONS:
 IMPORTANT:
 1. Create {min_pages}-{max_pages} pages for a concise wiki of this knowledge base.
 2. Each page should focus on a specific topic, domain, or system.
-3. Every <file_path> MUST be an actual S3 key from the <corpus> above — do not invent file paths.
-4. A page should have at least 1 relevant file; 2-4 is ideal when the corpus supports it.
-5. <related_pages> should cross-reference other page IDs from this same structure.
-6. Return ONLY valid XML with the structure specified above, with no markdown code block delimiters.
+3. Do NOT create pages whose subject is primarily a code repository — those are covered by the code wikis. Only reference a code wiki from a page when a corpus topic directly relates to it, and never force such references.
+4. Every <file_path> MUST be an actual S3 key from the <corpus> above — do not invent file paths.
+5. A page should have at least 1 relevant file; 2-4 is ideal when the corpus supports it.
+6. <related_pages> should cross-reference other page IDs from this same structure.
+7. Return ONLY valid XML with the structure specified above, with no markdown code block delimiters.
 """
 
 
@@ -189,6 +196,7 @@ Your task is to generate a comprehensive and accurate wiki page in Markdown form
 You will be given:
 1. The [WIKI_PAGE_TOPIC] for the page.
 2. [RELEVANT_SOURCE_CONTENT] — the full contents of markdown files from the knowledge base that you MUST use as the sole basis for the page.
+3. [AVAILABLE_CODE_WIKIS] — a catalog of per-repo code wiki pages you MAY link to, but only when directly relevant (see the rule on this below).
 
 The first thing on the page MUST be an H1 heading: `# {page_title}`. No preamble, no acknowledgements — start directly with the heading.
 
@@ -208,9 +216,11 @@ Based ONLY on the content of [RELEVANT_SOURCE_CONTENT]:
 
 7.  **Technical Accuracy:** All information must be derived SOLELY from [RELEVANT_SOURCE_CONTENT]. Do NOT invent facts, names, IDs, URLs, numbers, schema details, or technical terms. If the sources disagree, note the disagreement — don't silently pick one. If information isn't present, don't include it.
 
-8.  **Clarity and Voice:** Use clear, professional, concise technical language. Preserve the authors' voice when synthesizing — don't formalize or casualize.
+8.  **Code wiki references (OPTIONAL — do not force):** A point on this page may relate to one of the repositories in [AVAILABLE_CODE_WIKIS]. ONLY in that case, you MAY link inline to the specific code wiki page using its path, e.g. `[Link Text](wiki/code/<repo>/<page>.md)`. If no code wiki is directly relevant to this page, add NO code wiki links at all. Never add a "Related repositories" section, never link a code wiki just because it exists, and never let these links substitute for grounding the page in [RELEVANT_SOURCE_CONTENT]. Code wikis are NOT sources — do not list them under `Sources:`.
 
-9.  **Conclusion (optional):** End with a brief summary paragraph if appropriate for "{page_title}".
+9.  **Clarity and Voice:** Use clear, professional, concise technical language. Preserve the authors' voice when synthesizing — don't formalize or casualize.
+
+10. **Conclusion (optional):** End with a brief summary paragraph if appropriate for "{page_title}".
 
 Remember:
 - Ground every claim in the provided source content.
@@ -220,6 +230,9 @@ Remember:
 [WIKI_PAGE_TOPIC]
 Title: {page_title}
 Description: {page_description}
+
+[AVAILABLE_CODE_WIKIS]
+{code_wikis}
 
 [RELEVANT_SOURCE_CONTENT]
 {source_content}

@@ -137,11 +137,13 @@ def _is_excluded(key: str) -> bool:
             return True
         return False
 
-    # Main mode: skip top-level wiki/<slug>.md (avoid feeding our own
-    # output back in), but keep wiki/code/<repo>/<slug>.md so the team
-    # wiki can cite pre-synthesized code-wiki pages.
-    if key.startswith("wiki/code/"):
-        return False
+    # Main mode: the team wiki is built from non-code sources only. Raw
+    # GitHub repo files are represented by their isolated per-repo code wikis
+    # (which the team wiki references via a catalog, not by ingesting their
+    # content). And we never feed our own wiki output back in — neither the
+    # top-level team pages nor the wiki/code/ pages.
+    if key.startswith("sources/github/"):
+        return True
     if key.startswith("wiki/"):
         return True
     return False
@@ -236,6 +238,58 @@ def _source_area(key: str) -> str:
     if len(parts) >= 2:
         return parts[0] + "/"
     return "(root)"
+
+
+def load_code_wiki_catalog() -> tuple[str, list[tuple[str, str]]]:
+    """Build a reference catalog of the per-repo code wikis for the team wiki.
+
+    The team wiki doesn't ingest code-wiki content — instead it's handed a
+    lightweight catalog (each repo's pages: title, short description, path)
+    read from the code wikis' existing `_index.json` files, so generated team
+    pages can *optionally* link into a repo's deep wiki when directly relevant.
+
+    Also returns each code wiki's `_meta.json` (key, etag) so a repo change
+    (which rewrites that repo's wiki + _meta) flows into the team wiki's
+    no-change hash and triggers a refresh of references. Empty catalog when no
+    code wikis exist.
+    """
+    index_keys: list[str] = []
+    meta_entries: list[tuple[str, str]] = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=DOCS_BUCKET, Prefix="wiki/code/"):
+        for obj in page.get("Contents", []):
+            key = obj["Key"]
+            if key.endswith("/_index.json"):
+                index_keys.append(key)
+            elif key.endswith("/_meta.json"):
+                meta_entries.append((key, (obj.get("ETag") or "").strip('"')))
+    meta_entries.sort()
+
+    blocks: list[str] = []
+    for ik in sorted(index_keys):
+        try:
+            obj = s3.get_object(Bucket=DOCS_BUCKET, Key=ik)
+            idx = json.loads(obj["Body"].read().decode("utf-8"))
+        except Exception as e:
+            print(f"  [warn] couldn't read code wiki index {ik}: {e}", file=sys.stderr)
+            continue
+        repo_prefix = ik[: -len("_index.json")]  # "wiki/code/<repo>/"
+        lines = [f"Repo wiki: {idx.get('title') or repo_prefix}"]
+        desc = (idx.get("description") or "").strip()
+        if desc:
+            lines.append(f"  {desc}")
+        for p in idx.get("pages", []):
+            slug = p.get("slug")
+            if not slug:
+                continue
+            path = f"{repo_prefix}{slug}.md"
+            pdesc = (p.get("description") or "").strip()
+            lines.append(
+                f"  - {p.get('title', 'Untitled')} → {path}"
+                + (f" — {pdesc}" if pdesc else "")
+            )
+        blocks.append("\n".join(lines))
+    return "\n\n".join(blocks), meta_entries
 
 
 def build_corpus_summary(docs: list[SourceDoc]) -> tuple[str, int]:
@@ -469,7 +523,11 @@ def parse_structure(xml_text: str, valid_keys: set[str]) -> tuple[str, str, list
 # ── Per-page generation ──────────────────────────────────────────────
 
 
-def generate_page(spec: PageSpec, docs_by_key: dict[str, SourceDoc]) -> str:
+def generate_page(
+    spec: PageSpec,
+    docs_by_key: dict[str, SourceDoc],
+    code_wiki_catalog: str = "",
+) -> str:
     if not spec.relevant_files:
         raise ValueError(f"Page {spec.id} ({spec.title}) has no relevant_files")
 
@@ -484,6 +542,7 @@ def generate_page(spec: PageSpec, docs_by_key: dict[str, SourceDoc]) -> str:
         page_title=spec.title,
         page_description=spec.description,
         source_content=source_content,
+        code_wikis=code_wiki_catalog or "(none)",
         repo_full_name=REPO_FULL_NAME or "this repository",
     )
     return invoke_llm(prompt)
@@ -651,7 +710,18 @@ def main() -> int:
     # The EventBridge tick sets no env, so it never forces; the manual
     # "Refresh now" button forwards force=true via start-wiki-gen so
     # users always get a real regen when they ask for one.
-    corpus_sha = compute_corpus_sha(entries)
+    # Per-repo code wikis are referenced, not ingested. Load their catalog
+    # (for the prompts) and fold each code wiki's _meta.json (key, etag) into
+    # the hash, so a repo change flows into the team wiki's no-change guard and
+    # triggers a refresh of references.
+    code_wiki_catalog = ""
+    code_meta_entries: list[tuple[str, str]] = []
+    if WIKI_MODE != "code":
+        code_wiki_catalog, code_meta_entries = load_code_wiki_catalog()
+        if code_meta_entries:
+            print(f"  {len(code_meta_entries)} code wiki(s) available to reference")
+
+    corpus_sha = compute_corpus_sha(sorted(entries + code_meta_entries))
     prior_meta = read_prior_meta()
     prior_sha = prior_meta.get("corpus_sha")
     if prior_sha == corpus_sha and not WIKI_FORCE:
@@ -679,6 +749,7 @@ def main() -> int:
     )
     structure_prompt = structure_template.format(
         corpus_summary=corpus_summary,
+        code_wikis=code_wiki_catalog or "(none)",
         min_pages=MIN_PAGES,
         max_pages=MAX_PAGES,
         repo_full_name=REPO_FULL_NAME or "this repository",
@@ -693,7 +764,7 @@ def main() -> int:
     page_bodies: dict[str, str] = {}
     for i, spec in enumerate(specs, 1):
         print(f"Generating {i}/{len(specs)}: {spec.title}")
-        body = generate_page(spec, docs_by_key)
+        body = generate_page(spec, docs_by_key, code_wiki_catalog)
         page_bodies[spec.id] = body
 
     print(f"Writing {len(specs)} page(s) + _index.json + _meta.json to s3://{DOCS_BUCKET}/{WIKI_PREFIX}")
