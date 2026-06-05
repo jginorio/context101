@@ -501,6 +501,21 @@ def put_object(key: str, body: str, content_type: str) -> None:
     )
 
 
+def list_keys_under(prefix: str) -> list[str]:
+    keys: list[str] = []
+    paginator = s3.get_paginator("list_objects_v2")
+    for page in paginator.paginate(Bucket=DOCS_BUCKET, Prefix=prefix):
+        for obj in page.get("Contents", []):
+            keys.append(obj["Key"])
+    return keys
+
+
+def delete_keys(keys: list[str]) -> None:
+    for i in range(0, len(keys), 1000):
+        batch = [{"Key": k} for k in keys[i : i + 1000]]
+        s3.delete_objects(Bucket=DOCS_BUCKET, Delete={"Objects": batch, "Quiet": True})
+
+
 # Filterable metadata on S3 Vectors is capped at 2 KB/vector (summed across
 # all attributes). `source`, `generated_at`, `page_slug` are tiny; only
 # `source_files` can grow. Truncate it to leave headroom for the others.
@@ -538,6 +553,9 @@ def write_wiki_outputs(
     started_at: str,
     corpus_sha: str,
 ) -> None:
+    # Track every key this run writes so we can prune stale pages below.
+    fresh_keys: set[str] = set()
+
     # Pages + sidecars. Write the sidecar first so the next auto-ingest
     # run sees both files together and attaches metadata on first pass.
     for spec in specs:
@@ -550,6 +568,8 @@ def write_wiki_outputs(
             "application/json",
         )
         put_object(md_key, body, "text/markdown; charset=utf-8")
+        fresh_keys.add(md_key)
+        fresh_keys.add(f"{md_key}.metadata.json")
 
     # Nav index — maps page id → slug/title, preserves order + related links.
     index = {
@@ -569,6 +589,7 @@ def write_wiki_outputs(
         ],
     }
     put_object(f"{WIKI_PREFIX}_index.json", json.dumps(index, indent=2), "application/json")
+    fresh_keys.add(f"{WIKI_PREFIX}_index.json")
 
     # Metadata — drives the "Last indexed" badge in the UI. corpus_sha
     # is the no-change-guard fingerprint: the next run reads it back and
@@ -582,6 +603,25 @@ def write_wiki_outputs(
         "corpus_sha": corpus_sha,
     }
     put_object(f"{WIKI_PREFIX}_meta.json", json.dumps(meta, indent=2), "application/json")
+    fresh_keys.add(f"{WIKI_PREFIX}_meta.json")
+
+    # Prune stale pages from prior runs. Opus picks different page titles each
+    # run, so slugs (and thus filenames) drift — without pruning, every run
+    # leaves its old pages behind and they pile up in the KB vector index,
+    # polluting search with dozens of overlapping, outdated pages. Delete any
+    # object under WIKI_PREFIX that this run didn't just write. In main mode,
+    # never touch the nested code wikis under wiki/code/ (they're produced by
+    # separate per-repo runs).
+    existing = list_keys_under(WIKI_PREFIX)
+    stale = [
+        k
+        for k in existing
+        if k not in fresh_keys
+        and not (WIKI_MODE != "code" and k.startswith(f"{WIKI_PREFIX}code/"))
+    ]
+    if stale:
+        delete_keys(stale)
+        print(f"  pruned {len(stale)} stale wiki object(s) from prior runs")
 
 
 # ── Main ──────────────────────────────────────────────────────────────
