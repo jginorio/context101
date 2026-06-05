@@ -44,12 +44,14 @@ let DOCS_BUCKET = process.env.DOCS_BUCKET;
 
 const SOURCES_PREFIX = "sources/github/";
 
-// File-extension allowlist. Anything not matching this regex is skipped.
-// Tuned for "things humans wrote that explain something" — config files
-// like package.json + lockfiles produce noise without context, so they're
-// excluded even though they technically match here.
+// File-extension allowlist — code + human-written docs only. Data/config
+// files (package.json, tsconfig, *.json, *.yaml/yml, *.toml) are intentionally
+// excluded: they're high-volume and low-signal, and they burn tokens in the
+// wiki structure pass without explaining much. Infrastructure-as-code
+// (.tf/.hcl) and Dockerfile/Makefile are kept (handled in shouldInclude)
+// because they describe how the system is built and run.
 const INCLUDE_RE =
-  /\.(md|mdx|txt|ts|tsx|js|jsx|mjs|cjs|py|go|rs|sql|ya?ml|json|toml|sh|rb|java|kt|swift|c|cpp|h|hpp|cs|php|scala|hcl|tf|gradle|dockerfile)$/i;
+  /\.(md|mdx|txt|ts|tsx|js|jsx|mjs|cjs|py|go|rs|sql|sh|rb|java|kt|swift|c|cpp|h|hpp|cs|php|scala|hcl|tf|gradle)$/i;
 
 // Path segments that are *always* skipped, regardless of extension.
 const EXCLUDE_PATH_PARTS = [
@@ -76,14 +78,26 @@ const EXCLUDE_PATH_PARTS = [
 const EXCLUDE_BASENAMES = new Set([
   "package-lock.json",
   "pnpm-lock.yaml",
+  "npm-shrinkwrap.json",
   "yarn.lock",
+  "bun.lockb",
   "Cargo.lock",
   "Pipfile.lock",
   "poetry.lock",
   "composer.lock",
+  "Gemfile.lock",
+  "Podfile.lock",
+  "mix.lock",
+  "flake.lock",
+  "deno.lock",
+  "gradle.lockfile",
+  "packages.lock.json",
   "go.sum",
   ".DS_Store",
 ]);
+
+// Generated / minified / lockfile patterns to skip regardless of extension.
+const EXCLUDE_FILE_RE = /(\.lock|\.lockb|\.min\.js|\.min\.css|\.map)$/i;
 
 // Skip files larger than this (bytes). 200KB ≈ ~3000 lines of code; bigger
 // files are usually generated, vendored, or fixture data.
@@ -155,6 +169,7 @@ function shouldInclude(path, size) {
   }
   const base = path.split("/").pop();
   if (EXCLUDE_BASENAMES.has(base)) return false;
+  if (EXCLUDE_FILE_RE.test(lower)) return false;
   // Special-case: keep Dockerfile / Makefile etc with no extension
   if (/^(dockerfile|makefile|jenkinsfile|procfile)$/i.test(base)) return true;
   return INCLUDE_RE.test(path);
