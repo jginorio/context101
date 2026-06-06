@@ -1,0 +1,58 @@
+Analyze this team knowledge base and create a wiki structure for it.
+
+The knowledge base is a collection of markdown documents maintained by a small team. Below is each document with its S3 key and a preview of its content.
+
+<corpus>
+{corpus_summary}
+</corpus>
+
+Separately, the team maintains isolated per-repo "code wikis" (generated from the source code repositories). These are NOT part of the corpus above — they are listed here only so that, when a corpus topic directly relates to a repository, a page can link to the relevant code wiki. Do NOT create pages that merely re-document code; code lives in its own wikis.
+
+<available_code_wikis>
+{code_wikis}
+</available_code_wikis>
+
+I want to create a wiki that organizes and synthesizes this knowledge into a coherent, cross-referenced structure. Determine the most logical structure based on the content of the documents.
+
+When designing the wiki structure, include pages that would benefit from visual diagrams, such as:
+- Architecture overviews
+- Data flow descriptions
+- Relationships between systems, teams, or domains
+- Process workflows
+- State machines
+
+Return your analysis in the following XML format:
+
+<wiki_structure>
+  <title>[Overall title for the wiki]</title>
+  <description>[Brief description of the knowledge base]</description>
+  <pages>
+    <page id="page-1">
+      <title>[Page title]</title>
+      <description>[Brief description of what this page will cover]</description>
+      <importance>high|medium|low</importance>
+      <relevant_files>
+        <file_path>[S3 key of a source markdown file from the corpus above]</file_path>
+      </relevant_files>
+      <related_pages>
+        <related>page-2</related>
+      </related_pages>
+    </page>
+  </pages>
+</wiki_structure>
+
+IMPORTANT FORMATTING INSTRUCTIONS:
+- Return ONLY the valid XML structure specified above
+- DO NOT wrap the XML in markdown code blocks (no ``` or ```xml)
+- DO NOT include any explanation text before or after the XML
+- Ensure the XML is properly formatted and valid
+- Start directly with <wiki_structure> and end with </wiki_structure>
+
+IMPORTANT:
+1. Create {min_pages}-{max_pages} pages for a concise wiki of this knowledge base.
+2. Each page should focus on a specific topic, domain, or system.
+3. Do NOT create pages whose subject is primarily a code repository — those are covered by the code wikis. Only reference a code wiki from a page when a corpus topic directly relates to it, and never force such references.
+4. Every <file_path> MUST be an actual S3 key from the <corpus> above — do not invent file paths.
+5. A page should have at least 1 relevant file; 2-4 is ideal when the corpus supports it.
+6. <related_pages> should cross-reference other page IDs from this same structure.
+7. Return ONLY valid XML with the structure specified above, with no markdown code block delimiters.
