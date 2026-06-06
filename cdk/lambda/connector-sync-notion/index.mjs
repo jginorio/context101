@@ -503,6 +503,9 @@ export const handler = async (event) => {
     const usedSlugs = new Set();
     let totalBlocks = 0;
     let truncated = false;
+    // Set if any page failed to fetch this run. A partial crawl must NOT prune
+    // (freshKeys would be missing still-valid pages → we'd delete good docs).
+    let partial = false;
 
     // Keep S3 keys stable but unique: prefer the title slug, and only fall
     // back to an id suffix when two pages would collide on the same slug.
@@ -591,8 +594,11 @@ export const handler = async (event) => {
             }
           }
         } catch (e) {
-          // Child not shared with the integration, or deleted — skip it
-          // instead of failing the whole sync.
+          // Child not shared with the integration, or a transient failure
+          // (rate limit, 5xx). Skip it instead of failing the whole sync, but
+          // mark the crawl partial so we don't prune away pages we just failed
+          // to re-fetch.
+          partial = true;
           console.warn(`notion: skip child ${d.type} ${d.id}: ${e.message}`);
         }
       }
@@ -600,10 +606,20 @@ export const handler = async (event) => {
 
     const pageCount = usedSlugs.size;
 
-    // Prune stale keys from a previous sync (page renamed, or database rows removed)
-    const existing = await listKeysUnder(prefix);
-    const stale = existing.filter((k) => !freshKeys.has(k));
-    await deleteKeys(stale);
+    // Prune stale keys from a previous sync (page renamed / removed). CRITICAL:
+    // only prune after a COMPLETE crawl. If any page failed to fetch or the
+    // crawl was truncated, freshKeys is missing pages that still exist — and
+    // pruning then would delete good, still-valid docs (this previously caused
+    // "key does not exist" after a flaky sync). Skip the prune in that case.
+    if (!partial && !truncated) {
+      const existing = await listKeysUnder(prefix);
+      const stale = existing.filter((k) => !freshKeys.has(k));
+      await deleteKeys(stale);
+    } else {
+      console.warn(
+        `notion: partial crawl (partial=${partial}, truncated=${truncated}) — skipping prune to avoid deleting pages that didn't sync this run`
+      );
+    }
 
     await markSuccess(
       connectorId,
