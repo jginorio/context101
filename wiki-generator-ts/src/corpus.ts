@@ -130,6 +130,31 @@ export async function readPriorMeta(): Promise<Record<string, unknown>> {
   }
 }
 
+/**
+ * Read the existing wiki/_index.json. Returns null on first run / missing
+ * object. Used by the incremental path to recover the page→source graph.
+ */
+export async function readPriorIndex(): Promise<{
+  title?: string;
+  description?: string;
+  pages?: unknown[];
+} | null> {
+  const key = `${WIKI_PREFIX}_index.json`;
+  try {
+    const obj = await s3.send(
+      new GetObjectCommand({ Bucket: DOCS_BUCKET, Key: key })
+    );
+    return JSON.parse(await obj.Body!.transformToString("utf-8"));
+  } catch (e: unknown) {
+    const err = e as { name?: string; $metadata?: { httpStatusCode?: number } };
+    if (err?.name === "NoSuchKey" || err?.$metadata?.httpStatusCode === 404) {
+      return null;
+    }
+    console.error(`  [warn] couldn't read prior ${key}: ${e}`);
+    return null;
+  }
+}
+
 /** Body-load pass — only run after the no-change guard decides to regen. */
 export async function loadSourceDocs(keys: string[]): Promise<SourceDoc[]> {
   const docs: SourceDoc[] = [];

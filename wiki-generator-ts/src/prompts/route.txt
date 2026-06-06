@@ -1,0 +1,42 @@
+You are organizing newly added documents into an existing team wiki.
+
+Each new document should be folded into the most relevant existing page(s), or — only if it genuinely covers a topic that none of the existing pages address — placed on a new page.
+
+The wiki currently has these pages (id — title: description):
+
+<existing_pages>
+{existing_pages}
+</existing_pages>
+
+Here are the new documents, each with its S3 key and a preview of its content:
+
+<new_documents>
+{new_docs}
+</new_documents>
+
+Decide where each new document belongs. Strongly prefer attaching to an existing page when the topic overlaps; create a new page only when nothing fits. Several related new documents may share a single new page.
+
+Return ONLY the following XML — no markdown code fences, no explanation before or after:
+
+<routing>
+  <new_pages>
+    <page id="new-1">
+      <title>[Title for the new page]</title>
+      <description>[One-sentence description of the new page]</description>
+    </page>
+  </new_pages>
+  <assignments>
+    <assignment>
+      <file_path>[S3 key of a new document from above]</file_path>
+      <target>[an existing page id, OR a new page id you declared in new_pages]</target>
+    </assignment>
+  </assignments>
+</routing>
+
+Rules:
+- Every <file_path> MUST be one of the new document keys listed above — do not invent paths.
+- Every <target> MUST be either an existing page id from <existing_pages> or an id you declared in <new_pages>.
+- Assign every new document to exactly one target.
+- If no new pages are needed, leave <new_pages> empty.
+- Do not declare a new page unless at least one document is assigned to it.
+- Start directly with <routing> and end with </routing>.

@@ -1,23 +1,23 @@
 /**
  * Context101 Wiki Generator (TypeScript port).
  *
- * Flow (identical to wiki-generator/generate.py):
- *   1. List .md files from s3://DOCS_BUCKET/ excluding WIKI_PREFIX.
- *   2. No-change guard: hash (key, etag) pairs, skip if unchanged.
- *   3. Build a budgeted, round-robin corpus summary.
- *   4. Call the model with the structure prompt → XML plan.
- *   5. For each page: read the relevant files, call the model → markdown.
- *   6. Write pages + sidecars + _index.json + _meta.json, prune stale pages.
+ * Default flow (identical to wiki-generator/generate.py): list corpus →
+ * no-change guard → corpus summary → structure pass → per-page generation →
+ * write pages/sidecars/index/meta + prune.
  *
- * Two gbrain-inspired extensions are flag-gated and OFF by default:
- *   • WIKI_AUTOLINK — deterministic related_pages from shared sources.
- *   • WIKI_GAPS     — emit + persist a <gaps> list.
- * With both off, behavior matches the Python generator. See README.md.
+ * Flag-gated extensions, all OFF by default (parity preserved when off):
+ *   • WIKI_AUTOLINK    — deterministic related_pages from shared sources.
+ *   • WIKI_GAPS        — emit + persist a <gaps> list.
+ *   • WIKI_INCREMENTAL — regenerate only the pages a corpus change touches,
+ *                        route newly added sources, delete orphaned pages.
+ *                        WIKI_FORCE (the manual button) does a full re-plan so
+ *                        the structure never ossifies. See README.md.
  */
 
-import { deterministicRelated } from "./autolink.js";
+import { deterministicRelated, relatedFromSources } from "./autolink.js";
 import {
   CORPUS_PREFIX,
+  CORPUS_PREVIEW_CHARS,
   CORPUS_SUMMARY_MAX_CHARS,
   DOCS_BUCKET,
   MAX_PAGES,
@@ -26,6 +26,7 @@ import {
   WIKI_AUTOLINK,
   WIKI_FORCE,
   WIKI_GAPS,
+  WIKI_INCREMENTAL,
   WIKI_MODE,
   WIKI_PREFIX,
 } from "./config.js";
@@ -36,25 +37,37 @@ import {
   listCorpusEntries,
   loadCodeWikiCatalog,
   loadSourceDocs,
+  readPriorIndex,
   readPriorMeta,
   type SourceDoc,
   tupleCmp,
 } from "./corpus.js";
+import {
+  buildManifest,
+  diffManifest,
+  type IndexPage,
+  indexPageToSpec,
+  planIncremental,
+} from "./incremental.js";
 import { invokeLlm } from "./llm.js";
-import { writeWikiOutputs } from "./outputs.js";
+import { writeIncrementalOutputs, writeWikiOutputs } from "./outputs.js";
 import {
   CODE_PAGE_PROMPT,
   CODE_STRUCTURE_PROMPT,
   fmt,
   GAPS_ADDENDUM,
   PAGE_PROMPT,
+  ROUTE_PROMPT,
   STRUCTURE_PROMPT,
 } from "./prompts.js";
 import {
+  extractRouting,
   extractXml,
   parseGaps,
+  parseRouting,
   parseStructure,
   type PageSpec,
+  type RoutingPlan,
 } from "./structure.js";
 
 async function generatePage(
@@ -99,10 +112,9 @@ export async function main(): Promise<number> {
   }
   console.log(`  ${entries.length} source doc(s)`);
 
-  // ── No-change guard ────────────────────────────────────────────────
   // Per-repo code wikis are referenced, not ingested. Load their catalog (for
-  // the prompts) and fold each code wiki's _meta.json (key, etag) into the
-  // hash so a repo change triggers a refresh of references.
+  // prompts) and fold each code wiki's _meta.json (key, etag) into the full
+  // path's no-change hash so a repo change triggers a refresh of references.
   let codeWikiCatalog = "";
   let codeMetaEntries: Entry[] = [];
   if (WIKI_MODE !== "code") {
@@ -112,9 +124,31 @@ export async function main(): Promise<number> {
     }
   }
 
-  const corpusSha = computeCorpusSha(
-    [...entries, ...codeMetaEntries].sort(tupleCmp)
-  );
+  // Incremental path: only attempt when enabled and not forced. WIKI_FORCE (the
+  // manual "Refresh now" button) always does a full re-plan (Tier 3).
+  if (WIKI_INCREMENTAL && !WIKI_FORCE) {
+    const handled = await tryIncremental(entries, codeWikiCatalog, startedAt, t0);
+    if (handled !== null) return handled;
+    console.log(
+      "Incremental unavailable (first run or missing prior wiki) — full re-plan."
+    );
+  } else if (WIKI_INCREMENTAL && WIKI_FORCE) {
+    console.log("WIKI_FORCE=1 — full re-plan (Tier 3), refreshing the whole structure.");
+  }
+
+  return runFull(entries, codeWikiCatalog, codeMetaEntries, startedAt, t0);
+}
+
+// ── Full rebuild (the verified-parity path) ───────────────────────────────
+
+async function runFull(
+  entries: Entry[],
+  codeWikiCatalog: string,
+  codeMetaEntries: Entry[],
+  startedAt: string,
+  t0: number
+): Promise<number> {
+  const corpusSha = computeCorpusSha([...entries, ...codeMetaEntries].sort(tupleCmp));
   const priorMeta = await readPriorMeta();
   const priorSha = priorMeta.corpus_sha as string | undefined;
   if (priorSha === corpusSha && !WIKI_FORCE) {
@@ -161,18 +195,17 @@ export async function main(): Promise<number> {
     console.log(`    - ${s.id}  ${s.title}  (${s.relevant_files.length} source(s))`);
   }
 
-  // ── gbrain-inspired extensions (flag-gated) ─────────────────────────
   let gaps: string[] = [];
   if (WIKI_GAPS) {
     gaps = parseGaps(structureXml);
     if (gaps.length) console.log(`  gaps flagged: ${gaps.length}`);
   }
-  if (WIKI_AUTOLINK) {
+  // Incremental needs deterministic related_pages to maintain links across
+  // partial updates, so a full re-plan in incremental mode computes them too.
+  if (WIKI_AUTOLINK || WIKI_INCREMENTAL) {
     const rel = deterministicRelated(specs);
     for (const s of specs) s.related_pages = rel.get(s.id) ?? [];
-    console.log(
-      "  WIKI_AUTOLINK=1 — related_pages computed from shared sources"
-    );
+    console.log("  related_pages computed deterministically from shared sources");
   }
 
   const pageBodies: Record<string, string> = {};
@@ -194,10 +227,156 @@ export async function main(): Promise<number> {
     docs.length,
     startedAt,
     corpusSha,
-    { gaps }
+    {
+      gaps,
+      // Persist the manifest so the next run can go incremental.
+      ...(WIKI_INCREMENTAL ? { sourceManifest: buildManifest(entries) } : {}),
+    }
   );
 
-  const elapsed = (Date.now() - t0) / 1000;
-  console.log(`Done in ${elapsed.toFixed(1)}s`);
+  console.log(`Done in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
+  return 0;
+}
+
+// ── Incremental rebuild (WIKI_INCREMENTAL) ────────────────────────────────
+
+/**
+ * Ask the model where newly added sources belong (existing pages vs new ones).
+ * Throws on unusable output; the caller falls back to a full re-plan.
+ */
+async function routeNewSources(
+  addedDocs: SourceDoc[],
+  priorPages: IndexPage[],
+  codeWikiCatalog: string
+): Promise<RoutingPlan> {
+  const existingPages = priorPages
+    .map((p) => `${p.id} — ${p.title}: ${p.description}`)
+    .join("\n");
+  const newDocs = addedDocs
+    .map((d) => {
+      const preview = Array.from(d.body.trim())
+        .slice(0, CORPUS_PREVIEW_CHARS)
+        .join("");
+      return `<doc path="${d.key}">\n${preview}\n</doc>`;
+    })
+    .join("\n\n");
+
+  const prompt = fmt(ROUTE_PROMPT, {
+    existing_pages: existingPages || "(none)",
+    new_docs: newDocs,
+    code_wikis: codeWikiCatalog || "(none)",
+  });
+  const raw = await invokeLlm(prompt);
+  return parseRouting(extractRouting(raw));
+}
+
+/**
+ * Returns a status code (0/1) when the run was handled incrementally, or null
+ * to signal the caller to fall back to a full re-plan (first run / missing
+ * prior state / unusable routing).
+ */
+async function tryIncremental(
+  entries: Entry[],
+  codeWikiCatalog: string,
+  startedAt: string,
+  t0: number
+): Promise<number | null> {
+  const manifestNow = buildManifest(entries);
+  const priorMeta = await readPriorMeta();
+  const priorManifest = priorMeta.source_manifest as
+    | Record<string, string>
+    | undefined;
+  const priorIndex = await readPriorIndex();
+  if (!priorManifest || !priorIndex || !Array.isArray(priorIndex.pages)) {
+    return null;
+  }
+  const priorPages = priorIndex.pages as IndexPage[];
+
+  const diff = diffManifest(priorManifest, manifestNow);
+  if (!diff.changed.length && !diff.added.length && !diff.deleted.length) {
+    console.log(
+      `Corpus unchanged since last regen (${priorMeta.finished_at ?? "?"}). Skipping.`
+    );
+    return 0;
+  }
+  console.log(
+    `Incremental: ${diff.changed.length} changed, ${diff.added.length} added, ` +
+      `${diff.deleted.length} deleted`
+  );
+
+  // Route added sources. Load their bodies once (reused as page sources below).
+  let routing: RoutingPlan | null = null;
+  let addedDocs: SourceDoc[] = [];
+  if (diff.added.length) {
+    addedDocs = await loadSourceDocs(diff.added);
+    try {
+      routing = await routeNewSources(addedDocs, priorPages, codeWikiCatalog);
+      console.log(
+        `  routed ${diff.added.length} new file(s): ` +
+          `${routing.newPages.length} new page(s), ` +
+          `${routing.assignments.length} assignment(s)`
+      );
+    } catch (e) {
+      console.error(`  [warn] routing failed (${e}) — falling back to full re-plan`);
+      return null;
+    }
+  }
+
+  const plan = planIncremental(priorPages, diff, routing);
+
+  // Report any added files the router didn't place (picked up on next re-plan).
+  const placed = new Set<string>();
+  for (const p of plan.pages) for (const s of p.sources) placed.add(s);
+  const unplaced = diff.added.filter((k) => !placed.has(k));
+  if (unplaced.length) {
+    console.log(
+      `  [warn] ${unplaced.length} new file(s) not placed by routing; ` +
+        "will be incorporated on the next full re-plan"
+    );
+  }
+
+  // Recompute related deterministically across the merged page set — the only
+  // way to keep links consistent without re-running the structure pass.
+  const rel = relatedFromSources(plan.pages);
+  for (const p of plan.pages) p.related = rel.get(p.id) ?? [];
+
+  // Load source bodies for the pages we'll (re)generate (reusing addedDocs).
+  const toGenPages = plan.pages.filter((p) => plan.toGen.has(p.id));
+  const addedByKey = new Map(addedDocs.map((d) => [d.key, d]));
+  const neededKeys = new Set<string>();
+  for (const p of toGenPages) {
+    for (const s of p.sources) if (!addedByKey.has(s)) neededKeys.add(s);
+  }
+  const loaded = await loadSourceDocs([...neededKeys]);
+  const docsByKey = new Map<string, SourceDoc>();
+  for (const d of [...addedDocs, ...loaded]) docsByKey.set(d.key, d);
+
+  const bodies: Record<string, string> = {};
+  let i = 0;
+  for (const p of toGenPages) {
+    i += 1;
+    console.log(`Generating ${i}/${toGenPages.length}: ${p.title}`);
+    bodies[p.id] = await generatePage(indexPageToSpec(p), docsByKey, codeWikiCatalog);
+  }
+  if (toGenPages.length === 0) {
+    console.log("  no pages need regeneration; refreshing index + manifest only");
+  }
+
+  await writeIncrementalOutputs({
+    title: priorIndex.title ?? "Wiki",
+    description: priorIndex.description ?? "",
+    pages: plan.pages,
+    regenerated: bodies,
+    deletedSlugs: plan.deletedSlugs,
+    sourceDocCount: entries.length,
+    startedAt,
+    corpusSha: computeCorpusSha([...entries].sort(tupleCmp)),
+    sourceManifest: manifestNow,
+  });
+
+  console.log(
+    `Done (incremental: ${toGenPages.length} regenerated, ` +
+      `${plan.deletedSlugs.length} deleted) in ${((Date.now() - t0) / 1000).toFixed(1)}s`
+  );
   return 0;
 }

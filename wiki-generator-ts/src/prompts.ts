@@ -21,6 +21,9 @@ export const STRUCTURE_PROMPT = load("structure.txt");
 export const CODE_STRUCTURE_PROMPT = load("code_structure.txt");
 export const PAGE_PROMPT = load("page.txt");
 export const CODE_PAGE_PROMPT = load("code_page.txt");
+// Used only by the incremental path (WIKI_INCREMENTAL) to route newly added
+// sources into existing pages or propose new ones.
+export const ROUTE_PROMPT = load("route.txt");
 
 /**
  * Fill `{name}` placeholders. Mirrors Python's str.format for the subset we

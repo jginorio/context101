@@ -84,3 +84,13 @@ export const WIKI_AUTOLINK = truthy(env.WIKI_AUTOLINK);
 // the corpus references but doesn't cover) and persist it to _meta.json.
 // gbrain idea #2.
 export const WIKI_GAPS = truthy(env.WIKI_GAPS);
+
+// WIKI_INCREMENTAL=1 — instead of rebuilding the whole wiki on any corpus
+// change, regenerate only the pages whose source files changed, route newly
+// added sources into existing pages (or new ones), and delete pages whose
+// sources all vanished. Needs a prior _index.json + a per-file manifest in
+// _meta.json (written by previous runs). First run, missing prior state, or
+// WIKI_FORCE fall back to a full re-plan (so the structure never ossifies).
+// Implies deterministic related_pages, since the model's per-run guesses can't
+// be maintained across partial updates. gbrain idea #4.
+export const WIKI_INCREMENTAL = truthy(env.WIKI_INCREMENTAL);

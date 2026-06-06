@@ -38,18 +38,18 @@ export function escapeStrayAmpersands(xml: string): string {
 }
 
 /**
- * Pull the <wiki_structure>...</wiki_structure> block out of the model output.
- * Defensive against leading prose, markdown code fences, stray control chars,
- * and unescaped ampersands.
+ * Pull a <tag>...</tag> block out of the model output. Defensive against
+ * leading prose, markdown code fences, stray control chars, and unescaped
+ * ampersands.
  */
-export function extractXml(text: string): string {
+function extractTagged(text: string, tag: string): string {
   let cleaned = text.trim();
   cleaned = cleaned.replace(/^```(?:xml)?\s*/, "");
   cleaned = cleaned.replace(/\s*```$/, "");
-  const match = cleaned.match(/<wiki_structure>[\s\S]*?<\/wiki_structure>/);
+  const match = cleaned.match(new RegExp(`<${tag}>[\\s\\S]*?</${tag}>`));
   if (!match) {
     throw new Error(
-      `No <wiki_structure> block in model output. First 400 chars: ${JSON.stringify(
+      `No <${tag}> block in model output. First 400 chars: ${JSON.stringify(
         text.slice(0, 400)
       )}`
     );
@@ -59,6 +59,16 @@ export function extractXml(text: string): string {
   return escapeStrayAmpersands(withoutControls);
 }
 
+/** Extract the <wiki_structure> block from a structure-pass response. */
+export function extractXml(text: string): string {
+  return extractTagged(text, "wiki_structure");
+}
+
+/** Extract the <routing> block from a routing-pass response (incremental). */
+export function extractRouting(text: string): string {
+  return extractTagged(text, "routing");
+}
+
 const parser = new XMLParser({
   ignoreAttributes: false,
   attributeNamePrefix: "@_",
@@ -66,7 +76,8 @@ const parser = new XMLParser({
   parseAttributeValue: false,
   trimValues: false, // we trim ourselves to match Python's explicit .strip()
   processEntities: true,
-  isArray: (name) => ["page", "file_path", "related", "gap"].includes(name),
+  isArray: (name) =>
+    ["page", "file_path", "related", "gap", "assignment"].includes(name),
 });
 
 type XmlNode = Record<string, unknown>;
@@ -177,6 +188,30 @@ export function parseStructure(
   }
 
   return { title, description, specs };
+}
+
+/** Result of the incremental routing pass: where each new source belongs. */
+export interface RoutingPlan {
+  newPages: { id?: string; title: string; description: string }[];
+  assignments: { file: string; target: string }[];
+}
+
+/** Parse a <routing> block (incremental new-source routing). */
+export function parseRouting(xmlText: string): RoutingPlan {
+  const parsed = parser.parse(xmlText) as XmlNode;
+  const root = parsed.routing as XmlNode | undefined;
+  if (!root || typeof root !== "object") {
+    throw new Error("Parsed XML has no <routing> root");
+  }
+  const newPages = (childArray(root.new_pages, "page") as XmlNode[]).map((p) => ({
+    id: (p["@_id"] as string) || undefined,
+    title: (txt(p.title) || "Untitled").trim(),
+    description: (txt(p.description) || "").trim(),
+  }));
+  const assignments = (childArray(root.assignments, "assignment") as XmlNode[])
+    .map((a) => ({ file: txt(a.file_path).trim(), target: txt(a.target).trim() }))
+    .filter((a) => a.file && a.target);
+  return { newPages, assignments };
 }
 
 /** Parse an optional <gaps> section (only emitted when WIKI_GAPS=1). */

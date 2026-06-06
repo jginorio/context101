@@ -20,6 +20,47 @@ behind flags, **off by default**, so the parity diff stays meaningful:
 |------|---------|--------------|
 | `WIKI_AUTOLINK` | off | Compute each page's `related_pages` deterministically from shared source files, instead of the model's per-run guesses. Stable across runs, no LLM cost. |
 | `WIKI_GAPS` | off | Ask the structure pass to also emit a `<gaps>` list (topics the corpus references but doesn't cover) and persist it to `_meta.json`. |
+| `WIKI_INCREMENTAL` | off | Regenerate only the pages a corpus change actually touches, instead of rebuilding the whole wiki. See below. |
+
+## Incremental regeneration (`WIKI_INCREMENTAL`)
+
+The full rebuild re-plans and regenerates every page on any corpus change. At
+scale that's slow and expensive. With `WIKI_INCREMENTAL=1`, the generator
+instead does the minimum work a change requires, using the page→source graph
+that's already persisted in `_index.json` (each page lists its `sources`) plus
+a per-file etag manifest written to `_meta.json`.
+
+**Three tiers:**
+
+1. **Changed / deleted source → regenerate only the pages that cite it.** No
+   structure pass, no LLM planning call. A page whose sources are all deleted
+   is removed; other affected pages are re-synthesized with their updated
+   source set.
+2. **Added source → route it.** One cheap LLM call decides whether each new
+   doc folds into existing page(s) or warrants a new page; only the affected
+   pages are (re)generated.
+3. **Full re-plan.** `WIKI_FORCE=1` (the manual "Refresh now" button, which
+   `start-wiki-gen` already sets) always does a full rebuild, so the structure
+   can reorganize and never ossifies. Scheduled/auto runs go incremental.
+
+**Identity is stable.** Existing pages keep their id, title, and slug across
+incremental runs — only content (and sources, on add/delete) changes. That
+also resolves the slug-churn problem the full path works around with pruning.
+
+**Implies deterministic linking.** The model's per-run `related_pages` can't be
+maintained across partial updates, so incremental always computes
+`related_pages` from shared sources (same logic as `WIKI_AUTOLINK`).
+
+**Fallbacks.** First run, missing prior `_index.json`/manifest, or unusable
+routing output all fall back to a full re-plan automatically.
+
+**`_meta.json` gains a `source_manifest`** (`{ "s3/key.md": "etag", … }`,
+key-sorted) when this flag is on — that's the per-file fingerprint the next run
+diffs against. It's omitted when the flag is off, preserving the parity diff.
+
+**Caveat:** code-wiki link freshness. Code wikis are referenced, not ingested,
+and aren't in the manifest, so a code-wiki change doesn't trigger incremental
+page regen — those links refresh on the next full re-plan.
 
 ## Layout
 

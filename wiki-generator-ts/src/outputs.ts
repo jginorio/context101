@@ -12,6 +12,7 @@ import {
 import { s3 } from "./awsClients.js";
 import { DOCS_BUCKET, MODEL_ID, REPO_FULL_NAME, WIKI_MODE, WIKI_PREFIX } from "./config.js";
 import { pyDumps } from "./pyjson.js";
+import type { IndexPage } from "./incremental.js";
 import type { PageSpec } from "./structure.js";
 
 export async function putObject(
@@ -70,6 +71,9 @@ export interface WikiMetaExtra {
   // Persisted to _meta.json only when WIKI_GAPS=1. Omitted otherwise so the
   // meta shape matches the Python generator.
   gaps?: string[];
+  // Per-file {key: etag} manifest, written only when WIKI_INCREMENTAL=1 so the
+  // next run can diff at the file level. Omitted otherwise (parity preserved).
+  sourceManifest?: Record<string, string>;
 }
 
 export async function writeWikiOutputs(
@@ -125,6 +129,7 @@ export async function writeWikiOutputs(
     corpus_sha: corpusSha,
   };
   if (extra.gaps && extra.gaps.length) meta.gaps = extra.gaps;
+  if (extra.sourceManifest) meta.source_manifest = extra.sourceManifest;
   await putObject(`${WIKI_PREFIX}_meta.json`, pyDumps(meta, 2), "application/json");
   fresh.add(`${WIKI_PREFIX}_meta.json`);
 
@@ -142,4 +147,90 @@ export async function writeWikiOutputs(
     await deleteKeys(stale);
     console.log(`  pruned ${stale.length} stale wiki object(s) from prior runs`);
   }
+}
+
+export interface IncrementalWriteArgs {
+  title: string;
+  description: string;
+  /** Full merged page set for the new _index.json. */
+  pages: IndexPage[];
+  /** id → markdown body, for the subset of pages regenerated this run. */
+  regenerated: Record<string, string>;
+  /** Slugs of pages removed this run. */
+  deletedSlugs: string[];
+  sourceDocCount: number;
+  startedAt: string;
+  corpusSha: string;
+  sourceManifest: Record<string, string>;
+}
+
+/**
+ * Write only the deltas of an incremental run: the regenerated pages + their
+ * sidecars, deletions for removed pages, and a fresh _index.json / _meta.json.
+ * Unchanged pages are left untouched in S3 — no global prune (unlike the full
+ * rebuild path), so untouched pages keep their identity and aren't re-uploaded.
+ */
+export async function writeIncrementalOutputs(
+  args: IncrementalWriteArgs
+): Promise<void> {
+  const {
+    title,
+    description,
+    pages,
+    regenerated,
+    deletedSlugs,
+    sourceDocCount,
+    startedAt,
+    corpusSha,
+    sourceManifest,
+  } = args;
+
+  // Regenerated pages + sidecars (sidecar first, mirroring the full path).
+  for (const p of pages) {
+    if (!(p.id in regenerated)) continue;
+    const mdKey = `${WIKI_PREFIX}${p.slug}.md`;
+    await putObject(
+      `${mdKey}.metadata.json`,
+      pyDumps(buildWikiSidecar(p.slug, startedAt)),
+      "application/json"
+    );
+    await putObject(mdKey, regenerated[p.id], "text/markdown; charset=utf-8");
+  }
+
+  // Delete removed pages (page + sidecar).
+  const delKeys: string[] = [];
+  for (const slug of deletedSlugs) {
+    delKeys.push(`${WIKI_PREFIX}${slug}.md`, `${WIKI_PREFIX}${slug}.md.metadata.json`);
+  }
+  if (delKeys.length) {
+    await deleteKeys(delKeys);
+    console.log(`  deleted ${deletedSlugs.length} page(s) whose sources were removed`);
+  }
+
+  // Rewrite the nav index with the full merged page set.
+  const index = {
+    title,
+    description,
+    pages: pages.map((p) => ({
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      slug: p.slug,
+      importance: p.importance,
+      sources: p.sources,
+      related: p.related,
+    })),
+  };
+  await putObject(`${WIKI_PREFIX}_index.json`, pyDumps(index, 2), "application/json");
+
+  const meta = {
+    generated_at: startedAt,
+    finished_at: new Date().toISOString(),
+    source_doc_count: sourceDocCount,
+    page_count: pages.length,
+    model_id: MODEL_ID,
+    corpus_sha: corpusSha,
+    source_manifest: sourceManifest,
+  };
+  await putObject(`${WIKI_PREFIX}_meta.json`, pyDumps(meta, 2), "application/json");
 }
