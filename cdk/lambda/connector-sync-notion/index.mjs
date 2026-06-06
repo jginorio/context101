@@ -133,6 +133,20 @@ function richText(arr) {
   return (arr || []).map((r) => r.plain_text ?? "").join("");
 }
 
+// Extract a page's Notion icon for the sidebar. Emojis are stable; custom
+// image icons use Notion-hosted URLs (external is stable, file URLs are
+// short-lived presigned links — fine for display between syncs).
+function pageIcon(page) {
+  const ic = page?.icon;
+  if (!ic) return null;
+  if (ic.type === "emoji" && ic.emoji) return { type: "emoji", value: ic.emoji };
+  if (ic.type === "external" && ic.external?.url)
+    return { type: "url", value: ic.external.url };
+  if (ic.type === "file" && ic.file?.url)
+    return { type: "url", value: ic.file.url };
+  return null;
+}
+
 function pageTitle(page) {
   // A page from pages.retrieve has properties; find the `title` type.
   const props = page.properties || {};
@@ -372,7 +386,7 @@ async function markError(connectorId, message) {
   );
 }
 
-async function markSuccess(connectorId, itemCount, title) {
+async function markSuccess(connectorId, itemCount, title, extraMeta = {}) {
   await pgExecute(
     DATABASE_URL,
     `update connectors
@@ -383,7 +397,11 @@ async function markSuccess(connectorId, itemCount, title) {
            metadata = metadata || $3::jsonb,
            updated_at = now()
      where id = $1`,
-    [connectorId, itemCount, JSON.stringify({ resource_title: title })]
+    [
+      connectorId,
+      itemCount,
+      JSON.stringify({ resource_title: title, ...extraMeta }),
+    ]
   );
 }
 
@@ -458,13 +476,26 @@ export const handler = async (event) => {
     const norm = (x) => String(x || "").replace(/-/g, "");
     const visited = new Set();
 
+    // Build a Notion-style hierarchy (page icons + nesting) for the sidebar
+    // as we crawl. Each node: { id, title, key, icon, children }.
+    const nodes = new Map(); // normId -> node
+    let rootNode = null;
+
     const queue = [];
     if (kind === "page") {
-      queue.push(resource);
+      queue.push({ page: resource, parentId: null });
     } else {
       visited.add(norm(resourceId));
+      rootNode = {
+        id: resourceId,
+        title: topTitle,
+        key: null, // a database has no page body of its own
+        icon: pageIcon(resource),
+        children: [],
+      };
+      nodes.set(norm(resourceId), rootNode);
       for (const r of await queryDatabasePages(accessToken, resourceId)) {
-        queue.push(r);
+        queue.push({ page: r, parentId: resourceId });
       }
     }
 
@@ -488,12 +519,27 @@ export const handler = async (event) => {
         truncated = true;
         break;
       }
-      const page = queue.shift();
+      const { page, parentId } = queue.shift();
       if (visited.has(norm(page.id))) continue;
       visited.add(norm(page.id));
 
       const title = pageTitle(page);
       const key = uniqueKey(title, page.id);
+
+      // Record this page in the hierarchy under its parent.
+      const node = {
+        id: page.id,
+        title,
+        key,
+        icon: pageIcon(page),
+        children: [],
+      };
+      nodes.set(norm(page.id), node);
+      if (parentId == null) {
+        rootNode = node;
+      } else {
+        nodes.get(norm(parentId))?.children.push(node);
+      }
 
       const discovered = [];
       const topBlocks = await fetchBlockChildren(accessToken, page.id);
@@ -534,11 +580,14 @@ export const handler = async (event) => {
         if (visited.has(norm(d.id))) continue;
         try {
           if (d.type === "page") {
-            queue.push(await fetchPage(accessToken, d.id));
+            queue.push({
+              page: await fetchPage(accessToken, d.id),
+              parentId: page.id,
+            });
           } else if (d.type === "database") {
             visited.add(norm(d.id));
             for (const r of await queryDatabasePages(accessToken, d.id)) {
-              queue.push(r);
+              queue.push({ page: r, parentId: page.id });
             }
           }
         } catch (e) {
@@ -556,7 +605,12 @@ export const handler = async (event) => {
     const stale = existing.filter((k) => !freshKeys.has(k));
     await deleteKeys(stale);
 
-    await markSuccess(connectorId, pageCount, topTitle);
+    await markSuccess(
+      connectorId,
+      pageCount,
+      topTitle,
+      rootNode ? { notion_tree: rootNode } : {}
+    );
     return { ok: true, kind, pages: pageCount, blocks: totalBlocks, truncated };
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

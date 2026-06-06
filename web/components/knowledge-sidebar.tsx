@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { FolderNode, type TreeContext } from "@/components/knowledge-tree";
+import { NotionSource } from "@/components/notion-tree";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -187,22 +188,41 @@ export function KnowledgeSidebar({
         }
       >
         <div className="space-y-0.5">
-          {CONNECTOR_TYPES.map((type) => (
-            <FolderNode
-              key={type}
-              prefix={SOURCE_TYPES[type].prefix}
-              name={SOURCE_TYPES[type].menuLabel}
-              depth={0}
-              ctx={browseCtx}
-              forceHeader
-              prefetch
-              hideWhenEmpty
-              defaultOpen={false}
-              headerIcon={
-                <TypeIcon type={type} className="h-3.5 w-3.5 shrink-0 opacity-90" />
-              }
-            />
-          ))}
+          {CONNECTOR_TYPES.map((type) =>
+            type === "notion" ? (
+              // Notion gets a dedicated, Notion-style tree (page emojis +
+              // nesting) built from the hierarchy the sync stores per
+              // connector, instead of the flat S3 folder listing.
+              <NotionSource
+                key="notion"
+                refreshKey={refreshKey}
+                selectedKey={selectedKey}
+                onSelectFile={(key) => {
+                  onSelectFile(key);
+                  closeMobileNav();
+                }}
+                onOpenInNewTab={onOpenInNewTab}
+              />
+            ) : (
+              <FolderNode
+                key={type}
+                prefix={SOURCE_TYPES[type].prefix}
+                name={SOURCE_TYPES[type].menuLabel}
+                depth={0}
+                ctx={browseCtx}
+                forceHeader
+                prefetch
+                hideWhenEmpty
+                defaultOpen={false}
+                headerIcon={
+                  <TypeIcon
+                    type={type}
+                    className="h-3.5 w-3.5 shrink-0 opacity-90"
+                  />
+                }
+              />
+            )
+          )}
           <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
             Manage connectors on the{" "}
             <Link

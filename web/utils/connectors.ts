@@ -44,6 +44,15 @@ export type ConnectorType =
   | "notion"
   | "github";
 
+// Notion page hierarchy captured by the sync (for the Notion-style sidebar).
+export type NotionTreeNode = {
+  id: string;
+  title: string;
+  key: string | null; // S3 key of the page's .md (null for a database root)
+  icon: { type: "emoji" | "url"; value: string } | null;
+  children: NotionTreeNode[];
+};
+
 export type Connector = {
   id: string;
   type: ConnectorType;
@@ -55,6 +64,7 @@ export type Connector = {
   token_secret_arn?: string;
   google_account_email?: string;
   notion_workspace_name?: string;
+  notion_tree?: NotionTreeNode;
   github_account_login?: string;
   item_count?: number;
   last_synced_at?: string;
@@ -231,6 +241,7 @@ export function toClientConnector(row: ConnectorRow): Connector {
     token_secret_arn: row.tokenSecretArn ?? undefined,
     google_account_email: metaString(meta, "google_account_email"),
     notion_workspace_name: metaString(meta, "notion_workspace_name"),
+    notion_tree: (meta.notion_tree as NotionTreeNode | undefined) ?? undefined,
     github_account_login: metaString(meta, "github_account_login"),
     item_count: row.itemCount ?? undefined,
     last_synced_at: row.lastSyncedAt
