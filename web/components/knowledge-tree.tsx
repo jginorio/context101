@@ -310,11 +310,7 @@ export function FolderNode({
 
     const visibleFolders = state.data.folders.filter(
       (folder) =>
-        !(
-          parentPrefix === prefix &&
-          !showRoot &&
-          hideRootFolders?.includes(folder.name)
-        )
+        !(parentPrefix === prefix && hideRootFolders?.includes(folder.name))
     );
 
     const children: KnowledgeTreeNode[] = [

@@ -70,10 +70,9 @@ function NotionNode({
         else if (hasChildren) setOpen((o) => !o);
       }}
       className={cn(
-        "group flex cursor-pointer items-center gap-1 rounded-md py-1 pr-2 text-sm transition-colors hover:bg-muted/60",
+        "group flex cursor-pointer items-center gap-1 rounded-md py-1 pr-2 pl-1 text-sm transition-colors hover:bg-muted/60",
         selected && "bg-muted text-foreground"
       )}
-      style={{ paddingLeft: depth * 12 + 2 }}
     >
       {hasChildren ? (
         <button
@@ -117,7 +116,8 @@ function NotionNode({
         row
       )}
       {hasChildren && open ? (
-        <div>
+        // Indent children with a subtle vertical guide line (Notion-style).
+        <div className="ml-[15px] border-l border-sidebar-border/70 pl-1.5">
           {node.children.map((child) => (
             <NotionNode
               key={child.id}

@@ -3,9 +3,8 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  ChevronDown,
-  ChevronRight,
   FilePlus,
+  FolderClosed,
   FolderPlus,
   MoreHorizontal,
   Plus,
@@ -33,38 +32,26 @@ import { useAppShell } from "@/components/app-shell";
 // keep them out of the uploaded files tree.
 const HIDDEN_ROOT_FOLDERS = ["sources", "wiki"];
 
-function SidebarSection({
+// A muted group label with an optional hover-revealed action, matching the
+// clean "Overview / Projects / Team" grouping in dashboard-style sidebars.
+function GroupHeader({
   label,
-  collapsed,
-  onToggle,
   action,
-  children,
 }: {
   label: string;
-  collapsed: boolean;
-  onToggle: () => void;
   action?: React.ReactNode;
-  children: React.ReactNode;
 }) {
   return (
-    <section className="app-surface">
-      <div className="flex items-center gap-1 border-b border-border/60 px-1.5 py-1">
-        <button
-          type="button"
-          onClick={onToggle}
-          className="flex min-w-0 flex-1 items-center gap-1.5 rounded-md px-1 py-0.5 text-left text-xs font-medium text-foreground transition-colors hover:bg-muted/60"
-        >
-          {collapsed ? (
-            <ChevronRight className="h-3.5 w-3.5 shrink-0 opacity-70" />
-          ) : (
-            <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-70" />
-          )}
-          <span className="truncate">{label}</span>
-        </button>
-        {action}
-      </div>
-      {!collapsed ? <div className="p-1">{children}</div> : null}
-    </section>
+    <div className="group/hdr flex items-center justify-between gap-1 px-2 pt-1 pb-0.5">
+      <span className="text-[11px] font-medium uppercase tracking-wider text-muted-foreground/70">
+        {label}
+      </span>
+      {action ? (
+        <span className="opacity-0 transition-opacity group-hover/hdr:opacity-100">
+          {action}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
@@ -84,13 +71,6 @@ export function KnowledgeSidebar({
   onNewFolder: (parentPrefix: string) => void;
 }) {
   const { closeMobileNav } = useAppShell();
-
-  const [expanded, setExpanded] = React.useState({
-    "your-files": true,
-    sources: true,
-  });
-  const toggleSection = (id: "your-files" | "sources") =>
-    setExpanded((prev) => ({ ...prev, [id]: !prev[id] }));
 
   const [addType, setAddType] = React.useState<ConnectorType | null>(null);
 
@@ -117,125 +97,124 @@ export function KnowledgeSidebar({
   };
 
   return (
-    <div className="space-y-2">
-      <SidebarSection
-        label="Uploaded files"
-        collapsed={!expanded["your-files"]}
-        onToggle={() => toggleSection("your-files")}
-        action={
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  className="h-6 w-6 shrink-0"
-                  aria-label="Uploaded files actions"
-                />
-              }
-            >
-              <MoreHorizontal className="h-3.5 w-3.5" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onNewFile("")}>
-                <FilePlus className="mr-2 h-3.5 w-3.5" /> New file
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={() => onNewFolder("")}>
-                <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        }
-      >
-        <div className="min-h-8 rounded-md">
-          <FolderNode
-            prefix=""
-            name="/"
-            depth={0}
-            ctx={editableCtx}
-            hideRootFolders={HIDDEN_ROOT_FOLDERS}
-          />
-        </div>
-      </SidebarSection>
-
-      <SidebarSection
-        label="Connected sources"
-        collapsed={!expanded.sources}
-        onToggle={() => toggleSection("sources")}
-        action={
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  className="h-6 w-6 shrink-0"
-                  aria-label="Add connected source"
-                />
-              }
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {CONNECTOR_TYPES.map((t) => (
-                <DropdownMenuItem key={t} onClick={() => setAddType(t)}>
-                  <TypeIcon type={t} className="mr-2 h-3.5 w-3.5" />
-                  {SOURCE_TYPES[t].menuLabel}
-                </DropdownMenuItem>
-              ))}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        }
-      >
-        <div className="space-y-0.5">
-          {CONNECTOR_TYPES.map((type) =>
-            type === "notion" ? (
-              // Notion gets a dedicated, Notion-style tree (page emojis +
-              // nesting) built from the hierarchy the sync stores per
-              // connector, instead of the flat S3 folder listing.
-              <NotionSource
-                key="notion"
-                refreshKey={refreshKey}
-                selectedKey={selectedKey}
-                onSelectFile={(key) => {
-                  onSelectFile(key);
-                  closeMobileNav();
-                }}
-                onOpenInNewTab={onOpenInNewTab}
-              />
-            ) : (
-              <FolderNode
-                key={type}
-                prefix={SOURCE_TYPES[type].prefix}
-                name={SOURCE_TYPES[type].menuLabel}
-                depth={0}
-                ctx={browseCtx}
-                forceHeader
-                prefetch
-                hideWhenEmpty
-                defaultOpen={false}
-                headerIcon={
-                  <TypeIcon
-                    type={type}
-                    className="h-3.5 w-3.5 shrink-0 opacity-90"
+    <div className="space-y-3">
+      {/* Library — uploaded files as one expandable parent */}
+      <div className="space-y-0.5">
+        <GroupHeader
+          label="Library"
+          action={
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    className="h-5 w-5 shrink-0"
+                    aria-label="Uploaded files actions"
                   />
                 }
-              />
-            )
-          )}
-          <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
-            Manage connectors on the{" "}
-            <Link
-              href="/sources"
-              onClick={closeMobileNav}
-              className="font-medium text-foreground underline-offset-2 hover:underline"
-            >
-              Sources
-            </Link>{" "}
-            page.
-          </p>
-        </div>
-      </SidebarSection>
+              >
+                <MoreHorizontal className="h-3.5 w-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={() => onNewFile("")}>
+                  <FilePlus className="mr-2 h-3.5 w-3.5" /> New file
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => onNewFolder("")}>
+                  <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+        />
+        <FolderNode
+          prefix=""
+          name="Uploaded Files"
+          depth={0}
+          ctx={editableCtx}
+          hideRootFolders={HIDDEN_ROOT_FOLDERS}
+          forceHeader
+          defaultOpen
+          headerIcon={
+            <FolderClosed className="h-3.5 w-3.5 shrink-0 opacity-90" />
+          }
+        />
+      </div>
+
+      {/* Sources — each connector as an expandable item (Notion gets the
+          Notion-style tree). */}
+      <div className="space-y-0.5">
+        <GroupHeader
+          label="Sources"
+          action={
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    size="icon-sm"
+                    variant="ghost"
+                    className="h-5 w-5 shrink-0"
+                    aria-label="Add connected source"
+                  />
+                }
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {CONNECTOR_TYPES.map((t) => (
+                  <DropdownMenuItem key={t} onClick={() => setAddType(t)}>
+                    <TypeIcon type={t} className="mr-2 h-3.5 w-3.5" />
+                    {SOURCE_TYPES[t].menuLabel}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          }
+        />
+        {CONNECTOR_TYPES.map((type) =>
+          type === "notion" ? (
+            <NotionSource
+              key="notion"
+              refreshKey={refreshKey}
+              selectedKey={selectedKey}
+              onSelectFile={(key) => {
+                onSelectFile(key);
+                closeMobileNav();
+              }}
+              onOpenInNewTab={onOpenInNewTab}
+            />
+          ) : (
+            <FolderNode
+              key={type}
+              prefix={SOURCE_TYPES[type].prefix}
+              name={SOURCE_TYPES[type].menuLabel}
+              depth={0}
+              ctx={browseCtx}
+              forceHeader
+              prefetch
+              hideWhenEmpty
+              defaultOpen={false}
+              headerIcon={
+                <TypeIcon
+                  type={type}
+                  className="h-3.5 w-3.5 shrink-0 opacity-90"
+                />
+              }
+            />
+          )
+        )}
+        <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
+          Manage connectors on the{" "}
+          <Link
+            href="/sources"
+            onClick={closeMobileNav}
+            className="font-medium text-foreground underline-offset-2 hover:underline"
+          >
+            Sources
+          </Link>{" "}
+          page.
+        </p>
+      </div>
 
       <AddSourceDialog
         open={!!addType}
