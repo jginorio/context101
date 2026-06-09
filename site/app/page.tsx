@@ -105,16 +105,15 @@ export default function HomePage() {
         <BrainGlobe className="pointer-events-none absolute left-1/2 top-[54%] -z-10 h-[min(135vw,860px)] w-[min(135vw,860px)] -translate-x-1/2 -translate-y-1/2 opacity-70 mask-[radial-gradient(circle_at_center,#000_34%,transparent_70%)]" />
 
         <FadeIn className="mx-auto flex max-w-3xl flex-col items-center">
-          <h1 className="text-[clamp(44px,8vw,82px)] leading-[0.95] font-bold tracking-[-0.06em]">
+          <h1 className="text-[clamp(52px,13vw,82px)] leading-[0.95] font-bold tracking-[-0.06em]">
             One brain.
             <br />
             <span className="text-primary">Every AI tool.</span>
           </h1>
 
-          <p className="mt-6 max-w-xl text-lg leading-8 text-balance text-muted-foreground">
-            The hosted knowledge base that feeds Cursor, Claude, Devin, and your
-            own agents the same approved context. Want to run it yourself? It&apos;s
-            open source.
+          <p className="mt-6 max-w-sm text-base leading-7 text-balance text-muted-foreground sm:max-w-xl sm:text-lg sm:leading-8">
+            One approved knowledge base that feeds Cursor, Claude, Devin, and
+            your own agents. Open source.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
