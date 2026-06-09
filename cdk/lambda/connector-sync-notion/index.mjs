@@ -20,6 +20,7 @@ import { createRequire } from "node:module";
 import {
   S3Client,
   PutObjectCommand,
+  GetObjectCommand,
   ListObjectsV2Command,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
@@ -613,8 +614,32 @@ export const handler = async (event) => {
     // "key does not exist" after a flaky sync). Skip the prune in that case.
     if (!partial && !truncated) {
       const existing = await listKeysUnder(prefix);
-      const stale = existing.filter((k) => !freshKeys.has(k));
-      await deleteKeys(stale);
+      const staleMd = existing.filter(
+        (k) => k.endsWith(".md") && !freshKeys.has(k)
+      );
+      // Multiple Notion connectors can share one workspace prefix, so ONLY
+      // delete pages this connector owns (verified via the sidecar's
+      // connector_id). Otherwise a concurrent sibling sync would treat the
+      // other connector's pages as "stale" and delete them — which caused
+      // "key does not exist" for pages that were actually fine.
+      const toDelete = [];
+      for (const k of staleMd) {
+        try {
+          const r = await s3.send(
+            new GetObjectCommand({
+              Bucket: DOCS_BUCKET,
+              Key: `${k}.metadata.json`,
+            })
+          );
+          const meta = JSON.parse(await r.Body.transformToString());
+          if (meta?.metadataAttributes?.connector_id === connectorId) {
+            toDelete.push(k, `${k}.metadata.json`);
+          }
+        } catch {
+          // No/unreadable sidecar — ownership unknown, leave it alone.
+        }
+      }
+      await deleteKeys(toDelete);
     } else {
       console.warn(
         `notion: partial crawl (partial=${partial}, truncated=${truncated}) — skipping prune to avoid deleting pages that didn't sync this run`
