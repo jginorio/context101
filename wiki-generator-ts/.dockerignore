@@ -1,0 +1,7 @@
+# Keep the Docker build context (and the CDK asset fingerprint) limited to
+# the build inputs — local installs/builds would churn the image hash.
+node_modules
+dist
+*.log
+.gitignore
+README.md
