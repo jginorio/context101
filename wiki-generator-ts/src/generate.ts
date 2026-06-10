@@ -22,6 +22,8 @@ import {
   DOCS_BUCKET,
   MAX_PAGES,
   MIN_PAGES,
+  MODEL_ID,
+  MODEL_PROVIDER,
   REPO_FULL_NAME,
   WIKI_AUTOLINK,
   WIKI_FORCE,
@@ -98,6 +100,20 @@ async function generatePage(
 export async function main(): Promise<number> {
   const startedAt = new Date().toISOString();
   const t0 = Date.now();
+
+  // Identify ourselves first. The Python generator prints no banner, so this
+  // line doubles as the "which generator ran this task?" discriminator in
+  // CloudWatch (no banner = Python).
+  const flag = (v: boolean) => (v ? "on" : "off");
+  console.log(
+    `Context101 Wiki Generator (TypeScript) · mode=${WIKI_MODE} ` +
+      `provider=${MODEL_PROVIDER} model=${MODEL_ID}`
+  );
+  console.log(
+    `  flags: autolink=${flag(WIKI_AUTOLINK)} gaps=${flag(WIKI_GAPS)} ` +
+      `incremental=${flag(WIKI_INCREMENTAL)} force=${flag(WIKI_FORCE)} ` +
+      `· bucket=${DOCS_BUCKET}`
+  );
 
   const scope =
     WIKI_MODE === "code"

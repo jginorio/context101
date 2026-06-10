@@ -5,7 +5,7 @@
   "type": "module",
   "description": "TypeScript port of the Context101 wiki generator (validation twin of wiki-generator/).",
   "scripts": {
-    "build": "tsc && cp -r src/prompts dist/prompts",
+    "build": "tsc && rm -rf dist/prompts && cp -r src/prompts dist/prompts",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "typecheck": "tsc --noEmit"
