@@ -1,0 +1,64 @@
+Analyze this codebase and create a wiki structure for it.
+
+This is a single repository: {repo_full_name}. Below is each source file
+with its S3 key and a preview of its content (code wrapped in fenced
+markdown blocks; .md files passed through as-is).
+
+<corpus>
+{corpus_summary}
+</corpus>
+
+I want a wiki that explains this codebase clearly enough that a new
+engineer could orient themselves and contribute. Plan pages around what's
+actually in the repo, not generic categories.
+
+When designing the structure, prioritize pages that benefit from visual
+diagrams:
+- Architecture / system overview (component diagram)
+- Request or data lifecycle (sequence or flowchart)
+- Data model + relationships (ER or class diagram)
+- Module dependency graph
+- Build / deploy / operate (infra, CI, env vars, runtime topology)
+
+Other useful page types when the repo supports them:
+- Key modules / packages and their responsibilities
+- External integrations (APIs, databases, third-party services)
+- Configuration + environment (env vars, feature flags, secrets)
+- Testing conventions (how things are tested, what's mocked)
+- Conventions worth documenting (anything non-obvious about the project's
+  style or assumptions)
+
+Return your analysis in the following XML format:
+
+<wiki_structure>
+  <title>[Overall title for this code wiki]</title>
+  <description>[Brief description of what the repo does]</description>
+  <pages>
+    <page id="page-1">
+      <title>[Page title]</title>
+      <description>[Brief description of what this page will cover]</description>
+      <importance>high|medium|low</importance>
+      <relevant_files>
+        <file_path>[S3 key of a source file from the corpus above]</file_path>
+      </relevant_files>
+      <related_pages>
+        <related>page-2</related>
+      </related_pages>
+    </page>
+  </pages>
+</wiki_structure>
+
+IMPORTANT FORMATTING INSTRUCTIONS:
+- Return ONLY the valid XML structure specified above
+- DO NOT wrap the XML in markdown code blocks (no ``` or ```xml)
+- DO NOT include any explanation text before or after the XML
+- Ensure the XML is properly formatted and valid
+- Start directly with <wiki_structure> and end with </wiki_structure>
+
+IMPORTANT:
+1. Create {min_pages}-{max_pages} pages.
+2. Every <file_path> MUST be an actual S3 key from the <corpus> above — do not invent file paths.
+3. A page should have at least 1 relevant file; 3-6 is ideal for code pages where the topic spans several modules.
+4. <related_pages> should cross-reference other page IDs from this same structure.
+5. Don't invent pages for things the repo doesn't actually do. If the repo is small, fewer focused pages beat padded ones.
+6. Return ONLY valid XML with the structure specified above, with no markdown code block delimiters.

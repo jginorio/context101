@@ -286,9 +286,12 @@ export class Context101Stack extends cdk.Stack {
       clusterName: `${namePrefix}-wiki`,
     });
 
-    // c) Container image from wiki-generator/
+    // c) Container image from wiki-generator-ts/ (TypeScript port; same env
+    // contract as the original Python generator in wiki-generator/, which is
+    // kept around for reference/rollback — point directory back there to
+    // revert).
     const wikiImage = new ecr_assets.DockerImageAsset(this, "WikiGenImage", {
-      directory: path.resolve(__dirname, "..", "..", "wiki-generator"),
+      directory: path.resolve(__dirname, "..", "..", "wiki-generator-ts"),
       platform: ecr_assets.Platform.LINUX_AMD64,
     });
 
