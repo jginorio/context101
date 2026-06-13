@@ -18,7 +18,13 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
-type Provider = "bedrock" | "anthropic" | "openai" | "grok" | "gemini";
+type Provider =
+  | "bedrock"
+  | "anthropic"
+  | "openai"
+  | "grok"
+  | "gemini"
+  | "claude-code";
 
 const PROVIDERS: { id: Provider; label: string }[] = [
   { id: "bedrock", label: "AWS Bedrock (no key needed)" },
@@ -26,6 +32,7 @@ const PROVIDERS: { id: Provider; label: string }[] = [
   { id: "openai", label: "OpenAI" },
   { id: "grok", label: "xAI Grok" },
   { id: "gemini", label: "Google Gemini" },
+  { id: "claude-code", label: "Claude Code (Pro/Max subscription)" },
 ];
 
 const MODEL_PLACEHOLDER: Record<Provider, string> = {
@@ -34,6 +41,7 @@ const MODEL_PLACEHOLDER: Record<Provider, string> = {
   openai: "e.g. gpt-4o",
   grok: "e.g. grok-4",
   gemini: "e.g. gemini-2.5-pro",
+  "claude-code": "optional — e.g. opus, sonnet (blank = subscription default)",
 };
 
 const KEY_LABEL: Partial<Record<Provider, string>> = {
@@ -41,6 +49,7 @@ const KEY_LABEL: Partial<Record<Provider, string>> = {
   openai: "OpenAI API key",
   grok: "xAI API key",
   gemini: "Google AI API key",
+  "claude-code": "Claude Code OAuth token",
 };
 
 const KEY_HELP: {
@@ -92,6 +101,18 @@ const KEY_HELP: {
       "Get API key → Create API key (in a Google Cloud project)",
     ],
     prefix: "AIza…",
+  },
+  {
+    id: "claude-code",
+    label: "Claude Code (Pro/Max subscription)",
+    url: "https://docs.claude.com/en/docs/claude-code/setup",
+    steps: [
+      "Install Claude Code: npm i -g @anthropic-ai/claude-code",
+      "Run `claude setup-token` in your terminal",
+      "Log in with your Claude Pro/Max account in the browser",
+      "Paste the printed long-lived token here (not a console API key)",
+    ],
+    prefix: "sk-ant-oat…",
   },
 ];
 
