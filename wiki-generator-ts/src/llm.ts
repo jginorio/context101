@@ -22,8 +22,9 @@
  */
 
 import { spawn } from "node:child_process";
-import { mkdir, writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
+import { randomUUID } from "node:crypto";
+import { mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
 import { ConverseCommand } from "@aws-sdk/client-bedrock-runtime";
 import { GetSecretValueCommand } from "@aws-sdk/client-secrets-manager";
@@ -128,6 +129,8 @@ const AGENT_SYSTEM =
  * Because the CLI runs as a local child process, the host's process env / files
  * are exactly what it authenticates against.
  */
+let _subscriptionAuthLoaded = false;
+
 async function loadSubscriptionAuth(): Promise<void> {
   const cred = await llmApiKey();
   if (MODEL_PROVIDER === "claude-code") {
@@ -179,33 +182,57 @@ async function invokeClaudeCode(userText: string): Promise<string> {
  * this path as best-effort and re-check the flags on CLI upgrades.
  */
 async function invokeCodex(userText: string): Promise<string> {
+  // The prompt is piped via stdin (the `-` prompt arg tells `codex exec` to
+  // read instructions from stdin). Wiki prompts routinely exceed Linux's 128KB
+  // per-argument limit (MAX_ARG_STRLEN) — the corpus summary alone is capped at
+  // CORPUS_SUMMARY_MAX_CHARS (240k) — so they cannot be passed as argv without
+  // an E2BIG failure. The final answer is captured via --output-last-message
+  // rather than scraped from stdout framing. Sandbox is read-only so the agent
+  // can't write to the workspace; it's instructed not to use tools at all.
   const prompt = `${AGENT_SYSTEM}\n\n${userText}`;
-  const args = ["exec", "--skip-git-repo-check"];
+  const outFile = join(tmpdir(), `codex-out-${randomUUID()}.txt`);
+  const args = [
+    "exec",
+    "--skip-git-repo-check",
+    "--sandbox",
+    "read-only",
+    "--color",
+    "never",
+    "--output-last-message",
+    outFile,
+  ];
   if (HARNESS_MODEL) args.push("--model", HARNESS_MODEL);
-  args.push(prompt);
+  args.push("-");
 
-  return await new Promise<string>((resolve, reject) => {
-    const child = spawn("codex", args, {
-      env: process.env,
-      stdio: ["ignore", "pipe", "pipe"],
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const child = spawn("codex", args, {
+        env: process.env,
+        stdio: ["pipe", "ignore", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (d) => (stderr += d));
+      child.on("error", reject);
+      child.on("close", (code) => {
+        if (code === 0) resolve();
+        else reject(new Error(`codex exec exited ${code}: ${stderr.trim()}`));
+      });
+      child.stdin.end(prompt);
     });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (d) => (stdout += d));
-    child.stderr.on("data", (d) => (stderr += d));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) resolve(stdout.trim());
-      else reject(new Error(`codex exec exited ${code}: ${stderr.trim()}`));
-    });
-  });
+    return (await readFile(outFile, "utf8")).trim();
+  } finally {
+    await rm(outFile, { force: true });
+  }
 }
 
 /** Single-turn LLM call routed to the configured provider. */
 export async function invokeLlm(userText: string): Promise<string> {
   if (MODEL_PROVIDER === "bedrock") return invokeBedrock(userText);
   if (MODEL_PROVIDER === "claude-code" || MODEL_PROVIDER === "codex") {
-    await loadSubscriptionAuth();
+    if (!_subscriptionAuthLoaded) {
+      await loadSubscriptionAuth();
+      _subscriptionAuthLoaded = true;
+    }
     return MODEL_PROVIDER === "claude-code"
       ? invokeClaudeCode(userText)
       : invokeCodex(userText);
