@@ -49,8 +49,23 @@ export const MODEL_ID = env.MODEL_ID ?? "us.anthropic.claude-opus-4-7";
 // "gemini") are routed through the Vercel AI SDK (the TS analogue of the
 // Python generator's LiteLLM path) with an API key fetched from
 // LLM_KEY_SECRET_ARN.
+//
+// Subscription providers ("claude-code", "codex") drive the real coding-agent
+// CLI as a local subprocess in this container — Claude via the Claude Agent SDK
+// (`query()`), Codex via `codex exec` — authenticated by an OAuth subscription
+// token (Claude Pro/Max, ChatGPT Plus/Pro) instead of a metered API key. The
+// credential is read from LLM_KEY_SECRET_ARN (the CLAUDE_CODE_OAUTH_TOKEN value
+// for claude-code, or the codex auth.json blob for codex). See the README's
+// "Subscription providers" section — including the Terms-of-Service caveat —
+// before enabling these.
 export const MODEL_PROVIDER = (env.MODEL_PROVIDER ?? "bedrock").toLowerCase();
 export const LLM_KEY_SECRET_ARN = env.LLM_KEY_SECRET_ARN;
+
+// Optional agent model override (e.g. "claude-opus-4-7" / "opus" for
+// claude-code; "gpt-5-codex" for codex). Left empty, each CLI uses its own
+// default for the authenticated subscription. MODEL_ID is a Bedrock-shaped id
+// and is NOT used by the subscription providers.
+export const HARNESS_MODEL = env.HARNESS_MODEL ?? "";
 
 export const MIN_PAGES = parseInt(env.MIN_PAGES ?? "4", 10);
 export const MAX_PAGES = parseInt(env.MAX_PAGES ?? "8", 10);
