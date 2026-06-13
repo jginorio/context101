@@ -54,10 +54,10 @@ export function LegalDocument({
         <div className="surface-callout mt-10 p-5 text-sm leading-6 text-muted-foreground">
           {contactLabel}{" "}
           <a
-            href="mailto:jginorio@redventures.com"
+            href="mailto:hi@context101.dev"
             className="text-foreground underline underline-offset-4"
           >
-            jginorio@redventures.com
+            hi@context101.dev
           </a>
           .
         </div>
