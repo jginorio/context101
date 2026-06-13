@@ -599,6 +599,20 @@ export default function HomePage() {
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t section-divider py-6 text-[13px] text-muted-foreground">
         <span>Context101 alpha. Open-source first.</span>
+        <div className="flex items-center gap-3">
+          <Link
+            href="/terms-of-use"
+            className="transition-colors hover:text-foreground"
+          >
+            Terms of Use
+          </Link>
+          <Link
+            href="/privacy-policy"
+            className="transition-colors hover:text-foreground"
+          >
+            Privacy Policy
+          </Link>
+        </div>
       </footer>
     </main>
   );
