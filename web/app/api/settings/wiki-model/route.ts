@@ -18,8 +18,19 @@ const secrets = new SecretsManagerClient({
   region: process.env.AWS_REGION ?? "us-east-1",
 });
 
-const PROVIDERS = ["bedrock", "anthropic", "openai", "grok", "gemini"] as const;
+const PROVIDERS = [
+  "bedrock",
+  "anthropic",
+  "openai",
+  "grok",
+  "gemini",
+  "claude-code",
+] as const;
 type Provider = (typeof PROVIDERS)[number];
+
+// Providers that require an explicit model id. The subscription CLI agents
+// (claude-code) default to the subscription's own model, so the id is optional.
+const NEEDS_MODEL_ID: Provider[] = ["anthropic", "openai", "grok", "gemini"];
 
 function keySecretName(brainId: string): string {
   return `context101-brain-${brainId}-llm-key`;
@@ -149,8 +160,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ ok: true });
     }
 
-    // Bring-your-own provider — model id is required.
-    if (!modelId) {
+    // Bring-your-own / subscription provider. API-key providers require an
+    // explicit model id; claude-code defers to the subscription default.
+    if (NEEDS_MODEL_ID.includes(provider) && !modelId) {
       return NextResponse.json(
         { error: "modelId is required for this provider" },
         { status: 400 }

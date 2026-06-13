@@ -94,7 +94,58 @@ All env vars from the Python generator are honored identically:
 `AWS_REGION`, `AWS_PROFILE`, `DOCS_BUCKET` (required), `WIKI_PREFIX`,
 `WIKI_MODE`, `CORPUS_PREFIX`, `REPO_FULL_NAME`, `MODEL_ID`, `MODEL_PROVIDER`,
 `LLM_KEY_SECRET_ARN`, `MIN_PAGES`, `MAX_PAGES`, `CORPUS_PREVIEW_CHARS`,
-`CORPUS_SUMMARY_MAX_CHARS`, `MAX_TOKENS`, `WIKI_FORCE`, `XML_DUMP_PATH`.
+`CORPUS_SUMMARY_MAX_CHARS`, `MAX_TOKENS`, `WIKI_FORCE`, `XML_DUMP_PATH`. The TS
+generator adds `HARNESS_MODEL` (see below).
+
+## Model providers
+
+`MODEL_PROVIDER` selects how each LLM call is made:
+
+| Value | Auth | How |
+|-------|------|-----|
+| `bedrock` (default) | keyless (task role) | Bedrock Converse API |
+| `anthropic` / `openai` / `grok` / `gemini` | API key in `LLM_KEY_SECRET_ARN` | Vercel AI SDK |
+| `claude-code` | **Claude Pro/Max subscription** OAuth token | Claude Agent SDK (local `claude` subprocess) |
+| `codex` | **ChatGPT Plus/Pro subscription** auth | `codex exec` (local subprocess) |
+
+### Subscription providers (`claude-code`, `codex`)
+
+These bill generation to a **subscription** instead of metered API tokens. The
+coding-agent CLI runs as a local subprocess *inside the wiki Fargate task* — no
+remote sandbox, no extra service — so the only marginal cost is the compute you
+already pay for. (We deliberately do **not** use the AI SDK 7 `HarnessAgent`:
+its `claude-code`/`codex` adapters are bridge-backed and require a
+port-exposing remote sandbox — only `@ai-sdk/sandbox-vercel` is published, and
+the local `just-bash` provider is rejected. Driving the CLI directly keeps
+everything in-container.)
+
+**Credential.** `LLM_KEY_SECRET_ARN` holds the subscription credential:
+
+- `claude-code` → the token from `claude setup-token`, exported as
+  `CLAUDE_CODE_OAUTH_TOKEN` for the bundled `claude` CLI.
+- `codex` → the contents of `~/.codex/auth.json` produced by `codex login`,
+  written to `$CODEX_HOME/auth.json` before `codex exec` runs.
+
+**Model.** Set `HARNESS_MODEL` to pick the agent model (e.g. `opus`,
+`claude-opus-4-7` for claude-code; `gpt-5-codex` for codex). Unset defers to
+each CLI's default. `MODEL_ID` is Bedrock-shaped and ignored by these providers.
+
+**Image.** `claude-code` needs no extra install — the `claude` CLI ships inside
+`@anthropic-ai/claude-agent-sdk`. `codex` needs the `codex` binary; build the
+image with `--build-arg WIKI_CODEX_CLI=1` (kept off by default so the standard
+image stays lean).
+
+**Maturity.** The `claude-code` path uses the **stable** Claude Agent SDK. The
+`codex` path shells out to `codex exec`, whose non-interactive contract is less
+stable — treat it as best-effort and re-check the flags on CLI upgrades.
+
+> **⚠️ Terms of Service.** Claude Pro/Max and ChatGPT Plus/Pro subscriptions are
+> licensed for interactive personal use. Using a subscription OAuth token to
+> drive automated, server-side generation may violate the provider's terms, and
+> the token can be revoked. This is a billing/licensing decision, not just an
+> engineering one — confirm it's permitted for your usage before enabling these
+> in production. The API-key (`anthropic`/`openai`) and `bedrock` paths are the
+> terms-safe options.
 
 ## Validating against the Python generator (diff run)
 

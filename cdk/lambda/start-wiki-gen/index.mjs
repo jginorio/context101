@@ -199,12 +199,22 @@ export const handler = async (event = {}) => {
   // Per-brain wiki model. Null provider → the generator's default Bedrock
   // path. For bring-your-own providers, pass the provider + model + the
   // Secrets Manager ARN holding the API key (the task fetches it at runtime;
-  // the raw key never lands in the task env / DescribeTasks output).
+  // the raw key never lands in the task env / DescribeTasks output). For the
+  // subscription CLI-agent providers (claude-code, codex) the secret holds an
+  // OAuth subscription token instead of an API key.
+  const isCliAgent =
+    brain.wiki_model_provider === "claude-code" ||
+    brain.wiki_model_provider === "codex";
   if (brain.wiki_model_provider) {
     overrideEnv.push({ name: "MODEL_PROVIDER", value: brain.wiki_model_provider });
   }
   if (brain.wiki_model_id) {
-    overrideEnv.push({ name: "MODEL_ID", value: brain.wiki_model_id });
+    // CLI agents read the model override from HARNESS_MODEL; MODEL_ID is a
+    // Bedrock-shaped id they ignore.
+    overrideEnv.push({
+      name: isCliAgent ? "HARNESS_MODEL" : "MODEL_ID",
+      value: brain.wiki_model_id,
+    });
   }
   if (brain.wiki_llm_key_secret_arn) {
     overrideEnv.push({

@@ -18,8 +18,20 @@ const region = process.env.AWS_REGION ?? "us-east-1";
 const secrets = new SecretsManagerClient({ region });
 const bedrock = new BedrockClient({ region });
 
-const PROVIDERS = ["bedrock", "anthropic", "openai", "grok", "gemini"] as const;
+const PROVIDERS = [
+  "bedrock",
+  "anthropic",
+  "openai",
+  "grok",
+  "gemini",
+  "claude-code",
+] as const;
 type Provider = (typeof PROVIDERS)[number];
+
+// claude-code's `--model` accepts short aliases or a full model id; the model
+// is optional (blank uses the subscription default), so we offer suggestions
+// rather than a live catalog (there's no list endpoint, and no key is needed).
+const CLAUDE_CODE_MODELS = ["opus", "sonnet", "haiku"];
 
 // Popular Bedrock model providers we surface (by ListFoundationModels'
 // providerName). Anything else (and legacy/non-text models) is filtered out.
@@ -189,6 +201,13 @@ export async function GET(request: NextRequest) {
         warning: `Couldn't list Bedrock models (${err instanceof Error ? err.message : String(err)}). You can type a model id.`,
       });
     }
+  }
+  if (provider === "claude-code") {
+    return NextResponse.json({
+      models: CLAUDE_CODE_MODELS,
+      warning:
+        "Optional — leave blank to use your Claude subscription's default model.",
+    });
   }
   if (!brainId) {
     return NextResponse.json({ error: "brain is required" }, { status: 400 });

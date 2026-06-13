@@ -1,6 +1,13 @@
 """
 Context101 Wiki Generator.
 
+⚠️ DEPRECATED — superseded by the TypeScript generator in ../wiki-generator-ts/,
+which is the image CDK now builds and deploys (see cdk/lib/context101-stack.ts).
+This Python implementation is retained only as a reference/rollback target and
+receives no new features (e.g. the subscription-backed claude-code/codex
+providers live only in the TS version). See ../wiki-generator-ts/README.md and
+./DEPRECATED.md. Do not build on this; port changes to the TS generator instead.
+
 Flow:
   1. List .md files from s3://DOCS_BUCKET/ excluding WIKI_PREFIX.
   2. Build a corpus summary (S3 key + preview of each doc).
