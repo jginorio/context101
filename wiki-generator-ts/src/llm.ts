@@ -134,7 +134,13 @@ let _subscriptionAuthLoaded = false;
 async function loadSubscriptionAuth(): Promise<void> {
   const cred = await llmApiKey();
   if (MODEL_PROVIDER === "claude-code") {
-    process.env.CLAUDE_CODE_OAUTH_TOKEN = cred;
+    // OAuth tokens contain no whitespace; strip any that crept in (e.g. a
+    // newline from copying the line-wrapped `claude setup-token` output) so a
+    // mangled paste doesn't reach the API as an "Invalid bearer token" 401.
+    process.env.CLAUDE_CODE_OAUTH_TOKEN = cred.replace(/\s+/g, "");
+    // Ensure a stray API-key env var can't take precedence over the token.
+    delete process.env.ANTHROPIC_API_KEY;
+    delete process.env.ANTHROPIC_AUTH_TOKEN;
     return;
   }
   // codex: persist the `codex login` auth blob to CODEX_HOME/auth.json.

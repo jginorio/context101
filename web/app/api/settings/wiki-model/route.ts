@@ -116,7 +116,12 @@ export async function POST(request: NextRequest) {
   const provider = body?.provider as Provider | undefined;
   const modelId =
     typeof body?.modelId === "string" ? body.modelId.trim() : "";
-  const apiKey = typeof body?.apiKey === "string" ? body.apiKey.trim() : "";
+  let apiKey = typeof body?.apiKey === "string" ? body.apiKey.trim() : "";
+  // claude-code's OAuth token contains no whitespace; strip any internal
+  // newline/space that survives a copy from the line-wrapped `claude
+  // setup-token` output, which would otherwise become a 401 "Invalid bearer
+  // token" at generation time.
+  if (provider === "claude-code") apiKey = apiKey.replace(/\s+/g, "");
 
   if (!brainId) {
     return NextResponse.json({ error: "brainId is required" }, { status: 400 });
