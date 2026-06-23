@@ -5,7 +5,11 @@ applications:
       phases:
         preBuild:
           commands:
-            - npm install --cache .npm --prefer-offline
+            # Monorepo: site/web/packages are npm workspaces with a single root
+            # lockfile, so deps must be installed from the repo root (web/ has
+            # no lockfile of its own). Each phase starts back at appRoot (web/),
+            # so the build phase below still runs inside web/.
+            - cd .. && npm install --cache .npm --prefer-offline
         build:
           commands:
             # Amplify exposes console/branch env vars to the build container,
@@ -19,6 +23,7 @@ applications:
           - "**/*"
       cache:
         paths:
+          # node_modules + npm cache live at the repo root under workspaces
           - .next/cache/**/*
-          - node_modules/**/*
-          - .npm/**/*
+          - ../node_modules/**/*
+          - ../.npm/**/*
