@@ -36,6 +36,17 @@ export class Context101Stack extends cdk.Stack {
     const embedDim = 1024;
     const embedModelArn = `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`;
 
+    // Embedding models a brain can be provisioned with at runtime are listed
+    // dynamically from Bedrock in the web app (Amazon Titan + Cohere Embed —
+    // see web/lib/embedding-models.ts). The shared KB role's InvokeModel grant
+    // is widened by pattern to every Amazon Titan and Cohere embedding model
+    // so per-brain KBs created by the provisioner can embed with any of them
+    // (including future ids like Cohere Embed v4), not just the default Titan.
+    const embeddingModelArns = [
+      `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-*`,
+      `arn:aws:bedrock:${this.region}::foundation-model/cohere.embed-*`,
+    ];
+
     // ── Postgres control plane (Neon) ─────────────────────────────────
     //   The web app + MCP server already read the brain/connector/
     //   suggestion registry from Postgres. The AWS worker Lambdas below
@@ -141,7 +152,7 @@ export class Context101Stack extends cdk.Stack {
       new iam.PolicyStatement({
         sid: "InvokeEmbeddingModel",
         actions: ["bedrock:InvokeModel"],
-        resources: [embedModelArn],
+        resources: embeddingModelArns,
       })
     );
     kbRole.addToPolicy(

@@ -34,6 +34,7 @@ import {
   DeleteKnowledgeBaseCommand,
   GetKnowledgeBaseCommand,
   GetDataSourceCommand,
+  StartIngestionJobCommand,
 } from "@aws-sdk/client-bedrock-agent";
 import {
   LambdaClient,
@@ -49,6 +50,8 @@ import {
   PutPublicAccessBlockCommand,
   PutBucketNotificationConfigurationCommand,
   ListObjectVersionsCommand,
+  ListObjectsV2Command,
+  CopyObjectCommand,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import {
@@ -133,16 +136,21 @@ function isNotFound(err) {
 // reconstructs the name, so we're free to change the formula.
 const BUCKET_BRAINID_MAX = 32;
 
-function shortHash(brainId) {
-  return createHash("sha256")
-    .update(`${brainId}\0${ACCOUNT}`)
-    .digest("hex")
-    .slice(0, 8);
+// `gen` is an optional generation salt. The default (no salt) hash is
+// preserved byte-for-byte so existing brains' derived names are unchanged.
+// A salt is used when re-embedding a brain in place: the new KB/index/bucket
+// must have names distinct from the brain's current ones (which still exist
+// and keep serving until the swap), even though the brain id is the same.
+function shortHash(brainId, gen) {
+  const input = gen
+    ? `${brainId}\0${ACCOUNT}\0${gen}`
+    : `${brainId}\0${ACCOUNT}`;
+  return createHash("sha256").update(input).digest("hex").slice(0, 8);
 }
 
-function bucketName(brainId) {
+function bucketName(brainId, gen) {
   const prefix = brainId.slice(0, BUCKET_BRAINID_MAX);
-  const name = `context101-brain-${prefix}-${shortHash(brainId)}`;
+  const name = `context101-brain-${prefix}-${shortHash(brainId, gen)}`;
   // Defensive guard: the math says we can't overflow, but if a future
   // edit ever loosens the regex on brain_id (e.g. allows uppercase) or
   // bumps the prefix budget, fail loudly here rather than during the
@@ -163,9 +171,9 @@ function bucketName(brainId) {
 // two long brain_ids that share a 32-char prefix.
 const INDEX_BRAINID_MAX = 32;
 
-function indexName(brainId) {
+function indexName(brainId, gen) {
   const prefix = brainId.slice(0, INDEX_BRAINID_MAX);
-  const name = `context101-brain-${prefix}-${shortHash(brainId)}`;
+  const name = `context101-brain-${prefix}-${shortHash(brainId, gen)}`;
   if (name.length > 63) {
     throw new Error(
       `index name out of range (${name.length} chars): ${name}`
@@ -174,12 +182,89 @@ function indexName(brainId) {
   return name;
 }
 
-function indexArn(brainId) {
-  return `arn:aws:s3vectors:${REGION}:${ACCOUNT}:bucket/${VECTOR_BUCKET_NAME}/index/${indexName(brainId)}`;
+function indexArnForName(name) {
+  return `arn:aws:s3vectors:${REGION}:${ACCOUNT}:bucket/${VECTOR_BUCKET_NAME}/index/${name}`;
+}
+
+function indexArn(brainId, gen) {
+  return indexArnForName(indexName(brainId, gen));
+}
+
+// Pull the index name back out of a stored s3vectors index ARN
+// (…:bucket/<vbucket>/index/<indexName>). Used at teardown time so we delete
+// the brain's *current* index, not one re-derived from the id (which may
+// differ after an in-place re-embed).
+function indexNameFromArn(arn) {
+  if (!arn) return null;
+  const m = /\/index\/([^/]+)$/.exec(arn);
+  return m ? m[1] : null;
 }
 
 function tokenSecretName(brainId) {
   return `context101-brain-${brainId}-token`;
+}
+
+// Resolve a brain's embedding settings from the invoke event, falling back to
+// the deploy-time defaults (Titan Embed v2 @ EMBED_DIM) for legacy create
+// events that predate per-brain embedding selection.
+function resolveEmbedding(event) {
+  return {
+    provider: event.embedding_model_provider || "aws",
+    modelId: event.embedding_model_id || "amazon.titan-embed-text-v2:0",
+    modelArn: event.embedding_model_arn || EMBED_MODEL_ARN,
+    dimensions: Number(event.embedding_dimensions) || EMBED_DIM,
+    chunking: event.embedding_chunking || { strategy: "default" },
+  };
+}
+
+// Translate our normalized chunking config into the Bedrock data source
+// `vectorIngestionConfiguration`. Returns undefined for the "default"
+// strategy so Bedrock applies its built-in chunking.
+function buildVectorIngestionConfiguration(chunking) {
+  const strategy = chunking?.strategy ?? "default";
+  if (strategy === "default") return undefined;
+  if (strategy === "none") {
+    return { chunkingConfiguration: { chunkingStrategy: "NONE" } };
+  }
+  if (strategy === "fixed") {
+    return {
+      chunkingConfiguration: {
+        chunkingStrategy: "FIXED_SIZE",
+        fixedSizeChunkingConfiguration: {
+          maxTokens: chunking.maxTokens ?? 300,
+          overlapPercentage: chunking.overlapPercentage ?? 20,
+        },
+      },
+    };
+  }
+  if (strategy === "semantic") {
+    return {
+      chunkingConfiguration: {
+        chunkingStrategy: "SEMANTIC",
+        semanticChunkingConfiguration: {
+          maxTokens: chunking.maxTokens ?? 300,
+          bufferSize: chunking.bufferSize ?? 0,
+          breakpointPercentileThreshold:
+            chunking.breakpointPercentileThreshold ?? 95,
+        },
+      },
+    };
+  }
+  if (strategy === "hierarchical") {
+    return {
+      chunkingConfiguration: {
+        chunkingStrategy: "HIERARCHICAL",
+        hierarchicalChunkingConfiguration: {
+          levelConfigurations: [
+            { maxTokens: chunking.parentMaxTokens ?? 1500 },
+            { maxTokens: chunking.childMaxTokens ?? 300 },
+          ],
+          overlapTokens: chunking.overlapTokens ?? 60,
+        },
+      },
+    };
+  }
+  return undefined;
 }
 
 async function createBrainBucket(name) {
@@ -266,14 +351,14 @@ async function wireAutoIngestNotification(bucket) {
   );
 }
 
-async function createVectorIndex(brainId) {
+async function createVectorIndex(idxName, dimension) {
   try {
     await s3vectors.send(
       new CreateIndexCommand({
         vectorBucketName: VECTOR_BUCKET_NAME,
-        indexName: indexName(brainId),
+        indexName: idxName,
         dataType: "float32",
-        dimension: EMBED_DIM,
+        dimension: dimension || EMBED_DIM,
         distanceMetric: "cosine",
         metadataConfiguration: {
           nonFilterableMetadataKeys: [
@@ -292,7 +377,7 @@ async function createVectorIndex(brainId) {
       await s3vectors.send(
         new GetIndexCommand({
           vectorBucketName: VECTOR_BUCKET_NAME,
-          indexName: indexName(brainId),
+          indexName: idxName,
         })
       );
       return;
@@ -301,34 +386,38 @@ async function createVectorIndex(brainId) {
       await new Promise((r) => setTimeout(r, 500));
     }
   }
-  throw new Error(`Vector index ${indexName(brainId)} not observable after create`);
+  throw new Error(`Vector index ${idxName} not observable after create`);
 }
 
-async function createBrainKb(brainId) {
+async function createBrainKb(kbName, modelArn, dimension, idxArn) {
   const res = await bedrock.send(
     new CreateKnowledgeBaseCommand({
-      name: `context101-brain-${brainId}`,
-      description: `Context101 brain: ${brainId}`,
+      name: kbName,
+      description: `Context101 brain KB: ${kbName}`,
       roleArn: SHARED_KB_ROLE_ARN,
       knowledgeBaseConfiguration: {
         type: "VECTOR",
         vectorKnowledgeBaseConfiguration: {
-          embeddingModelArn: EMBED_MODEL_ARN,
+          embeddingModelArn: modelArn || EMBED_MODEL_ARN,
           embeddingModelConfiguration: {
-            bedrockEmbeddingModelConfiguration: { dimensions: EMBED_DIM },
+            bedrockEmbeddingModelConfiguration: {
+              dimensions: dimension || EMBED_DIM,
+            },
           },
         },
       },
       storageConfiguration: {
         type: "S3_VECTORS",
-        s3VectorsConfiguration: { indexArn: indexArn(brainId) },
+        s3VectorsConfiguration: { indexArn: idxArn },
       },
     })
   );
   return res.knowledgeBase?.knowledgeBaseId;
 }
 
-async function createBrainDataSource(kbId, bucket) {
+async function createBrainDataSource(kbId, bucket, chunking) {
+  const vectorIngestionConfiguration =
+    buildVectorIngestionConfiguration(chunking);
   const res = await bedrock.send(
     new CreateDataSourceCommand({
       knowledgeBaseId: kbId,
@@ -337,6 +426,9 @@ async function createBrainDataSource(kbId, bucket) {
         type: "S3",
         s3Configuration: { bucketArn: `arn:aws:s3:::${bucket}` },
       },
+      ...(vectorIngestionConfiguration
+        ? { vectorIngestionConfiguration }
+        : {}),
     })
   );
   return res.dataSource?.dataSourceId;
@@ -389,14 +481,54 @@ async function setBrainStatus(brainId, status, errorMsg) {
   );
 }
 
-async function createBrain({
-  brain_id,
-  display_name,
-  description,
-  org_id,
-  created_by,
-  created_by_email,
-}) {
+// Flip a provisioned brain to `ready`, writing its resource handles and
+// embedding settings. Split out of createBrain so the replace/clone flow can
+// defer the ready flip until *after* the source content has been copied in —
+// otherwise the UI could see "ready" and switch/clean up mid-copy.
+async function finalizeBrain(brainId, embedding, handles) {
+  await pgExecute(
+    DATABASE_URL,
+    `update brains
+       set status = 'ready',
+           docs_bucket = $2,
+           vector_index_arn = $3,
+           kb_id = $4,
+           ds_id = $5,
+           token_secret_arn = $6,
+           embedding_model_provider = $7,
+           embedding_model_id = $8,
+           embedding_model_arn = $9,
+           embedding_dimensions = $10,
+           embedding_chunking = $11,
+           error_msg = null,
+           updated_at = now()
+     where id = $1`,
+    [
+      brainId,
+      handles.bucket,
+      indexArn(brainId),
+      handles.kbId,
+      handles.dsId,
+      handles.tokenSecretArn,
+      embedding.provider,
+      embedding.modelId,
+      embedding.modelArn,
+      embedding.dimensions,
+      embedding.chunking,
+    ]
+  );
+}
+
+async function createBrain(event, { finalize = true } = {}) {
+  const {
+    brain_id,
+    display_name,
+    description,
+    org_id,
+    created_by,
+    created_by_email,
+  } = event;
+  const embedding = resolveEmbedding(event);
   if (!brain_id || !display_name) {
     throw new Error("brain_id and display_name are required");
   }
@@ -450,32 +582,20 @@ async function createBrain({
     const bucket = bucketName(brain_id);
     await createBrainBucket(bucket);
     await wireAutoIngestNotification(bucket);
-    await createVectorIndex(brain_id);
-    const kbId = await createBrainKb(brain_id);
-    const dsId = await createBrainDataSource(kbId, bucket);
+    await createVectorIndex(indexName(brain_id), embedding.dimensions);
+    const kbId = await createBrainKb(
+      `context101-brain-${brain_id}`,
+      embedding.modelArn,
+      embedding.dimensions,
+      indexArn(brain_id)
+    );
+    const dsId = await createBrainDataSource(kbId, bucket, embedding.chunking);
     const tokenSecretArn = await createBrainToken(brain_id);
 
-    await pgExecute(
-      DATABASE_URL,
-      `update brains
-         set status = 'ready',
-             docs_bucket = $2,
-             vector_index_arn = $3,
-             kb_id = $4,
-             ds_id = $5,
-             token_secret_arn = $6,
-             error_msg = null,
-             updated_at = now()
-       where id = $1`,
-      [
-        brain_id,
-        bucket,
-        indexArn(brain_id),
-        kbId,
-        dsId,
-        tokenSecretArn,
-      ]
-    );
+    const handles = { bucket, kbId, dsId, tokenSecretArn };
+    if (finalize) {
+      await finalizeBrain(brain_id, embedding, handles);
+    }
 
     return {
       ok: true,
@@ -495,6 +615,252 @@ async function createBrain({
     }
     throw err;
   }
+}
+
+// Copy every object from one brain's docs bucket into another's, preserving
+// keys (including `.metadata.json` sidecars). Paginated; each segment of the
+// key is URL-encoded individually so slashes are preserved in CopySource.
+async function copyBucketContents(srcBucket, dstBucket) {
+  let token;
+  let copied = 0;
+  do {
+    const res = await s3.send(
+      new ListObjectsV2Command({
+        Bucket: srcBucket,
+        ContinuationToken: token,
+      })
+    );
+    for (const obj of res.Contents || []) {
+      if (!obj.Key) continue;
+      const encodedKey = obj.Key.split("/").map(encodeURIComponent).join("/");
+      await s3.send(
+        new CopyObjectCommand({
+          Bucket: dstBucket,
+          Key: obj.Key,
+          CopySource: `${srcBucket}/${encodedKey}`,
+        })
+      );
+      copied++;
+    }
+    token = res.IsTruncated ? res.NextContinuationToken : undefined;
+  } while (token);
+  return copied;
+}
+
+async function startIngestion(kbId, dsId) {
+  if (!kbId || !dsId) return;
+  try {
+    await bedrock.send(
+      new StartIngestionJobCommand({
+        knowledgeBaseId: kbId,
+        dataSourceId: dsId,
+        description: "Ingestion after embedding re-embed",
+      })
+    );
+  } catch (err) {
+    // A job already running will pick up the freshly-copied files anyway.
+    if (err.name !== "ConflictException") throw err;
+  }
+}
+
+// Tear down a set of per-brain AWS resources (bucket, data source, KB, vector
+// index). Used both by deleteBrain and by the in-place re-embed to dispose of
+// a brain's *previous* resources after the swap.
+//
+// Guard: only resources under the `context101-brain-` naming convention are
+// touched. The default brain's original bucket/KB/index are CDK-managed (named
+// differently), so this safely skips them — we never delete stack-owned
+// resources out-of-band.
+async function teardownResources({ bucket, kbId, dsId, indexName: idxName }) {
+  if (bucket && !bucket.startsWith("context101-brain-")) {
+    console.warn(
+      `teardown skipped: ${bucket} is not a provisioner-managed bucket (likely CDK-managed); leaving its KB/index intact`
+    );
+    return;
+  }
+
+  if (bucket) {
+    try {
+      await emptyBucket(bucket);
+      await s3.send(new DeleteBucketCommand({ Bucket: bucket }));
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
+    try {
+      await lambdaClient.send(
+        new RemovePermissionCommand({
+          FunctionName: AUTO_INGEST_FN_ARN,
+          StatementId: `s3-${bucket}`.slice(0, 100),
+        })
+      );
+    } catch (err) {
+      if (!isNotFound(err)) console.warn("RemovePermission failed:", err.message);
+    }
+  }
+
+  if (kbId) {
+    if (dsId) {
+      try {
+        await bedrock.send(
+          new DeleteDataSourceCommand({
+            knowledgeBaseId: kbId,
+            dataSourceId: dsId,
+          })
+        );
+      } catch (err) {
+        if (!isNotFound(err)) throw err;
+      }
+    }
+    try {
+      await bedrock.send(
+        new DeleteKnowledgeBaseCommand({ knowledgeBaseId: kbId })
+      );
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
+  }
+
+  if (idxName) {
+    try {
+      await s3vectors.send(
+        new DeleteIndexCommand({
+          vectorBucketName: VECTOR_BUCKET_NAME,
+          indexName: idxName,
+        })
+      );
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
+  }
+}
+
+// Re-embed a brain *in place* under new embedding settings.
+//
+// A Bedrock KB's embedding model and its S3 Vectors index dimension are
+// immutable, so we can't mutate them — but we keep the brain row (id, bearer
+// token, connectors, suggestions, MCP URL) completely stable and only swap the
+// underlying KB/index/bucket beneath it:
+//
+//   1. Provision a fresh KB/index/bucket under a generation-salted name (the
+//      current ones keep serving queries the whole time — zero downtime).
+//   2. Copy the brain's docs into the new bucket.
+//   3. Atomically repoint the row's resource handles + embedding columns.
+//   4. Start ingestion so the copied content is embedded with the new model.
+//   5. Tear down the brain's previous resources (skipped for CDK-managed ones,
+//      e.g. the default brain).
+//
+// The brain id, bearer token secret, and MCP URL never change — externally
+// configured MCP clients keep working untouched.
+async function reembedBrain(event) {
+  const brainId = event.brain_id;
+  if (!brainId) throw new Error("brain_id is required");
+  const embedding = resolveEmbedding(event);
+
+  const row = await pgFetchOne(
+    DATABASE_URL,
+    `select id, org_id, status, docs_bucket, kb_id, ds_id, vector_index_arn
+       from brains where id = $1`,
+    [brainId]
+  );
+  if (!row) throw new Error(`brain ${brainId} not found`);
+  if (event.org_id && row.org_id !== event.org_id) {
+    throw new Error("brain belongs to a different org");
+  }
+  if (row.status !== "ready") {
+    throw new Error(`brain ${brainId} is ${row.status}, not ready`);
+  }
+
+  const old = {
+    bucket: row.docs_bucket,
+    kbId: row.kb_id,
+    dsId: row.ds_id,
+    indexName: indexNameFromArn(row.vector_index_arn),
+  };
+
+  // Generation salt — distinguishes the new resource names from the brain's
+  // current ones (which still exist and keep serving until the swap).
+  const gen = randomBytes(4).toString("hex");
+  const newBucket = bucketName(brainId, gen);
+  const newIdxName = indexName(brainId, gen);
+  const newIdxArn = indexArnForName(newIdxName);
+
+  let newKb;
+  let newDs;
+  try {
+    // 1. Provision the new resource set.
+    await createBrainBucket(newBucket);
+    await wireAutoIngestNotification(newBucket);
+    await createVectorIndex(newIdxName, embedding.dimensions);
+    newKb = await createBrainKb(
+      `context101-brain-${brainId}-${gen}`,
+      embedding.modelArn,
+      embedding.dimensions,
+      newIdxArn
+    );
+    newDs = await createBrainDataSource(newKb, newBucket, embedding.chunking);
+
+    // 2. Copy the brain's docs into the new bucket. The registry still points
+    //    at the OLD bucket, so auto-ingest ignores these PutObject events; we
+    //    trigger embedding explicitly after the swap.
+    if (old.bucket) {
+      const n = await copyBucketContents(old.bucket, newBucket);
+      console.log(`[brain=${brainId}] re-embed copied ${n} object(s)`);
+    }
+  } catch (err) {
+    // Provisioning failed before the swap — the brain still points at its
+    // intact original resources. Best-effort clean up the partial new set.
+    console.error(`re-embed provisioning failed for ${brainId}:`, err);
+    await teardownResources({
+      bucket: newBucket,
+      kbId: newKb,
+      dsId: newDs,
+      indexName: newIdxName,
+    }).catch((e) => console.warn("partial cleanup failed:", e.message));
+    throw err;
+  }
+
+  // 3. Atomically repoint the brain to the new resources + embedding settings.
+  //    id / token_secret_arn / connectors / suggestions are all untouched.
+  await pgExecute(
+    DATABASE_URL,
+    `update brains
+       set docs_bucket = $2,
+           vector_index_arn = $3,
+           kb_id = $4,
+           ds_id = $5,
+           embedding_model_provider = $6,
+           embedding_model_id = $7,
+           embedding_model_arn = $8,
+           embedding_dimensions = $9,
+           embedding_chunking = $10,
+           error_msg = null,
+           updated_at = now()
+     where id = $1`,
+    [
+      brainId,
+      newBucket,
+      newIdxArn,
+      newKb,
+      newDs,
+      embedding.provider,
+      embedding.modelId,
+      embedding.modelArn,
+      embedding.dimensions,
+      embedding.chunking,
+    ]
+  );
+
+  // 4. Embed the copied content under the new model/chunking.
+  await startIngestion(newKb, newDs);
+
+  // 5. Dispose of the brain's previous resources (no-op for CDK-managed ones).
+  try {
+    await teardownResources(old);
+  } catch (e) {
+    console.warn(`old-resource teardown after re-embed failed for ${brainId}:`, e.message);
+  }
+
+  return { ok: true, brain_id: brainId, kb_id: newKb, ds_id: newDs };
 }
 
 async function emptyBucket(bucket) {
@@ -537,7 +903,7 @@ async function deleteBrain({ brain_id }) {
 
   const row = await pgFetchOne(
     DATABASE_URL,
-    `select id, docs_bucket, kb_id, ds_id from brains where id = $1`,
+    `select id, docs_bucket, kb_id, ds_id, vector_index_arn from brains where id = $1`,
     [brain_id]
   );
   if (!row) {
@@ -546,64 +912,18 @@ async function deleteBrain({ brain_id }) {
 
   await setBrainStatus(brain_id, "deleting", null);
 
-  // Tear down in reverse order. Each step tolerates NotFound.
-  // 1. Empty + delete bucket.
-  if (row.docs_bucket) {
-    try {
-      await emptyBucket(row.docs_bucket);
-      await s3.send(new DeleteBucketCommand({ Bucket: row.docs_bucket }));
-    } catch (err) {
-      if (!isNotFound(err)) throw err;
-    }
-    // Best-effort: remove the Lambda invoke permission we added.
-    try {
-      await lambdaClient.send(
-        new RemovePermissionCommand({
-          FunctionName: AUTO_INGEST_FN_ARN,
-          StatementId: `s3-${row.docs_bucket}`.slice(0, 100),
-        })
-      );
-    } catch (err) {
-      if (!isNotFound(err)) console.warn("RemovePermission failed:", err.message);
-    }
-  }
+  // Tear down the brain's resources. Use the *stored* index name (an
+  // in-place re-embed may have moved the brain to a generation-salted index
+  // that differs from the id-derived default), falling back to the derived
+  // name for older rows that predate vector_index_arn.
+  await teardownResources({
+    bucket: row.docs_bucket,
+    kbId: row.kb_id,
+    dsId: row.ds_id,
+    indexName: indexNameFromArn(row.vector_index_arn) || indexName(brain_id),
+  });
 
-  // 2. Delete the data source + KB.
-  if (row.kb_id) {
-    if (row.ds_id) {
-      try {
-        await bedrock.send(
-          new DeleteDataSourceCommand({
-            knowledgeBaseId: row.kb_id,
-            dataSourceId: row.ds_id,
-          })
-        );
-      } catch (err) {
-        if (!isNotFound(err)) throw err;
-      }
-    }
-    try {
-      await bedrock.send(
-        new DeleteKnowledgeBaseCommand({ knowledgeBaseId: row.kb_id })
-      );
-    } catch (err) {
-      if (!isNotFound(err)) throw err;
-    }
-  }
-
-  // 3. Delete the vector index.
-  try {
-    await s3vectors.send(
-      new DeleteIndexCommand({
-        vectorBucketName: VECTOR_BUCKET_NAME,
-        indexName: indexName(brain_id),
-      })
-    );
-  } catch (err) {
-    if (!isNotFound(err)) throw err;
-  }
-
-  // 4. Delete the bearer token secret (force, no recovery window).
+  // Delete the bearer token secret (force, no recovery window).
   try {
     await secrets.send(
       new DeleteSecretCommand({
@@ -627,6 +947,7 @@ export const handler = async (event = {}) => {
   if (!ACCOUNT) throw new Error("AWS_ACCOUNT_ID env missing");
   const action = event.action;
   if (action === "create") return await createBrain(event);
+  if (action === "reembed") return await reembedBrain(event);
   if (action === "delete") return await deleteBrain(event);
   throw new Error(`unknown action: ${action}`);
 };

@@ -5,10 +5,16 @@ import type { NextRequest } from "next/server";
 import { publicBrain, readAuthContext } from "@/lib/brains-server";
 import { db } from "@/lib/db/client";
 import { brains as brainsTable } from "@/lib/db/schema";
+import {
+  DEFAULT_EMBEDDING_DIMENSION,
+  DEFAULT_EMBEDDING_MODEL_ID,
+  resolveEmbeddingSelection,
+} from "@/lib/embedding-models";
 
+const AWS_REGION = process.env.AWS_REGION ?? "us-east-1";
 const PROVISIONER_FN_NAME = process.env.BRAIN_PROVISIONER_FN_NAME ?? "";
 const lambdaClient = new LambdaClient({
-  region: process.env.AWS_REGION ?? "us-east-1",
+  region: AWS_REGION,
 });
 
 // Slug rules — must match the regex enforced by the provisioner Lambda:
@@ -93,6 +99,37 @@ export async function POST(request: NextRequest) {
   }
   const brainId = `${slug}-${nanoid()}`;
 
+  // Embedding selection is optional — when omitted the brain is provisioned
+  // with the default AWS Titan v2 @ 1024 + Bedrock-managed chunking, matching
+  // the deploy-time default. When provided, validate it against the catalog.
+  const hasEmbeddingChoice =
+    body &&
+    (body.embedding_provider != null || body.embedding_model_id != null);
+  const embedding = hasEmbeddingChoice
+    ? resolveEmbeddingSelection(
+        {
+          provider: body.embedding_provider,
+          modelId: body.embedding_model_id,
+          dimensions: body.embedding_dimensions,
+          chunkingConfig: body.chunking_config,
+        },
+        AWS_REGION
+      )
+    : ({
+        ok: true,
+        selection: {
+          provider: "aws" as const,
+          modelId: DEFAULT_EMBEDDING_MODEL_ID,
+          modelArn: undefined,
+          dimensions: DEFAULT_EMBEDDING_DIMENSION,
+          chunking: { strategy: "default" as const },
+        },
+      } as const);
+  if (!embedding.ok) {
+    return NextResponse.json({ error: embedding.error }, { status: 400 });
+  }
+  const sel = embedding.selection;
+
   const createdByEmail = auth.userEmail;
 
   try {
@@ -110,6 +147,11 @@ export async function POST(request: NextRequest) {
           displayName,
           description: description ?? null,
           status: "provisioning",
+          embeddingModelProvider: sel.provider,
+          embeddingModelId: sel.modelId,
+          embeddingModelArn: sel.modelArn ?? null,
+          embeddingDimensions: sel.dimensions,
+          embeddingChunking: sel.chunking,
           createdBy: auth.userId,
         })
         .onConflictDoNothing();
@@ -136,6 +178,11 @@ export async function POST(request: NextRequest) {
             org_id: auth.orgId,
             created_by: auth.userId,
             created_by_email: createdByEmail,
+            embedding_model_provider: sel.provider,
+            embedding_model_id: sel.modelId,
+            embedding_model_arn: sel.modelArn,
+            embedding_dimensions: sel.dimensions,
+            embedding_chunking: sel.chunking,
           })
         ),
       })

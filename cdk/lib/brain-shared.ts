@@ -131,6 +131,9 @@ export class BrainShared extends Construct {
           "s3:ListBucket",
           "s3:ListBucketVersions",
           "s3:GetObject",
+          // PutObject is needed by the replace/clone flow, which copies a
+          // source brain's docs into the replacement brain's bucket.
+          "s3:PutObject",
           "s3:DeleteObject",
           "s3:DeleteObjectVersion",
         ],
@@ -176,6 +179,9 @@ export class BrainShared extends Construct {
           "bedrock:UpdateDataSource",
           "bedrock:ListKnowledgeBases",
           "bedrock:ListDataSources",
+          // StartIngestionJob is invoked by the replace/clone flow to embed
+          // the copied content under the replacement brain's new settings.
+          "bedrock:StartIngestionJob",
           "bedrock:TagResource",
         ],
         resources: ["*"],

@@ -19,6 +19,7 @@ import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { OrganizationSettings } from "@/components/settings/organization-settings";
 import { WikiModelSettings } from "@/components/settings/wiki-model-settings";
+import { EmbeddingSettings } from "@/components/settings/embedding-settings";
 
 type SectionId =
   | "organization"
@@ -39,7 +40,7 @@ type Section = {
 const SECTIONS: Section[] = [
   { id: "organization", label: "Organization", icon: Users, available: true },
   { id: "model", label: "Wiki model & API keys", icon: KeyRound, available: true },
-  { id: "embeddings", label: "Embeddings", icon: Boxes, available: false },
+  { id: "embeddings", label: "Embeddings", icon: Boxes, available: true },
   { id: "wiki", label: "Wiki regeneration", icon: FileText, available: false },
   { id: "sources", label: "Source sync", icon: Plug, available: false },
   { id: "costs", label: "Costs", icon: DollarSign, available: false },
@@ -126,11 +127,17 @@ export default function SettingsPage() {
                 Bedrock, or bring your own Anthropic / OpenAI / Grok / Gemini
                 key.
               </p>
+            ) : active === "embeddings" ? (
+              <p className="text-sm text-muted-foreground">
+                Choose the embedding model a brain uses — AWS Titan or Cohere
+                (via Bedrock) — and, for Cohere, its text chunking strategy.
+              </p>
             ) : null}
           </div>
 
           {active === "organization" ? <OrganizationSettings /> : null}
           {active === "model" ? <WikiModelSettings /> : null}
+          {active === "embeddings" ? <EmbeddingSettings /> : null}
         </section>
       </div>
     </main>

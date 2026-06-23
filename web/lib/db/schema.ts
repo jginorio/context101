@@ -80,6 +80,23 @@ export const brains = pgTable(
     wikiModelProvider: text("wiki_model_provider"),
     wikiModelId: text("wiki_model_id"),
     wikiLlmKeySecretArn: text("wiki_llm_key_secret_arn"),
+    // Embedding model the brain's Bedrock KB + S3 Vectors index were built
+    // with. Baked in at provision time and immutable for a given brain —
+    // changing embeddings means provisioning a replacement brain (see
+    // `source_brain_id` / `replaced_by_brain_id`). provider is "aws" |
+    // "cohere"; the chunking strategy + params live in `embedding_chunking`
+    // JSON and are only meaningful for Cohere (Bedrock-managed default
+    // otherwise).
+    embeddingModelProvider: text("embedding_model_provider"),
+    embeddingModelId: text("embedding_model_id"),
+    embeddingModelArn: text("embedding_model_arn"),
+    embeddingDimensions: integer("embedding_dimensions"),
+    embeddingChunking: jsonb("embedding_chunking"),
+    // Replacement lineage: when a brain is created to re-embed another
+    // brain's content under new settings, `source_brain_id` points back to
+    // the original and the original's `replaced_by_brain_id` points forward.
+    sourceBrainId: text("source_brain_id"),
+    replacedByBrainId: text("replaced_by_brain_id"),
     createdBy: text("created_by").notNull(),
     ...timestamps,
   },

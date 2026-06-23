@@ -8,6 +8,7 @@ import {
   Brain,
   Check,
   CheckCircle2,
+  ChevronRight,
   Copy,
   Eye,
   EyeOff,
@@ -35,7 +36,13 @@ import {
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
+import { cn } from "@/lib/utils";
 import { useBrain, type ClientBrain } from "@/lib/brain-context";
+import {
+  defaultEmbeddingSelection,
+  EmbeddingControls,
+  type EmbeddingSelection,
+} from "@/components/settings/embedding-controls";
 
 const MCP_HOST = process.env.NEXT_PUBLIC_MCP_HOST ?? "";
 
@@ -226,12 +233,18 @@ function CreateBrainDialog({
   const [displayName, setDisplayName] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  const [embedding, setEmbedding] = React.useState<EmbeddingSelection>(
+    defaultEmbeddingSelection()
+  );
+  const [showAdvanced, setShowAdvanced] = React.useState(false);
   const { setBrain } = useBrain();
 
   React.useEffect(() => {
     if (!open) {
       setDisplayName("");
       setDescription("");
+      setEmbedding(defaultEmbeddingSelection());
+      setShowAdvanced(false);
       setSubmitting(false);
     }
   }, [open]);
@@ -249,6 +262,10 @@ function CreateBrainDialog({
         body: JSON.stringify({
           display_name: displayName.trim(),
           description: description.trim() || undefined,
+          embedding_provider: embedding.provider,
+          embedding_model_id: embedding.modelId,
+          embedding_dimensions: embedding.dimensions,
+          chunking_config: embedding.chunking,
         }),
       });
       const data = await res.json();
@@ -270,7 +287,7 @@ function CreateBrainDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Create a brain</DialogTitle>
           <DialogDescription>
@@ -302,6 +319,35 @@ function CreateBrainDialog({
               maxLength={500}
               disabled={submitting}
             />
+          </div>
+          <div className="border-t pt-3">
+            <button
+              type="button"
+              onClick={() => setShowAdvanced((v) => !v)}
+              disabled={submitting}
+              className="flex w-full items-center gap-1.5 text-sm font-medium text-muted-foreground transition-colors hover:text-foreground"
+            >
+              <ChevronRight
+                className={cn(
+                  "h-4 w-4 shrink-0 transition-transform",
+                  showAdvanced && "rotate-90"
+                )}
+              />
+              Advanced configuration
+            </button>
+            {showAdvanced ? (
+              <div className="mt-3">
+                <p className="mb-2 text-xs text-muted-foreground">
+                  Choose the embedding model and, for Cohere, the text chunking
+                  strategy. Defaults to AWS Titan Text Embeddings V2 (1024 dims).
+                </p>
+                <EmbeddingControls
+                  value={embedding}
+                  onChange={setEmbedding}
+                  disabled={submitting}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
         <DialogFooter>
