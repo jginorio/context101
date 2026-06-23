@@ -33,7 +33,11 @@ const strategyLabel = (s: ChunkingConfig["strategy"] | undefined) =>
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-export function EmbeddingSettings() {
+export function EmbeddingSettings({
+  initialBrainId,
+}: {
+  initialBrainId?: string;
+} = {}) {
   const [brains, setBrains] = React.useState<BrainOption[] | null>(null);
   const [brainId, setBrainId] = React.useState("");
   const [current, setCurrent] = React.useState<CurrentConfig | null>(null);
@@ -52,13 +56,17 @@ export function EmbeddingSettings() {
         const data = await res.json();
         const items = (data?.items ?? []) as BrainOption[];
         setBrains(items);
-        if (items.length > 0) setBrainId(items[0].brain_id);
+        const preferred =
+          initialBrainId && items.some((b) => b.brain_id === initialBrainId)
+            ? initialBrainId
+            : items[0]?.brain_id;
+        if (preferred) setBrainId(preferred);
       } catch (err) {
         toast.error(err instanceof Error ? err.message : String(err));
         setBrains([]);
       }
     })();
-  }, []);
+  }, [initialBrainId]);
 
   const loadConfig = React.useCallback(async (id: string) => {
     if (!id) return;

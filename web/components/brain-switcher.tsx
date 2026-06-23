@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Brain, Check, ChevronDown, Plus } from "lucide-react";
+import { Brain, Check, ChevronsUpDown, Loader2, Plus } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -15,6 +15,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useBrain } from "@/lib/brain-context";
+import { BRAIN_ACCENT_RGB } from "@/lib/brain-accent";
 
 /**
  * Header dropdown for picking the active brain. Lists every brain in
@@ -32,19 +33,51 @@ export function BrainSwitcher() {
   const provisioning = brains.filter((b) => b.status === "provisioning");
 
   const label = currentBrain?.display_name ?? currentBrainId ?? "Default";
+  const status = currentBrain?.status;
+  // The active brain isn't usable yet (deep-linked to a provisioning/errored
+  // one). Surface it so the header always tells the truth about where you are.
+  const statusHint =
+    status === "provisioning"
+      ? "Provisioning…"
+      : status === "error"
+        ? "Needs attention"
+        : status === "deleting"
+          ? "Deleting…"
+          : "Active brain";
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger
         render={
-          <Button variant="ghost" size="sm" className="gap-1 text-primary hover:bg-primary/10 hover:text-primary">
-            <Brain className="h-3.5 w-3.5" />
-            <span className="max-w-[12ch] truncate">{label}</span>
-            <ChevronDown className="h-3 w-3 opacity-60" />
-          </Button>
+          <Button
+            variant="ghost"
+            className="h-auto w-full justify-start gap-2.5 px-2 py-2 hover:bg-primary/10"
+            aria-label={`Active brain: ${label}. Switch brain`}
+          />
         }
-      />
-      <DropdownMenuContent align="start" className="min-w-[14rem]">
+      >
+        <span
+          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary ring-1 ring-primary/25"
+          style={{ boxShadow: `0 0 16px rgba(${BRAIN_ACCENT_RGB}, 0.18)` }}
+        >
+          <Brain className="h-[18px] w-[18px]" />
+          {status === "provisioning" || status === "deleting" ? (
+            <Loader2 className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 animate-spin rounded-full bg-sidebar p-px text-primary" />
+          ) : status === "error" ? (
+            <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-destructive ring-2 ring-sidebar" />
+          ) : null}
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col items-start text-left leading-tight">
+          <span className="text-[11px] font-medium text-muted-foreground">
+            {loading && !currentBrain ? "Loading brains…" : statusHint}
+          </span>
+          <span className="w-full truncate text-sm font-semibold text-foreground">
+            {label}
+          </span>
+        </span>
+        <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="min-w-60">
         {/* DropdownMenuLabel wraps Base UI's Menu.GroupLabel, which now
             requires a Menu.Group parent (Base UI #31) — bare labels crash
             on open. Each label + its following items is wrapped in a

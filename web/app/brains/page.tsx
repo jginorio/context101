@@ -12,6 +12,7 @@ import {
   Copy,
   Eye,
   EyeOff,
+  FlaskConical,
   Loader2,
   Plus,
   Trash2,
@@ -500,21 +501,34 @@ function BrainRow({
               </p>
             ) : null}
           </div>
-          {brain.brain_id !== "default" && brain.status !== "deleting" ? (
-            // Errored brains must be deletable too — that's the only way
-            // to clean up the half-created S3/KB/secret resources from a
-            // failed provision. (The provisioner's delete handler tolerates
-            // already-gone resources.) Previously gated on status==="ready"
-            // which left users stranded on errored rows.
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={onDelete}
-              aria-label="Delete brain"
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-1">
+            {brain.status === "ready" ? (
+              <Link
+                href={`/settings?section=advanced&brain=${encodeURIComponent(
+                  brain.brain_id
+                )}`}
+              >
+                <Button variant="ghost" size="sm" aria-label="Advanced settings">
+                  <FlaskConical className="mr-1 h-3.5 w-3.5" /> Advanced
+                </Button>
+              </Link>
+            ) : null}
+            {brain.brain_id !== "default" && brain.status !== "deleting" ? (
+              // Errored brains must be deletable too — that's the only way
+              // to clean up the half-created S3/KB/secret resources from a
+              // failed provision. (The provisioner's delete handler tolerates
+              // already-gone resources.) Previously gated on status==="ready"
+              // which left users stranded on errored rows.
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                onClick={onDelete}
+                aria-label="Delete brain"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            ) : null}
+          </div>
         </div>
         {brain.status === "ready" ? <BrainCredentials brain={brain} /> : null}
         <div className="flex items-center justify-between text-xs text-muted-foreground">

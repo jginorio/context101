@@ -166,21 +166,7 @@ function SidebarInner({
 }) {
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="space-y-2 border-b border-sidebar-border px-3 py-3">
-        <Link
-          href="/knowledge"
-          onClick={onNavigate}
-          className="flex min-w-0 items-center gap-2"
-        >
-          <span
-            className="h-2 w-2 shrink-0 rounded-full bg-primary"
-            style={{ boxShadow: `0 0 14px rgba(${BRAIN_ACCENT_RGB}, 0.35)` }}
-            aria-hidden
-          />
-          <span className="text-base font-semibold tracking-tight">
-            Context101
-          </span>
-        </Link>
+      <div className="border-b border-sidebar-border p-2">
         <BrainSwitcher />
       </div>
       <div className="border-b border-sidebar-border/60 py-2">
