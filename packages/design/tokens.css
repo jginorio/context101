@@ -1,0 +1,58 @@
+/**
+ * Context101 — the one theme. Dark, hex, brain.
+ * Imported by every app: `@import "@context101/design/tokens.css";`
+ *
+ * This is the single source of truth for design tokens (colors, fonts, the
+ * Tailwind utility bridge). Surface palette = site's "Synaptic Dark" system;
+ * web adopts it (see MIGRATION.md Phase 2.5).
+ *
+ * NOTE: the shadcn variable contract (--background, --primary, --border, …)
+ * is added here in Phase 2.5 when web adopts this theme. For now this matches
+ * site's existing tokens verbatim so site renders identically.
+ */
+
+@theme inline {
+  --color-background: var(--bg);
+  --color-foreground: var(--fg);
+  --color-card: var(--card);
+  --color-card-foreground: var(--fg);
+  --color-muted: var(--muted-bg);
+  --color-muted-foreground: var(--muted);
+  --color-primary: var(--accent);
+  --color-primary-foreground: #fafafa;
+  --color-border: var(--line);
+  --color-ring: var(--accent-2);
+  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    var(--font-mono-code), ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+body {
+  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+h1,
+h2,
+h3 {
+  font-family:
+    var(--font-display), var(--font-body), ui-sans-serif, system-ui, sans-serif;
+}
+
+:root {
+  color-scheme: dark;
+  --brain: #b855c9;
+  --brain-2: #8b5cf6;
+  --brain-soft: #140818;
+  --bg: #060509;
+  --bg-2: #09060c;
+  --fg: #f2eef8;
+  --muted: #a89eb4;
+  --muted-bg: #15101c;
+  --line: #3b2d48;
+  --card: #120e18;
+  --card-2: #0e0a14;
+  --accent: var(--brain);
+  --accent-2: var(--brain-2);
+  --accent-soft: var(--brain-soft);
+  --code: #0a0810;
+}

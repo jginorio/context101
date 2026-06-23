@@ -1,23 +1,8 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
+import { fontVariables } from "@context101/ui/fonts";
 import { SiteBackground } from "@/components/site-background";
 import "./globals.css";
-
-const bodyFont = Inter({
-  subsets: ["latin"],
-  variable: "--font-body",
-});
-
-const displayFont = Space_Grotesk({
-  subsets: ["latin"],
-  variable: "--font-display",
-});
-
-const monoFont = JetBrains_Mono({
-  subsets: ["latin"],
-  variable: "--font-mono-code",
-});
 
 const SITE_URL = "https://context101.dev";
 const TITLE = "Context101 — One brain. Every AI tool.";
@@ -71,7 +56,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${bodyFont.variable} ${displayFont.variable} ${monoFont.variable}`}
+      className={fontVariables}
     >
       <body>
         <SiteBackground />

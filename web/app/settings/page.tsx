@@ -14,7 +14,6 @@ import {
   Users,
 } from "lucide-react";
 
-import { ThemeToggle } from "@/components/theme-toggle";
 import { SignOutButton } from "@/components/sign-out-button";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -76,7 +75,6 @@ export default function SettingsPage() {
           </div>
         </div>
         <div className="flex shrink-0 items-center gap-2">
-          <ThemeToggle />
           <SignOutButton next="/settings" className="hidden sm:inline-flex" />
         </div>
       </header>

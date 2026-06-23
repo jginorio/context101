@@ -23,6 +23,13 @@ backups/
 skills-lock.json
 .migration-inventory/
 
+# Monorepo workspace (anchored so the CDK Lambda-layer node_modules stays tracked)
+/node_modules/
+/packages/*/node_modules/
+# per-app lockfiles regenerate on install/build; only the root lock is canonical
+site/package-lock.json
+web/package-lock.json
+
 # Standalone public site
 site/node_modules/
 site/.next/
@@ -30,3 +37,12 @@ site/out/
 site/.env*
 site/next-env.d.ts
 site/*.tsbuildinfo
+
+# Web app
+web/node_modules/
+web/.next/
+web/out/
+web/next-env.d.ts
+web/*.tsbuildinfo
+
+node_modules/

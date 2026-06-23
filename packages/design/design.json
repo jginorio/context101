@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-17T15:23:00Z",
+  "title": "Design System: Context101",
+  "extensions": {
+    "colorMeta": {
+      "brain-magenta": {
+        "role": "primary",
+        "displayName": "Brain Magenta",
+        "canonical": "oklch(0.62 0.18 330)",
+        "tonalRamp": [
+          "oklch(0.15 0.07 330)",
+          "oklch(0.25 0.11 330)",
+          "oklch(0.35 0.15 330)",
+          "oklch(0.45 0.17 330)",
+          "oklch(0.55 0.18 330)",
+          "oklch(0.65 0.18 330)",
+          "oklch(0.80 0.12 330)",
+          "oklch(0.95 0.04 330)"
+        ]
+      },
+      "brain-violet": {
+        "role": "primary",
+        "displayName": "Brain Violet",
+        "canonical": "oklch(0.62 0.19 290)",
+        "tonalRamp": [
+          "oklch(0.15 0.08 290)",
+          "oklch(0.25 0.12 290)",
+          "oklch(0.35 0.16 290)",
+          "oklch(0.45 0.18 290)",
+          "oklch(0.55 0.19 290)",
+          "oklch(0.65 0.19 290)",
+          "oklch(0.80 0.13 290)",
+          "oklch(0.95 0.05 290)"
+        ]
+      },
+      "site-ink-bg": {
+        "role": "neutral",
+        "displayName": "Site Ink",
+        "canonical": "oklch(0.09 0.015 300)",
+        "tonalRamp": [
+          "oklch(0.07 0.012 300)",
+          "oklch(0.12 0.018 300)",
+          "oklch(0.18 0.025 300)",
+          "oklch(0.27 0.03 300)",
+          "oklch(0.40 0.03 300)",
+          "oklch(0.58 0.025 300)",
+          "oklch(0.78 0.02 300)",
+          "oklch(0.95 0.012 300)"
+        ]
+      },
+      "app-background": {
+        "role": "neutral",
+        "displayName": "App Canvas",
+        "canonical": "oklch(0.99 0.006 328)",
+        "tonalRamp": [
+          "oklch(0.12 0.018 328)",
+          "oklch(0.17 0.028 328)",
+          "oklch(0.24 0.04 328)",
+          "oklch(0.38 0.04 328)",
+          "oklch(0.5 0.04 328)",
+          "oklch(0.7 0.03 328)",
+          "oklch(0.9 0.022 328)",
+          "oklch(0.99 0.006 328)"
+        ]
+      },
+      "app-destructive": {
+        "role": "tertiary",
+        "displayName": "Destructive Red",
+        "canonical": "oklch(0.577 0.245 27.325)",
+        "tonalRamp": [
+          "oklch(0.25 0.12 27)",
+          "oklch(0.35 0.17 27)",
+          "oklch(0.45 0.21 27)",
+          "oklch(0.55 0.24 27)",
+          "oklch(0.62 0.23 27)",
+          "oklch(0.7 0.19 22)",
+          "oklch(0.82 0.12 22)",
+          "oklch(0.94 0.04 22)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": { "displayName": "Display", "purpose": "Brand-site hero only. Space Grotesk, tight and luminous, one per page." },
+      "headline": { "displayName": "Headline", "purpose": "Brand-site section headings." },
+      "title": { "displayName": "Title", "purpose": "Sub-section and feature headings." },
+      "body": { "displayName": "Body", "purpose": "Brand-site prose (Inter). Cap measure at 65-75ch." },
+      "app-body": { "displayName": "App Body", "purpose": "Product-app default text (Geist). Denser, tuned for tables and forms." },
+      "mono": { "displayName": "Mono / Token", "purpose": "Machine-addressable text only: brain IDs, MCP URLs, tokens, code (JetBrains Mono)." }
+    },
+    "shadows": [
+      { "name": "inset-highlight", "value": "inset 0 1px 0 color-mix(in oklch, var(--primary) 8%, transparent)", "purpose": "Default resting treatment on app-surface / surface-card — a single bright top edge, not a drop shadow." },
+      { "name": "accent-ring", "value": "inset 0 0 0 1px color-mix(in srgb, var(--accent) 3%, transparent)", "purpose": "Barely-there accent-tinted outline keeping surfaces in the purple family." },
+      { "name": "float", "value": "0 12px 32px -8px rgba(8, 5, 12, 0.6)", "purpose": "Ambient shadow for elements that leave the plane: dialogs, popovers, dropdowns, toasts, and hover-lift." }
+    ],
+    "motion": [
+      { "name": "ease-out-quint", "value": "cubic-bezier(0.25, 1, 0.5, 1)", "purpose": "Default exponential ease-out for entrances and state transitions. No bounce, no elastic." },
+      { "name": "fade-rise", "value": "fade-rise 0.7s cubic-bezier(0.25, 1, 0.5, 1) both", "purpose": "Entrance: 12px up + fade. Staggerable via --delay." },
+      { "name": "beam-flow", "value": "brain-beam-flow 4.5s linear infinite", "purpose": "Dashed synaptic links flowing along the brain network." },
+      { "name": "node-pulse", "value": "brain-node-pulse 3.5s ease-in-out infinite", "purpose": "Brain network nodes pulsing in opacity and scale." }
+    ],
+    "breakpoints": [
+      { "name": "sm", "value": "640px" },
+      { "name": "md", "value": "768px" },
+      { "name": "lg", "value": "1024px" },
+      { "name": "xl", "value": "1280px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Site Primary Button",
+      "kind": "button",
+      "refersTo": "site-button-primary",
+      "description": "Brand-site primary CTA. Full pill, brand magenta fill, tactile hover.",
+      "html": "<button class=\"ds-site-btn-primary\">Create a brain</button>",
+      "css": ".ds-site-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border: 1px solid #b855c9; border-radius: 9999px; background: #b855c9; color: #fafafa; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-size: 14px; font-weight: 600; white-space: nowrap; cursor: pointer; transition: background 0.2s cubic-bezier(0.25,1,0.5,1), transform 0.2s cubic-bezier(0.25,1,0.5,1); } .ds-site-btn-primary:hover { background: color-mix(in srgb, #b855c9 90%, #000); transform: translateY(-1px); } .ds-site-btn-primary:active { transform: translateY(0); } .ds-site-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.5); }"
+    },
+    {
+      "name": "Site Outline Button",
+      "kind": "button",
+      "refersTo": "site-button-outline",
+      "description": "Brand-site secondary action. Accent-tinted border over an accent-soft wash.",
+      "html": "<button class=\"ds-site-btn-outline\">View docs</button>",
+      "css": ".ds-site-btn-outline { display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 40px; padding: 0 16px; border: 1px solid color-mix(in srgb, #b855c9 12%, #3b2d48); border-radius: 9999px; background: color-mix(in srgb, #140818 28%, transparent); color: #f2eef8; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-size: 14px; font-weight: 600; cursor: pointer; transition: background 0.2s cubic-bezier(0.25,1,0.5,1), border-color 0.2s; } .ds-site-btn-outline:hover { border-color: color-mix(in srgb, #b855c9 20%, #3b2d48); background: color-mix(in srgb, #140818 42%, transparent); } .ds-site-btn-outline:focus-visible { outline: none; box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.5); }"
+    },
+    {
+      "name": "App Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Product-app primary action. Compact rounded rectangle, presses down on active.",
+      "html": "<button class=\"ds-app-btn-primary\">Save changes</button>",
+      "css": ".ds-app-btn-primary { display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; padding: 0 10px; border: 1px solid transparent; border-radius: 0.625rem; background: oklch(0.48 0.14 320); color: #fafafa; font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; font-size: 14px; font-weight: 500; cursor: pointer; transition: background 0.15s cubic-bezier(0.25,1,0.5,1), transform 0.1s; } .ds-app-btn-primary:hover { background: color-mix(in oklch, oklch(0.48 0.14 320) 88%, #000); } .ds-app-btn-primary:active { transform: translateY(1px); } .ds-app-btn-primary:focus-visible { outline: none; box-shadow: 0 0 0 3px color-mix(in oklch, oklch(0.58 0.16 320) 50%, transparent); }"
+    },
+    {
+      "name": "Site Surface Card",
+      "kind": "card",
+      "refersTo": "site-surface-card",
+      "description": "Brand-site raised surface. Accent-soft gradient, accent-tinted border, inset highlight at rest.",
+      "html": "<div class=\"ds-site-card\"><h3 class=\"ds-site-card__title\">Isolated brains</h3><p class=\"ds-site-card__body\">Each brain owns its bucket, index, and token.</p></div>",
+      "css": ".ds-site-card { border-radius: 22px; border: 1px solid color-mix(in srgb, #b855c9 14%, #3b2d48); background: linear-gradient(165deg, color-mix(in srgb, #140818 55%, #120e18) 0%, color-mix(in srgb, #120e18 88%, #060509) 100%); box-shadow: inset 0 1px 0 color-mix(in srgb, #b855c9 7%, transparent), 0 0 0 1px color-mix(in srgb, #b855c9 3%, transparent); padding: 24px; transition: transform 0.3s cubic-bezier(0.25,1,0.5,1), box-shadow 0.3s; } .ds-site-card:hover { transform: translateY(-2px); box-shadow: inset 0 1px 0 color-mix(in srgb, #b855c9 7%, transparent), 0 12px 32px -8px rgba(8,5,12,0.6); } .ds-site-card__title { margin: 0 0 8px; font-family: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif; font-size: 20px; font-weight: 600; letter-spacing: -0.02em; color: #f2eef8; } .ds-site-card__body { margin: 0; font-family: 'Inter', ui-sans-serif, system-ui, sans-serif; font-size: 15px; line-height: 1.6; color: #a89eb4; }"
+    },
+    {
+      "name": "App Input Field",
+      "kind": "input",
+      "refersTo": "app-surface",
+      "description": "Product-app text input. Accent-tinted border, accent glow on focus, no layout shift.",
+      "html": "<input class=\"ds-app-input\" type=\"text\" placeholder=\"brain-9f3a-context\" />",
+      "css": ".ds-app-input { width: 240px; height: 32px; padding: 0 10px; border: 1px solid oklch(0.9 0.022 328); border-radius: 0.625rem; background: oklch(1 0.005 328); color: oklch(0.16 0.02 328); font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; transition: border-color 0.15s, box-shadow 0.15s; } .ds-app-input::placeholder { color: oklch(0.5 0.04 328); } .ds-app-input:focus-visible { outline: none; border-color: oklch(0.58 0.16 320); box-shadow: 0 0 0 3px color-mix(in oklch, oklch(0.58 0.16 320) 30%, transparent); } .ds-app-input[aria-invalid='true'] { border-color: oklch(0.577 0.245 27.325); box-shadow: 0 0 0 3px color-mix(in oklch, oklch(0.577 0.245 27.325) 20%, transparent); }"
+    },
+    {
+      "name": "App Active Nav Item",
+      "kind": "nav",
+      "refersTo": "app-surface",
+      "description": "Product-app sidebar item, active state. The one loud thing in the nav: accent wash, accent text, inset accent ring.",
+      "html": "<a class=\"ds-app-nav-active\" href=\"#\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z\"/><path d=\"M12 5a3 3 0 1 1 5.997.125 4 4 0 0 1 2.526 5.77 4 4 0 0 1-.556 6.588A4 4 0 1 1 12 18Z\"/></svg><span>Brains</span></a>",
+      "css": ".ds-app-nav-active { display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px; border-radius: 0.625rem; background: color-mix(in oklch, oklch(0.48 0.14 320) 14%, oklch(0.94 0.035 328)); color: oklch(0.48 0.14 320); font-family: 'Geist', ui-sans-serif, system-ui, sans-serif; font-size: 14px; font-weight: 500; box-shadow: inset 0 0 0 1px color-mix(in oklch, oklch(0.48 0.14 320) 22%, transparent); text-decoration: none; } .ds-app-nav-active svg { color: oklch(0.48 0.14 320); }"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Synaptic Dark",
+    "overview": "Context101 looks like a powered-on brain in a dark room. Near-black substrate, signal moving along faint magenta-violet traces, light pooling only where there's activity. The identity is unapologetically dark and unapologetically purple: the --brain mark is the loudest thing on the page, and that's the point. The system spans two surfaces that are recognizably the same product — a drenched-dark brand site (site/) built on Space Grotesk + Inter, and a quieter, instrumented product app (web/) on Geist with a light-default magenta-tinted OKLCH palette. Brand can shout; product keeps its voice down. The shared --brain purple is the thread between them. It rejects corporate-cold sterility and enterprise-heavy clutter alike.",
+    "keyCharacteristics": [
+      "Dark, purple, and committed to it — the brand mark leads, it doesn't hide",
+      "Two registers, one identity: drenched-dark brand site, quiet light-default product app, shared accent",
+      "Confident & tactile components — surfaces that lift, buttons that press, motion that rewards",
+      "Depth is hybrid: flat at rest, real shadow only on things that float",
+      "Engineer-grade legibility over decoration; honest state over fake progress"
+    ],
+    "rules": [
+      { "name": "The One Accent Rule", "body": "There is exactly one brand color: the brain purple. Magenta and violet are two stops of the same identity, not separate roles. The only non-purple color permitted is destructive red, and only on destructive/error affordances.", "section": "colors" },
+      { "name": "The Tinted-Gray Rule", "body": "No gray is neutral. Every background, border, and muted text value carries chroma toward hue ~320-328. A truly desaturated gray is forbidden — it reads cold and breaks the family.", "section": "colors" },
+      { "name": "The Display-Stays-Home Rule", "body": "Space Grotesk display sizes live on the brand site. The product app earns hierarchy through weight, size, and spacing on Geist, not by importing the marketing voice.", "section": "typography" },
+      { "name": "The Mono-Means-Machine Rule", "body": "JetBrains Mono is reserved for things a machine reads or addresses: brain IDs, MCP URLs, bearer tokens, connector keys, code. Never decorative emphasis.", "section": "typography" },
+      { "name": "The Flat-Until-It-Floats Rule", "body": "Resting surfaces get tonal layering, an inset highlight, and an accent-tinted border — never an ambient drop shadow. Drop shadows appear only on elements that leave the plane: overlays, and the hover/active lift of tactile components.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do lead with the brain purple. It's the one accent — primary actions, active states, focus rings, the brand mark.",
+      "Do tint every neutral toward hue ~320-328 so the product reads as the brand at low volume.",
+      "Do keep the brand site dark and drenched and the product app quiet (light-default OKLCH, with .dark). Same identity, two volumes.",
+      "Do convey resting depth with tonal layering, an inset highlight, and an accent-tinted border. Save real drop shadows for things that float.",
+      "Do make components tactile: hover lifts, active presses, focus shows a visible accent ring.",
+      "Do use JetBrains Mono for anything machine-addressable — brain IDs, MCP endpoints, tokens, code.",
+      "Do keep prefers-reduced-motion alternatives on every animation, and keep the synaptic beams aria-hidden and non-blocking.",
+      "Do show honest state. Pending / ingesting / ready / failed must each be visibly distinct — no silent failures, no fake progress."
+    ],
+    "donts": [
+      "Don't go corporate-cold. No navy-and-gray fintech sterility, no stock photography, no soulless enterprise polish.",
+      "Don't go enterprise-heavy. No AWS-console density, no walls of gray tables dumped on the user.",
+      "Don't use a truly desaturated gray anywhere — it reads cold and breaks the purple family.",
+      "Don't introduce a second decorative accent hue. Destructive red is the only non-purple color, and only on destructive/error affordances.",
+      "Don't put Space Grotesk display type in the product app.",
+      "Don't drop an ambient shadow on a resting surface — that's the 2014 tell.",
+      "Don't nest a card inside a card. Ever.",
+      "Don't ship the cross-register AI tells: gradient text, side-stripe borders, decorative glassmorphism, the hero-metric template, identical icon-card grids, or tracked-uppercase eyebrows above every section.",
+      "Don't let muted or placeholder text fall below 4.5:1 against its background, especially the dusty-lilac muted on dark."
+    ]
+  }
+}

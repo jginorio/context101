@@ -9,18 +9,13 @@ import {
   Building2,
   ChevronUp,
   FolderTree,
-  Info,
   LogOut,
   Menu,
-  Moon,
   Plug,
   Settings,
   Sparkles,
-  Sun,
   User,
 } from "lucide-react";
-import { useTheme } from "next-themes";
-
 import { authClient } from "@/lib/auth/client";
 import { BrainSwitcher } from "@/components/brain-switcher";
 import { Button } from "@/components/ui/button";
@@ -93,7 +88,6 @@ function AppNav({ onNavigate }: { onNavigate?: () => void }) {
 
 function AccountMenu() {
   const { data } = authClient.useSession();
-  const { resolvedTheme, setTheme } = useTheme();
   const [signingOut, setSigningOut] = React.useState(false);
 
   const user = data?.user;
@@ -148,21 +142,6 @@ function AccountMenu() {
           </DropdownMenuItem>
           <DropdownMenuItem render={<Link href="/orgs" />}>
             <Building2 className="mr-2 h-3.5 w-3.5" /> Switch org
-          </DropdownMenuItem>
-          <DropdownMenuItem render={<Link href="/about" />}>
-            <Info className="mr-2 h-3.5 w-3.5" /> About
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onClick={() =>
-              setTheme(resolvedTheme === "dark" ? "light" : "dark")
-            }
-          >
-            {resolvedTheme === "dark" ? (
-              <Sun className="mr-2 h-3.5 w-3.5" />
-            ) : (
-              <Moon className="mr-2 h-3.5 w-3.5" />
-            )}
-            Toggle theme
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />

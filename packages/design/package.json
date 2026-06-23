@@ -1,0 +1,8 @@
+{
+  "name": "@context101/design",
+  "version": "0.0.0",
+  "private": true,
+  "exports": {
+    "./tokens.css": "./tokens.css"
+  }
+}

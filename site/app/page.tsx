@@ -18,11 +18,11 @@ import {
   UserPlus,
 } from "lucide-react";
 import { BrainGlobe } from "@/components/brain-globe";
-import { ConnectionDiagram } from "@/components/connection-diagram";
 import { Counter } from "@/components/counter";
-import { FadeIn } from "@/components/fade-in";
+import { FadeIn } from "@context101/ui/fade-in";
+import { IntegrationsBeam } from "@context101/ui/integrations-beam";
 import { ProviderMarquee } from "@/components/provider-logos";
-import { GithubLogo, SOURCES } from "@/components/stack-logos";
+import { GithubLogo, SOURCES } from "@context101/ui/stack-logos";
 import { Button } from "@/components/ui/button";
 import { Marquee } from "@/components/ui/marquee";
 
@@ -156,91 +156,88 @@ export default function HomePage() {
         </FadeIn>
       </section>
 
-      <section className="border-t section-divider py-14">
-        <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            Connect your sources. Read from one place.
-          </h2>
-          <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
+      <section className="border-t section-divider py-14 sv2">
+        <FadeIn className="cr2">
+          <h2 className="sv2-h">Connect your sources. Read from one place.</h2>
+          <p className="sv2-p">
             Plug in the tools your team already uses, and every AI tool reads
             from one shared source — no more scattered docs or copy-pasting
             context into each tool.
           </p>
+          <div className="cr2-grid">
+            <div className="cr2-beam">
+              <IntegrationsBeam className="ib-v" />
+            </div>
+            <ol className="sv2-steps cr2-steps">
+              <li className="sv2-step">
+                <span className="sv2-num">01</span>
+                <div>
+                  <h3>Connect your sources</h3>
+                  <p>
+                    Bring your team&apos;s knowledge in from Google Docs, Notion,
+                    GitHub, or markdown. Add a source once and Context101 keeps it
+                    together in one brain.
+                  </p>
+                </div>
+              </li>
+              <li className="sv2-step">
+                <span className="sv2-num">02</span>
+                <div>
+                  <h3>Read from one place</h3>
+                  <p>
+                    Cursor, Claude, Devin, or your own agents read from that same
+                    brain through MCP. One source of truth, not scattered docs.
+                  </p>
+                </div>
+              </li>
+            </ol>
+          </div>
         </FadeIn>
-        <div className="mt-7 grid gap-3.5 md:grid-cols-2">
-          {features.map(({ title, body, Icon }) => (
-            <FadeIn
-              className="surface-card p-5"
-              key={title}
-            >
-              <Icon aria-hidden size={22} />
-              <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-                {title}
-              </h3>
-              <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-                {body}
-              </p>
-            </FadeIn>
-          ))}
-        </div>
       </section>
 
-      <section className="border-t section-divider py-14">
+      <section className="border-t section-divider py-14 sv2 tm">
         <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            Built for teams, with real access control.
-          </h2>
-          <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-            Context101 is organized around organizations, not just logins.
-            Invite teammates, assign roles, switch between the orgs you belong
-            to, and keep each org&apos;s brains fully isolated — all on a Better
-            Auth + Postgres control plane you can self-host.
+          <h2 className="sv2-h">Built for teams, with real access control.</h2>
+          <p className="sv2-p">
+            Organizations, not just logins — roles, invites, and isolated brains
+            on a Better Auth + Postgres control plane you can self-host.
           </p>
+          <ol className="sv2-steps">
+            <li className="sv2-step">
+              <span className="sv2-num">01</span>
+              <div>
+                <h3>Invite &amp; onboard</h3>
+                <p>
+                  Invite teammates by email; they create an account straight
+                  from the invite — no separate signup.
+                </p>
+              </div>
+            </li>
+            <li className="sv2-step">
+              <span className="sv2-num">02</span>
+              <div>
+                <h3>Roles &amp; access</h3>
+                <p>
+                  Owners and admins manage roles. Remove a member and their
+                  sessions revoke instantly.
+                </p>
+              </div>
+            </li>
+            <li className="sv2-step">
+              <span className="sv2-num">03</span>
+              <div>
+                <h3>Multiple workspaces</h3>
+                <p>
+                  Belong to multiple orgs, pick one at sign-in, and spin up new
+                  orgs anytime.
+                </p>
+              </div>
+            </li>
+          </ol>
         </FadeIn>
-        <div className="mt-7 grid gap-3.5 md:grid-cols-3">
-          <FadeIn className="surface-card p-5">
-            <UserPlus aria-hidden size={22} />
-            <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-              Invite & onboard
-            </h3>
-            <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-              Invite teammates by email and share an accept link. People without
-              an account can create one straight from the invite — no separate
-              signup step, and the email is locked to the one you invited.
-            </p>
-          </FadeIn>
-          <FadeIn
-            className="surface-card p-5"
-            delayMs={80}
-          >
-            <ShieldCheck aria-hidden size={22} />
-            <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-              Roles & access
-            </h3>
-            <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-              Owners and admins manage members and change roles. Removing a
-              member revokes their sessions immediately, and admins can reset a
-              locked-out teammate&apos;s password from the app.
-            </p>
-          </FadeIn>
-          <FadeIn
-            className="surface-card p-5"
-            delayMs={160}
-          >
-            <Building2 aria-hidden size={22} />
-            <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-              Multiple workspaces
-            </h3>
-            <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-              Belong to more than one org? Pick a workspace at sign-in from a
-              simple grid, spin up new orgs on the fly, and switch between them
-              anytime.
-            </p>
-          </FadeIn>
-        </div>
       </section>
 
-      <section className="border-t section-divider py-14">
+      {/* <section className="border-t section-divider py-14"> 
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
             Write once. Retrieve from everywhere.
@@ -251,12 +248,12 @@ export default function HomePage() {
           </p>
         </FadeIn>
         <FadeIn
-          className="mt-7 overflow-x-auto overflow-y-hidden rounded-[30px] border border-[color-mix(in_srgb,var(--accent)_14%,var(--line))] bg-[radial-gradient(circle_at_50%_50%,rgba(184,85,201,0.06),transparent_42%),color-mix(in_srgb,var(--accent-soft)_52%,var(--card-2))] p-7"
+          className="mt-7 overflow-hidden rounded-[30px] border border-[color-mix(in_srgb,var(--accent)_14%,var(--line))] bg-[radial-gradient(circle_at_50%_50%,rgba(184,85,201,0.08),transparent_46%),color-mix(in_srgb,var(--accent-soft)_52%,var(--card-2))] p-4 sm:p-7"
           delayMs={100}
         >
-          <ConnectionDiagram />
+          <IntegrationsBeam />
         </FadeIn>
-      </section>
+      </section> */}
 
       <section className="border-t section-divider py-14">
         <div className="grid gap-6">
@@ -356,10 +353,7 @@ export default function HomePage() {
               lists are pulled live from each provider.
             </p>
           </FadeIn>
-          <FadeIn
-            className="surface-card p-5"
-            delayMs={80}
-          >
+          <FadeIn className="surface-card p-5" delayMs={80}>
             <KeyRound aria-hidden size={22} />
             <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
               Bring your own key
@@ -370,10 +364,7 @@ export default function HomePage() {
               all.
             </p>
           </FadeIn>
-          <FadeIn
-            className="surface-card p-5"
-            delayMs={160}
-          >
+          <FadeIn className="surface-card p-5" delayMs={160}>
             <LockKeyhole aria-hidden size={22} />
             <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
               Keys stay secret
@@ -425,10 +416,7 @@ export default function HomePage() {
             </p>
           </FadeIn>
 
-          <FadeIn
-            className="surface-card p-5"
-            delayMs={80}
-          >
+          <FadeIn className="surface-card p-5" delayMs={80}>
             <Inbox aria-hidden size={22} />
             <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
               Review before it lands
@@ -440,10 +428,7 @@ export default function HomePage() {
             </p>
           </FadeIn>
 
-          <FadeIn
-            className="surface-card p-5"
-            delayMs={160}
-          >
+          <FadeIn className="surface-card p-5" delayMs={160}>
             <CheckCircle2 aria-hidden size={22} />
             <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
               Accepted changes re-index
@@ -463,46 +448,6 @@ export default function HomePage() {
           manually or accept the suggestion into Context101&apos;s stored
           markdown. Source-level writeback is a follow-up.
         </FadeIn>
-      </section>
-
-      <section className="border-t section-divider py-14 text-center">
-        <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            Small enough to try, real enough to evolve.
-          </h2>
-        </FadeIn>
-        <div className="mt-7 grid gap-3.5 md:grid-cols-3">
-          <FadeIn className="surface-card surface-card--stat px-4 py-6">
-            <strong className="block text-[clamp(38px,6vw,58px)] leading-[0.95] font-bold tracking-[-0.055em]">
-              <Counter to={5} />+
-            </strong>
-            <span className="mt-3 block text-[13px] leading-5 text-muted-foreground">
-              MCP clients
-            </span>
-          </FadeIn>
-          <FadeIn
-            className="surface-card surface-card--stat px-4 py-6"
-            delayMs={80}
-          >
-            <strong className="block text-[clamp(38px,6vw,58px)] leading-[0.95] font-bold tracking-[-0.055em]">
-              $<Counter to={5} />-<Counter to={15} />
-            </strong>
-            <span className="mt-3 block text-[13px] leading-5 text-muted-foreground">
-              monthly AWS cost at PoC scale
-            </span>
-          </FadeIn>
-          <FadeIn
-            className="surface-card surface-card--stat px-4 py-6"
-            delayMs={160}
-          >
-            <strong className="block text-[clamp(38px,6vw,58px)] leading-[0.95] font-bold tracking-[-0.055em]">
-              <Counter to={1} />
-            </strong>
-            <span className="mt-3 block text-[13px] leading-5 text-muted-foreground">
-              shared codebase for hosted and self-hosted
-            </span>
-          </FadeIn>
-        </div>
       </section>
 
       <section id="caveats" className="border-t section-divider py-14">
@@ -547,54 +492,62 @@ export default function HomePage() {
         </FadeIn>
       </section>
 
-      <section className="border-t section-divider py-14">
+      <section className="border-t section-divider py-14 fq2">
         <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            Good to know.
-          </h2>
-          <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-            A few choices are pragmatic rather than perfect. Context101 started
-            as a PoC, so the first version optimized for easy AWS deployment.
-            The current open-source SaaS path is moving auth and orgs to Better
-            Auth + Postgres while keeping AWS for content and retrieval.
+          <h2 className="fq2-h">Good to know.</h2>
+          <div className="fq2-list">
+            <details className="fq2-item">
+              <summary>
+                Bring your own LLM provider?
+                <span className="fq2-mark" aria-hidden="true" />
+              </summary>
+              <p>
+                Yes — Amazon Bedrock by default, or bring your own key
+                (Anthropic, OpenAI, Gemini, Grok) per brain. Keys live in AWS
+                Secrets Manager, never the database.
+              </p>
+            </details>
+            <details className="fq2-item">
+              <summary>
+                How does team access work?
+                <span className="fq2-mark" aria-hidden="true" />
+              </summary>
+              <p>
+                Orgs with owner / admin / member roles. Admins invite by email,
+                change roles, and remove members (revoking sessions instantly).
+                Users can belong to multiple orgs.
+              </p>
+            </details>
+            <details className="fq2-item">
+              <summary>
+                Why so many AWS services?
+                <span className="fq2-mark" aria-hidden="true" />
+              </summary>
+              <p>
+                To deploy from one CDK stack with managed services. The control
+                plane is moving to Postgres, so Neon, Supabase, RDS, or local
+                all work.
+              </p>
+            </details>
+            <details className="fq2-item">
+              <summary>
+                Why Titan embeddings?
+                <span className="fq2-mark" aria-hidden="true" />
+              </summary>
+              <p>
+                Easiest AWS-first fit — Bedrock Knowledge Bases use it natively,
+                with no extra provider keys. Swappable later.
+              </p>
+            </details>
+          </div>
+          <p className="fq2-credit">
+            Inspired by <a href="https://devin.ai">Devin</a> and{" "}
+            <a href="https://github.com/AsyncFuncAI/deepwiki-open">
+              DeepWiki Open
+            </a>
+            .
           </p>
         </FadeIn>
-
-        <div className="mt-7 grid gap-3.5 md:grid-cols-2">
-          {faqs.map((item, index) => (
-            <FadeIn
-              className="surface-card p-5"
-              key={item.question}
-              delayMs={index * 60}
-            >
-              <h3 className="text-lg font-semibold tracking-[-0.02em]">
-                {item.question}
-              </h3>
-              <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-                {item.answer}
-              </p>
-              {item.question === "What inspired this?" ? (
-                <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                  Credit to{" "}
-                  <a
-                    href="https://devin.ai"
-                    className="text-foreground underline underline-offset-4"
-                  >
-                    Devin
-                  </a>{" "}
-                  and{" "}
-                  <a
-                    href="https://github.com/AsyncFuncAI/deepwiki-open"
-                    className="text-foreground underline underline-offset-4"
-                  >
-                    DeepWiki Open
-                  </a>
-                  .
-                </p>
-              ) : null}
-            </FadeIn>
-          ))}
-        </div>
       </section>
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t section-divider py-6 text-[13px] text-muted-foreground">

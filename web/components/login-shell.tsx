@@ -6,8 +6,7 @@ import { Brain } from "lucide-react";
 import Aurora from "@/components/Aurora";
 import BlurText from "@/components/BlurText";
 import { BrainConnectionBeams } from "@/components/brain-connection-beams";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { BRAIN_ACCENT, BRAIN_ACCENT_RGB } from "@/lib/brain-accent";
+import { BRAIN_ACCENT_RGB } from "@/lib/brain-accent";
 
 export function LoginShell({
   children,
@@ -35,23 +34,19 @@ export function LoginShell({
         aria-hidden
       />
 
-      <div className="absolute right-4 top-4 z-20 sm:right-6 sm:top-6">
-        <ThemeToggle />
-      </div>
-
       <div className="relative z-10 w-full max-w-[420px]">
         <div className="mb-8 text-center">
           <div
             className="mx-auto mb-4 flex size-11 items-center justify-center rounded-2xl border border-border/60 bg-card/70 shadow-lg backdrop-blur-sm"
             style={{ boxShadow: `0 0 28px rgba(${BRAIN_ACCENT_RGB}, 0.16)` }}
           >
-            <Brain className="size-5" style={{ color: BRAIN_ACCENT }} aria-hidden />
+            <Brain className="size-5 text-primary" aria-hidden />
           </div>
           <BlurText
             text="Context101"
             animateBy="letters"
             delay={35}
-            className="justify-center text-3xl font-semibold tracking-tight text-foreground sm:text-4xl"
+            className="justify-center font-heading text-3xl font-semibold tracking-tight text-foreground sm:text-4xl"
             direction="bottom"
             stepDuration={0.4}
           />

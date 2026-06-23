@@ -1,8 +1,11 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "@context101/design/tokens.css";
 @plugin "@tailwindcss/typography";
 
+/* Dark is the only mode (forcedTheme="dark"); the variant stays so the many
+   existing `dark:` utilities keep resolving under the always-present .dark class. */
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -15,9 +18,9 @@
    * `--font-sans: var(--font-sans)` (the previous value) was
    * self-referential and never resolved, so font-sans fell through
    * to the browser default. */
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-geist-sans);
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-mono-code);
+  --font-heading: var(--font-display);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -74,77 +77,44 @@
   }
 }
 
+/* Unified dark theme — "Synaptic Dark", shared with site/ via @context101/design.
+   Brand + surface primitives (--brain*, --bg, --fg, --card, --line, --muted-bg, …)
+   come from tokens.css; this maps the shadcn contract onto them. Dark-only, so
+   :root IS the dark palette (no separate .dark block; the .dark class is forced on
+   by next-themes only so `dark:` utility variants keep resolving). */
 :root {
-  --brain: #b855c9;
-  --brain-2: #8b5cf6;
-  --brain-soft: #faf5fc;
-  --background: oklch(0.99 0.006 328);
-  --foreground: oklch(0.16 0.02 328);
-  --card: oklch(1 0.005 328);
-  --card-foreground: oklch(0.16 0.02 328);
-  --popover: oklch(1 0.005 328);
-  --popover-foreground: oklch(0.16 0.02 328);
-  --primary: oklch(0.48 0.14 320);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.96 0.018 328);
-  --secondary-foreground: oklch(0.22 0.03 328);
-  --muted: oklch(0.96 0.018 328);
-  --muted-foreground: oklch(0.5 0.04 328);
-  --accent: oklch(0.95 0.028 328);
-  --accent-foreground: oklch(0.22 0.03 328);
-  --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.9 0.022 328);
-  --input: oklch(0.9 0.022 328);
-  --ring: oklch(0.58 0.16 320);
-  --chart-1: oklch(0.58 0.16 320);
-  --chart-2: oklch(0.52 0.14 320);
-  --chart-3: oklch(0.44 0.11 320);
-  --chart-4: oklch(0.38 0.09 320);
-  --chart-5: oklch(0.32 0.07 320);
-  --radius: 0.625rem;
-  --sidebar: oklch(0.98 0.012 328);
-  --sidebar-foreground: oklch(0.16 0.02 328);
-  --sidebar-primary: oklch(0.48 0.14 320);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.94 0.035 328);
-  --sidebar-accent-foreground: oklch(0.22 0.03 328);
-  --sidebar-border: oklch(0.88 0.028 328);
-  --sidebar-ring: oklch(0.58 0.16 320);
-}
-
-.dark {
-  --brain-soft: #140818;
-  --background: oklch(0.12 0.018 328);
-  --foreground: oklch(0.97 0.012 328);
-  --card: oklch(0.17 0.028 328);
-  --card-foreground: oklch(0.97 0.012 328);
-  --popover: oklch(0.17 0.028 328);
-  --popover-foreground: oklch(0.97 0.012 328);
-  --primary: oklch(0.58 0.16 320);
-  --primary-foreground: oklch(0.99 0 0);
-  --secondary: oklch(0.22 0.035 328);
-  --secondary-foreground: oklch(0.97 0.012 328);
-  --muted: oklch(0.22 0.035 328);
-  --muted-foreground: oklch(0.68 0.04 328);
-  --accent: oklch(0.24 0.045 328);
-  --accent-foreground: oklch(0.97 0.012 328);
+  --background: var(--bg); /* #060509 */
+  --foreground: var(--fg); /* #f2eef8 */
+  --card: var(--card); /* #120e18 */
+  --card-foreground: var(--fg);
+  --popover: var(--card-2); /* #0e0a14 */
+  --popover-foreground: var(--fg);
+  --primary: var(--brain); /* #b855c9 */
+  --primary-foreground: #fafafa;
+  --secondary: #1b1322; /* lifted surface: secondary buttons, chips */
+  --secondary-foreground: var(--fg);
+  --muted: var(--muted-bg); /* #15101c surface — bg-muted */
+  --muted-foreground: #a89eb4; /* dusty lilac text (site --muted) */
+  --accent: #221830; /* subtle hover surface — NOT the brand accent */
+  --accent-foreground: var(--fg);
   --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(0.28 0.04 328);
-  --input: oklch(0.28 0.04 328);
-  --ring: oklch(0.62 0.14 320);
-  --chart-1: oklch(0.58 0.16 320);
-  --chart-2: oklch(0.52 0.14 320);
-  --chart-3: oklch(0.44 0.11 320);
-  --chart-4: oklch(0.38 0.09 320);
-  --chart-5: oklch(0.32 0.07 320);
-  --sidebar: oklch(0.14 0.022 328);
-  --sidebar-foreground: oklch(0.97 0.012 328);
-  --sidebar-primary: oklch(0.58 0.16 320);
-  --sidebar-primary-foreground: oklch(0.99 0 0);
-  --sidebar-accent: oklch(0.22 0.048 328);
-  --sidebar-accent-foreground: oklch(0.97 0.012 328);
-  --sidebar-border: oklch(0.28 0.04 328);
-  --sidebar-ring: oklch(0.62 0.14 320);
+  --border: var(--line); /* #3b2d48 */
+  --input: var(--line);
+  --ring: var(--brain-2); /* #8b5cf6 */
+  --chart-1: var(--brain);
+  --chart-2: var(--brain-2);
+  --chart-3: oklch(0.62 0.16 300);
+  --chart-4: oklch(0.55 0.13 280);
+  --chart-5: oklch(0.7 0.14 340);
+  --radius: 0.625rem;
+  --sidebar: var(--bg-2); /* #09060c */
+  --sidebar-foreground: var(--fg);
+  --sidebar-primary: var(--brain);
+  --sidebar-primary-foreground: #fafafa;
+  --sidebar-accent: #1b1322;
+  --sidebar-accent-foreground: var(--fg);
+  --sidebar-border: var(--line);
+  --sidebar-ring: var(--brain-2);
 }
 
 @layer base {

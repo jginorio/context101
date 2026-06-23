@@ -2,12 +2,9 @@
 
 import * as React from "react";
 import {
-  Bot,
   Brain,
   Code2,
   FileCode,
-  FileType2,
-  Layers,
   MessageSquare,
   Terminal,
   TerminalSquare,
@@ -16,10 +13,8 @@ import {
 import {
   GithubLogo,
   GoogleDocsLogo,
-  GoogleSheetsLogo,
-  GoogleSlidesLogo,
   NotionLogo,
-} from "@/components/stack-logos";
+} from "@context101/ui/stack-logos";
 import { cn } from "@/lib/utils";
 
 /**
@@ -30,11 +25,9 @@ import { cn } from "@/lib/utils";
  *
  * Two layouts share the same node data:
  *
- *   sm and up: a horizontal schematic. 8 data sources on the left,
- *   the Context101 hub in the middle, 5 agents on the right; cubic
- *   Bezier beams travel between them with an animated dashed stroke.
- *   "Soon" sources get a faint dashed rail but no animated beam —
- *   they're in the topology, just not connected yet.
+ *   sm and up: a horizontal schematic. Four source categories on the
+ *   left, the Context101 hub in the middle, four agents on the right;
+ *   cubic Bezier beams travel between them with an animated dashed stroke.
  *
  *   below sm: a vertical schematic. Full-width chips stack top to
  *   bottom — sources, hub, then agents — preserving the data-flow
@@ -56,75 +49,56 @@ type Node = {
 };
 
 const VIEW_W = 800;
-const VIEW_H = 440;
+const VIEW_H = 280;
 
-// Left column: data sources Context101 ingests from. Live connectors
-// (and plain markdown) get animated beams; "soon" entries appear in the
-// topology to signal the roadmap but don't pulse yet.
+// Left column: the kinds of sources Context101 ingests from. Kept
+// general — a handful of categories instead of every individual
+// connector — so the topology stays compact and easy to read.
 const LEFT_NODES: Node[] = [
   {
-    id: "sheets",
-    label: "Google Sheets",
-    Icon: GoogleSheetsLogo,
+    id: "notion",
+    label: "Notion & wikis",
+    Icon: NotionLogo,
     x: 4,
-    y: 4,
+    y: 14,
     side: "left",
   },
   {
-    id: "docs",
-    label: "Google Docs",
+    id: "workspace",
+    label: "Google Workspace",
     Icon: GoogleDocsLogo,
     x: 4,
-    y: 16,
+    y: 34,
     side: "left",
   },
   {
-    id: "slides",
-    label: "Google Slides",
-    Icon: GoogleSlidesLogo,
+    id: "github",
+    label: "Code & repos",
+    Icon: GithubLogo,
     x: 4,
-    y: 28,
+    y: 54,
     side: "left",
   },
-  { id: "notion", label: "Notion", Icon: NotionLogo, x: 4, y: 40, side: "left" },
-  { id: "github", label: "GitHub", Icon: GithubLogo, x: 4, y: 52, side: "left" },
   {
-    id: "markdown",
-    label: "Markdown",
+    id: "files",
+    label: "Docs & files",
     Icon: FileCode,
     x: 4,
-    y: 64,
+    y: 74,
     side: "left",
-  },
-  {
-    id: "confluence",
-    label: "Confluence",
-    Icon: Layers,
-    x: 4,
-    y: 76,
-    side: "left",
-    status: "soon",
-  },
-  {
-    id: "pdf",
-    label: "PDFs",
-    Icon: FileType2,
-    x: 4,
-    y: 88,
-    side: "left",
-    status: "soon",
   },
 ];
 
 // Right column: MCP-compatible agents that retrieve from the brain.
+// Kept to four to mirror the source column and stay compact.
 const RIGHT_NODES: Node[] = [
-  { id: "cursor", label: "Cursor", Icon: Code2, x: 76, y: 8, side: "right" },
+  { id: "cursor", label: "Cursor", Icon: Code2, x: 76, y: 14, side: "right" },
   {
     id: "code",
     label: "Claude Code",
     Icon: Terminal,
     x: 76,
-    y: 28,
+    y: 34,
     side: "right",
   },
   {
@@ -132,16 +106,15 @@ const RIGHT_NODES: Node[] = [
     label: "Claude Desktop",
     Icon: MessageSquare,
     x: 76,
-    y: 48,
+    y: 54,
     side: "right",
   },
-  { id: "devin", label: "Devin", Icon: Bot, x: 76, y: 68, side: "right" },
   {
     id: "custom",
     label: "Your agent",
     Icon: TerminalSquare,
     x: 76,
-    y: 88,
+    y: 74,
     side: "right",
   },
 ];
@@ -212,7 +185,7 @@ function ConnectionDiagramHorizontal({ className }: { className?: string }) {
       className={cn(
         "relative w-full",
         // Lock aspect ratio so the SVG and the HTML nodes share coordinates.
-        "[aspect-ratio:800/440]",
+        "[aspect-ratio:800/280]",
         className,
       )}
     >
@@ -255,7 +228,7 @@ function ConnectionDiagramHorizontal({ className }: { className?: string }) {
             strokeWidth={2}
             strokeLinecap="round"
             className="ctx-beam-flow text-primary [stroke-dasharray:8_180]"
-            style={{ animationDelay: `${(i % 5) * 0.4}s` }}
+            style={{ animationDelay: `${(i % 4) * 0.4}s` }}
           />
         ))}
       </svg>

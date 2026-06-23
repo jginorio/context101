@@ -1,39 +1,6 @@
 @import "tailwindcss";
-
-@theme inline {
-  --color-background: var(--bg);
-  --color-foreground: var(--fg);
-  --color-card: var(--card);
-  --color-card-foreground: var(--fg);
-  --color-muted: var(--muted-bg);
-  --color-muted-foreground: var(--muted);
-  --color-primary: var(--accent);
-  --color-primary-foreground: #fafafa;
-  --color-border: var(--line);
-  --color-ring: var(--accent-2);
-  --font-sans: var(--font-body), ui-sans-serif, system-ui, sans-serif;
-  --font-mono: var(--font-mono-code), ui-monospace, SFMono-Regular, Menlo,
-    monospace;
-}
-
-:root {
-  color-scheme: dark;
-  --brain: #b855c9;
-  --brain-2: #8b5cf6;
-  --brain-soft: #140818;
-  --bg: #060509;
-  --bg-2: #09060c;
-  --fg: #f2eef8;
-  --muted: #a89eb4;
-  --muted-bg: #15101c;
-  --line: #3b2d48;
-  --card: #120e18;
-  --card-2: #0e0a14;
-  --accent: var(--brain);
-  --accent-2: var(--brain-2);
-  --accent-soft: var(--brain-soft);
-  --code: #0a0810;
-}
+@import "@context101/design/tokens.css";
+@source "../../packages/ui/src";
 
 * {
   box-sizing: border-box;
@@ -54,8 +21,8 @@ body {
 h1,
 h2,
 h3 {
-  font-family: var(--font-display), var(--font-body), ui-sans-serif, system-ui,
-    sans-serif;
+  font-family:
+    var(--font-display), var(--font-body), ui-sans-serif, system-ui, sans-serif;
 }
 
 a {
@@ -223,5 +190,195 @@ a {
   .brain-beams__link,
   .brain-beams__pulse {
     animation: none;
+  }
+}
+
+/* "Connect / Read" section — numbered two-step layout */
+.sv2-h {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  color: var(--fg);
+  text-wrap: balance;
+}
+.sv2-p {
+  margin: 0.9rem 0 0;
+  max-width: 60ch;
+  font-size: 1rem;
+  line-height: 1.6;
+  color: var(--muted);
+  text-wrap: pretty;
+}
+.sv2-steps {
+  list-style: none;
+  margin: 2rem 0 0;
+  margin-bottom: 2rem !important;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+.sv2-step {
+  display: flex;
+  gap: 1.1rem;
+  align-items: baseline;
+  padding: 1.25rem 1.3rem;
+  border-radius: 16px;
+  border: 1px solid color-mix(in srgb, var(--brain) 22%, var(--line));
+  background: color-mix(in srgb, var(--accent-soft) 47%, var(--card));
+}
+.sv2-num {
+  flex: none;
+  font-family: var(--font-display), system-ui, sans-serif;
+  font-size: clamp(30px, 3.6vw, 46px);
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: -0.05em;
+  color: var(--brain);
+  text-shadow: 0 0 10px color-mix(in srgb, var(--brain) 55%, transparent);
+}
+.sv2-step h3 {
+  margin: 0;
+  font-size: 1.12rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+.sv2-step p {
+  margin: 0.45rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+@media (min-width: 768px) {
+  .sv2-steps {
+    grid-template-columns: 1fr 1fr;
+    gap: 1.25rem;
+  }
+}
+
+/* "Good to know" FAQ — collapsible accordion */
+.fq2-h {
+  margin: 0;
+  font-size: clamp(30px, 4vw, 48px);
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  color: var(--fg);
+  text-wrap: balance;
+}
+.fq2-list {
+  margin: 1.75rem 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--brain) 12%, var(--line));
+}
+.fq2-item {
+  border-bottom: 1px solid color-mix(in srgb, var(--brain) 12%, var(--line));
+}
+.fq2-item summary {
+  list-style: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1.05rem 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--fg);
+  transition: color 0.25s;
+}
+.fq2-item summary::-webkit-details-marker {
+  display: none;
+}
+.fq2-item summary:hover {
+  color: color-mix(in srgb, var(--brain) 55%, var(--fg));
+}
+.fq2-mark {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  position: relative;
+  color: var(--brain);
+  transition: transform 0.3s cubic-bezier(0.25, 1, 0.5, 1);
+}
+.fq2-mark::before,
+.fq2-mark::after {
+  content: "";
+  position: absolute;
+  background: currentColor;
+  border-radius: 2px;
+}
+.fq2-mark::before {
+  left: 0;
+  top: 8px;
+  width: 18px;
+  height: 2px;
+}
+.fq2-mark::after {
+  left: 8px;
+  top: 0;
+  width: 2px;
+  height: 18px;
+}
+.fq2-item[open] .fq2-mark {
+  transform: rotate(135deg);
+}
+.fq2-item p {
+  margin: 0 0 1.1rem;
+  max-width: 62ch;
+  font-size: 0.9rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+.fq2-credit {
+  margin: 1.5rem 0 0;
+  font-size: 0.82rem;
+  color: var(--muted);
+}
+.fq2-credit a {
+  color: var(--fg);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .fq2-mark {
+    transition: none;
+  }
+}
+
+/* "Built for teams" — reuses .sv2 steps, three across on desktop */
+@media (min-width: 768px) {
+  .tm .sv2-steps {
+    grid-template-columns: repeat(3, 1fr);
+    gap: 1rem;
+  }
+}
+
+/* "Connect / Read" split — beam (vertical) on the left, steps stacked on the right */
+.cr2 .cr2-grid {
+  margin-top: 2.25rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1.5rem;
+  align-items: center;
+}
+.cr2 .cr2-steps {
+  margin-top: 0;
+  margin-bottom: 0 !important;
+  grid-template-columns: 1fr;
+}
+.cr2 .ib-v > div {
+  flex-direction: column !important;
+  gap: 1.75rem;
+}
+.cr2 .ib-v > div > div:first-child {
+  flex-direction: row !important;
+}
+@media (min-width: 860px) {
+  .cr2 .cr2-grid {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2.75rem;
   }
 }

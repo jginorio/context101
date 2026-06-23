@@ -1,0 +1,9 @@
+{
+  "name": "context101-monorepo",
+  "private": true,
+  "workspaces": [
+    "site",
+    "web",
+    "packages/*"
+  ]
+}
