@@ -57,7 +57,7 @@ export function BrainSwitcher() {
         }
       >
         <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
-          <BrainOrb className="h-full w-full" />
+          <BrainOrb className="h-full w-full" nodeCount={42} linkDistance={0.72} />
           {status === "provisioning" || status === "deleting" ? (
             <Loader2 className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 animate-spin rounded-full bg-sidebar p-px text-primary" />
           ) : status === "error" ? (

@@ -14,12 +14,13 @@ import { BRAIN_ACCENT_RGB } from "@/lib/brain-accent";
 
 type Vec3 = { x: number; y: number; z: number };
 
-// Hero's BrainGlobe geometry, thinned out for the small tile: fewer nodes so
-// it doesn't turn to mush at ~36px, but the same nearest-neighbor wiring so it
-// still reads as a rotating neuron network.
-const NODE_COUNT = 90;
+// Hero's BrainGlobe geometry, thinned out so it doesn't turn to mush at small
+// sizes, but with the same nearest-neighbor wiring so it still reads as a
+// rotating neuron network. Node count / link distance are per-instance so a
+// tiny tile can be sparser than a larger empty-state visual.
+const DEFAULT_NODE_COUNT = 90;
+const DEFAULT_LINK_DISTANCE = 0.56;
 const MAX_NEIGHBORS = 3;
-const LINK_DISTANCE = 0.56;
 // Idle spin — slower than the hero (~0.0022) but fast enough to clearly turn.
 const IDLE_SPIN = 0.0014;
 
@@ -41,7 +42,10 @@ function fibonacciSphere(count: number): Vec3[] {
   return points;
 }
 
-function buildLinks(points: Vec3[]): [number, number][] {
+function buildLinks(
+  points: Vec3[],
+  linkDistance: number
+): [number, number][] {
   const links: [number, number][] = [];
   const seen = new Set<string>();
   for (let i = 0; i < points.length; i++) {
@@ -52,7 +56,7 @@ function buildLinks(points: Vec3[]): [number, number][] {
       const dy = points[i].y - points[j].y;
       const dz = points[i].z - points[j].z;
       const d = Math.sqrt(dx * dx + dy * dy + dz * dz);
-      if (d < LINK_DISTANCE) dists.push({ j, d });
+      if (d < linkDistance) dists.push({ j, d });
     }
     dists.sort((a, b) => a.d - b.d);
     for (const { j } of dists.slice(0, MAX_NEIGHBORS)) {
@@ -65,12 +69,22 @@ function buildLinks(points: Vec3[]): [number, number][] {
   return links;
 }
 
-// Computed once for the module — the geometry is deterministic and shared.
-const POINTS = fibonacciSphere(NODE_COUNT);
-const LINKS = buildLinks(POINTS);
-
-export function BrainOrb({ className }: { className?: string }) {
+export function BrainOrb({
+  className,
+  nodeCount = DEFAULT_NODE_COUNT,
+  linkDistance = DEFAULT_LINK_DISTANCE,
+}: {
+  className?: string;
+  nodeCount?: number;
+  linkDistance?: number;
+}) {
   const canvasRef = React.useRef<HTMLCanvasElement | null>(null);
+
+  // Geometry is deterministic per (nodeCount, linkDistance).
+  const { points, links } = React.useMemo(() => {
+    const pts = fibonacciSphere(nodeCount);
+    return { points: pts, links: buildLinks(pts, linkDistance) };
+  }, [nodeCount, linkDistance]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -102,7 +116,7 @@ export function BrainOrb({ className }: { className?: string }) {
     let rotY = 0.6;
     const rotX = -0.32;
 
-    const projected = POINTS.map(() => ({ x: 0, y: 0, depth: 0, scale: 0 }));
+    const projected = points.map(() => ({ x: 0, y: 0, depth: 0, scale: 0 }));
 
     const draw = () => {
       const cx = width / 2;
@@ -115,8 +129,8 @@ export function BrainOrb({ className }: { className?: string }) {
       const cosX = Math.cos(rotX);
       const sinX = Math.sin(rotX);
 
-      for (let i = 0; i < POINTS.length; i++) {
-        const p = POINTS[i];
+      for (let i = 0; i < points.length; i++) {
+        const p = points[i];
         const x1 = p.x * cosY - p.z * sinY;
         const z1 = p.x * sinY + p.z * cosY;
         const y1 = p.y * cosX - z1 * sinX;
@@ -130,9 +144,9 @@ export function BrainOrb({ className }: { className?: string }) {
 
       ctx.clearRect(0, 0, width, height);
 
-      for (let k = 0; k < LINKS.length; k++) {
-        const a = projected[LINKS[k][0]];
-        const b = projected[LINKS[k][1]];
+      for (let k = 0; k < links.length; k++) {
+        const a = projected[links[k][0]];
+        const b = projected[links[k][1]];
         const depth = (a.depth + b.depth) / 2;
         const t = (depth + 1.2) / 2.4;
         const alpha = 0.05 + Math.max(0, t) * 0.3;
@@ -192,7 +206,7 @@ export function BrainOrb({ className }: { className?: string }) {
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, []);
+  }, [points, links]);
 
   return (
     <canvas
