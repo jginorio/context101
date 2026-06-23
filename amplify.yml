@@ -6,10 +6,16 @@ applications:
         preBuild:
           commands:
             # Monorepo: site/web/packages are npm workspaces with a single root
-            # lockfile, so deps must be installed from the repo root (web/ has
-            # no lockfile of its own). cwd persists across phases in Amplify, so
-            # cd back into web/ at the end — the build phase below runs there.
-            - cd .. && npm install --cache .npm --prefer-offline && cd web
+            # lockfile, so deps install from the repo root (web/ has no lockfile
+            # of its own). cwd persists across Amplify phases, so cd back into
+            # web/ at the end — the build phase below runs there.
+            #
+            # rm the lockfile before install: it's generated on macOS and npm's
+            # optional-dependency platform bug then skips the linux-x64 native
+            # binaries (lightningcss / @tailwindcss/oxide / @next/swc), breaking
+            # `next build`. A fresh install on the linux container resolves the
+            # correct platform binaries.
+            - cd .. && rm -f package-lock.json && npm install --cache .npm && cd web
         build:
           commands:
             # Amplify exposes console/branch env vars to the build container,
