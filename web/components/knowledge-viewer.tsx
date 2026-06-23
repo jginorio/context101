@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { Brain, FileText, Pencil, Save, Sparkles, Trash2, X } from "lucide-react";
+import { FileText, Pencil, Save, Sparkles, Trash2, X } from "lucide-react";
 import { toast } from "sonner";
 
+import { BrainOrb } from "@/components/brain-orb";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -149,9 +150,7 @@ export function KnowledgeViewer({
     return (
       <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_50%_40%,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_55%)] p-6 text-sm text-muted-foreground">
         <div className="flex max-w-xs flex-col items-center gap-3 text-center">
-          <div className="flex size-12 items-center justify-center rounded-2xl border border-primary/20 bg-primary/10 text-primary shadow-[0_0_24px_color-mix(in_oklch,var(--primary)_25%,transparent)]">
-            <Brain className="h-5 w-5" />
-          </div>
+          <BrainOrb className="size-20" />
           <div>
             <p className="font-medium text-foreground">Select a file to view</p>
             <p className="mt-1 text-xs leading-relaxed">

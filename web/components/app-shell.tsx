@@ -166,7 +166,7 @@ function SidebarInner({
 }) {
   return (
     <div className="flex h-full flex-col bg-sidebar text-sidebar-foreground">
-      <div className="border-b border-sidebar-border p-2">
+      <div className="flex h-16 shrink-0 items-center border-b border-sidebar-border px-2">
         <BrainSwitcher />
       </div>
       <div className="border-b border-sidebar-border/60 py-2">
@@ -210,7 +210,7 @@ export function AppShell({
         </aside>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-background/80 px-3 py-3 backdrop-blur-sm sm:px-6">
+          <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/80 px-3 backdrop-blur-sm sm:px-6">
             <div className="flex min-w-0 items-center gap-2">
               <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
                 <SheetTrigger

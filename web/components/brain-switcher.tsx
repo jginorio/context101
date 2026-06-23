@@ -2,8 +2,9 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Brain, Check, ChevronsUpDown, Loader2, Plus } from "lucide-react";
+import { Check, ChevronsUpDown, Loader2, Plus } from "lucide-react";
 
+import { BrainOrb } from "@/components/brain-orb";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -15,7 +16,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useBrain } from "@/lib/brain-context";
-import { BRAIN_ACCENT_RGB } from "@/lib/brain-accent";
 
 /**
  * Header dropdown for picking the active brain. Lists every brain in
@@ -56,11 +56,8 @@ export function BrainSwitcher() {
           />
         }
       >
-        <span
-          className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15 text-primary ring-1 ring-primary/25"
-          style={{ boxShadow: `0 0 16px rgba(${BRAIN_ACCENT_RGB}, 0.18)` }}
-        >
-          <Brain className="h-[18px] w-[18px]" />
+        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+          <BrainOrb className="h-full w-full" />
           {status === "provisioning" || status === "deleting" ? (
             <Loader2 className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 animate-spin rounded-full bg-sidebar p-px text-primary" />
           ) : status === "error" ? (
