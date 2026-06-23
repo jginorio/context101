@@ -7,9 +7,9 @@ applications:
           commands:
             # Monorepo: site/web/packages are npm workspaces with a single root
             # lockfile, so deps must be installed from the repo root (web/ has
-            # no lockfile of its own). Each phase starts back at appRoot (web/),
-            # so the build phase below still runs inside web/.
-            - cd .. && npm install --cache .npm --prefer-offline
+            # no lockfile of its own). cwd persists across phases in Amplify, so
+            # cd back into web/ at the end — the build phase below runs there.
+            - cd .. && npm install --cache .npm --prefer-offline && cd web
         build:
           commands:
             # Amplify exposes console/branch env vars to the build container,
