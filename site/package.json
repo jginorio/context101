@@ -26,6 +26,10 @@
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0"
   },
+    "optionalDependencies": {
+    "lightningcss-linux-x64-gnu": "1.32.0",
+    "@tailwindcss/oxide-linux-x64-gnu": "4.3.0"
+  },
   "devDependencies": {
     "@types/node": "^20",
     "@types/react": "^19",
