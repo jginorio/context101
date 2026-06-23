@@ -3,6 +3,7 @@ import { Construct } from "constructs";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as path from "path";
+import { execSync } from "node:child_process";
 
 /**
  * Shared control-plane primitives for the multi-brain system.
@@ -51,38 +52,64 @@ export class BrainShared extends Construct {
     // package.json and the function crashes on cold start with
     // ERR_MODULE_NOT_FOUND ("Cannot find package '@aws-sdk/client-s3-vectors'").
     //
-    // Bundling runs `npm install --omit=dev` inside the Lambda's own
-    // Node 20 image so the resulting node_modules is binary-compatible
-    // with the runtime. Requires Docker at synth time — already a
-    // prereq for the wiki-generator image asset, so no new dependency.
+    // Bundling runs `npm install --omit=dev` to produce the node_modules.
+    //
+    // The provisioner's only deps are pure-JS AWS SDK v3 clients (no native
+    // binaries), so a host-side `npm install` is byte-for-byte runtime
+    // compatible with Lambda's Node 20. We therefore prefer LOCAL bundling
+    // (no container needed) and fall back to the Docker/OCI image only if the
+    // local install fails. This keeps synth working on machines where the
+    // container VM is flaky/unavailable, while remaining identical in CI.
+    const provisionerSrc = path.resolve(
+      __dirname,
+      "..",
+      "lambda",
+      "brain-provisioner"
+    );
     this.provisionerFn = new lambda.Function(this, "BrainProvisionerFn", {
       runtime: lambda.Runtime.NODEJS_20_X,
       handler: "index.handler",
-      code: lambda.Code.fromAsset(
-        path.resolve(__dirname, "..", "lambda", "brain-provisioner"),
-        {
-          bundling: {
-            image: lambda.Runtime.NODEJS_20_X.bundlingImage,
-            // The bundler container runs as the host user (uid/gid
-            // forwarded from the developer's machine) but the default
-            // npm cache lives at /.npm which is root-owned in the
-            // sam/build-nodejs20.x image — npm errors out with EACCES
-            // mkdir /.npm. Point HOME at /tmp so npm caches under
-            // /tmp/.npm (always world-writable). Same trick for the
-            // npm config root via the env var override.
-            environment: {
-              HOME: "/tmp",
-              npm_config_cache: "/tmp/.npm",
-              npm_config_update_notifier: "false",
-            },
-            command: [
-              "bash",
-              "-c",
-              "cp -au . /asset-output && cd /asset-output && npm install --omit=dev --no-audit --no-fund --loglevel=error",
-            ],
+      code: lambda.Code.fromAsset(provisionerSrc, {
+        bundling: {
+          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
+          // Docker/OCI fallback (CI or when local bundling is unavailable).
+          // HOME=/tmp keeps npm's cache writable inside the sam image (its
+          // default /.npm is root-owned and 400s with EACCES under the
+          // host uid/gid mapping).
+          environment: {
+            HOME: "/tmp",
+            npm_config_cache: "/tmp/.npm",
+            npm_config_update_notifier: "false",
           },
-        }
-      ),
+          command: [
+            "bash",
+            "-c",
+            "cp -au . /asset-output && cd /asset-output && npm install --omit=dev --no-audit --no-fund --loglevel=error",
+          ],
+          // Preferred path: install directly on the host into the asset
+          // staging dir. Returning true skips the container entirely.
+          local: {
+            tryBundle(outputDir: string): boolean {
+              try {
+                execSync(
+                  `cp -a "${provisionerSrc}/." "${outputDir}/" && cd "${outputDir}" && npm install --omit=dev --no-audit --no-fund --loglevel=error`,
+                  {
+                    stdio: "inherit",
+                    env: {
+                      ...process.env,
+                      npm_config_update_notifier: "false",
+                    },
+                  }
+                );
+                return true;
+              } catch {
+                // Fall back to the Docker/OCI image bundling above.
+                return false;
+              }
+            },
+          },
+        },
+      }),
       functionName: `${props.namePrefix}-brain-provisioner`,
       timeout: cdk.Duration.minutes(5),
       memorySize: 512,

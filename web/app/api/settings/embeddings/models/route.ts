@@ -11,6 +11,7 @@ import {
   CHUNKING_STRATEGY_LABELS,
   embeddingModelLabel,
   FALLBACK_EMBEDDING_MODELS,
+  KNOWN_EMBEDDING_DIMENSIONS,
   knownDimensionsFor,
   type EmbeddingProvider,
 } from "@/lib/embedding-models";
@@ -86,6 +87,11 @@ export async function GET(request: NextRequest) {
       }
       const provider = providerFromName(m.providerName);
       if (!provider || !m.modelId || seen.has(m.modelId)) continue;
+      // Only surface curated base model ids that are valid as a KB
+      // embeddingModelArn. ListFoundationModels also returns per-SKU variant
+      // ids (e.g. `...v3:0:512`, `...v2:0:8k`) and legacy aliases that Bedrock
+      // rejects when creating a knowledge base — skip those.
+      if (!(m.modelId in KNOWN_EMBEDDING_DIMENSIONS)) continue;
       seen.add(m.modelId);
       models.push(
         withDims({ id: m.modelId, provider, label: embeddingModelLabel(m.modelId) })

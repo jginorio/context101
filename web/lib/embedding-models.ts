@@ -349,8 +349,19 @@ export function resolveEmbeddingSelection(
     };
   }
 
+  // Only allow base model ids we have metadata for. Bedrock's
+  // ListFoundationModels also returns per-SKU variant ids (e.g.
+  // `cohere.embed-multilingual-v3:0:512`, `amazon.titan-embed-text-v2:0:8k`)
+  // that are NOT valid as a Knowledge Base `embeddingModelArn`, so we reject
+  // anything outside the curated set rather than letting it reach Bedrock.
   const known = KNOWN_EMBEDDING_DIMENSIONS[modelId];
-  let dimensions = known?.defaultDimension ?? DEFAULT_EMBEDDING_DIMENSION;
+  if (!known) {
+    return {
+      ok: false,
+      error: `unsupported embedding model '${modelId}'`,
+    };
+  }
+  let dimensions = known.defaultDimension;
   if (input.dimensions != null) {
     const d =
       typeof input.dimensions === "number"

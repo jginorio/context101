@@ -64,13 +64,23 @@ test("rejects an unsupported dimension for a known model", () => {
   assert.equal(res.ok, false);
 });
 
-test("accepts an unknown (future) model id with its given dimensions", () => {
+test("rejects an unknown model id (e.g. a Bedrock per-SKU variant)", () => {
+  // Variant/SKU ids like `cohere.embed-multilingual-v3:0:512` are not valid
+  // KB embedding model ARNs and must be rejected.
   const res = resolveEmbeddingSelection(
-    { provider: "cohere", modelId: "cohere.embed-future-v9", dimensions: 768 },
+    { provider: "cohere", modelId: "cohere.embed-multilingual-v3:0:512" },
+    REGION
+  );
+  assert.equal(res.ok, false);
+});
+
+test("accepts the curated Cohere Embed v4 base id", () => {
+  const res = resolveEmbeddingSelection(
+    { provider: "cohere", modelId: "cohere.embed-v4:0" },
     REGION
   );
   assert.ok(res.ok);
-  if (res.ok) assert.equal(res.selection.dimensions, 768);
+  if (res.ok) assert.equal(res.selection.dimensions, 1024);
 });
 
 test("rejects a model id that doesn't match the provider", () => {
