@@ -43,7 +43,9 @@ export const KNOWN_EMBEDDING_DIMENSIONS: Record<
     defaultDimension: 1536,
   },
   "amazon.titan-embed-image-v1": {
-    supportedDimensions: [256, 384, 1024],
+    // Titan Multimodal G1 is fixed at 1024 for Knowledge Bases (it does not
+    // accept a configurable `dimensions` value), so expose only 1024.
+    supportedDimensions: [1024],
     defaultDimension: 1024,
   },
   "cohere.embed-english-v3": {
@@ -310,6 +312,11 @@ export type ResolvedEmbeddingSelection = {
   modelId: string;
   modelArn: string;
   dimensions: number;
+  // True only for models that accept a configurable embedding dimension
+  // (Titan Text v2, Cohere Embed v4). Fixed-dimension models (Cohere v3,
+  // Titan G1, Titan Multimodal) reject a `dimensions` config on the KB, so
+  // the provisioner must omit it for them.
+  configurableDimensions: boolean;
   chunking: ChunkingConfig;
 };
 
@@ -389,6 +396,7 @@ export function resolveEmbeddingSelection(
       modelId,
       modelArn: embeddingModelArn(modelId, region),
       dimensions,
+      configurableDimensions: known.supportedDimensions.length > 1,
       chunking: chunk.config,
     },
   };

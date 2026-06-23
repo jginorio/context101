@@ -115,13 +115,14 @@ export async function POST(request: NextRequest) {
         },
         AWS_REGION
       )
-    : ({
+      : ({
         ok: true,
         selection: {
           provider: "aws" as const,
           modelId: DEFAULT_EMBEDDING_MODEL_ID,
           modelArn: undefined,
           dimensions: DEFAULT_EMBEDDING_DIMENSION,
+          configurableDimensions: false,
           chunking: { strategy: "default" as const },
         },
       } as const);
@@ -182,6 +183,7 @@ export async function POST(request: NextRequest) {
             embedding_model_id: sel.modelId,
             embedding_model_arn: sel.modelArn,
             embedding_dimensions: sel.dimensions,
+            embedding_configurable_dims: sel.configurableDimensions,
             embedding_chunking: sel.chunking,
           })
         ),

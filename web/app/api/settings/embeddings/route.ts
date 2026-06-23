@@ -154,6 +154,7 @@ export async function POST(request: NextRequest) {
             embedding_model_id: sel.modelId,
             embedding_model_arn: sel.modelArn,
             embedding_dimensions: sel.dimensions,
+            embedding_configurable_dims: sel.configurableDimensions,
             embedding_chunking: sel.chunking,
           })
         ),

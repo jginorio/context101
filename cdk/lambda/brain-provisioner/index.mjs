@@ -213,6 +213,11 @@ function resolveEmbedding(event) {
     modelId: event.embedding_model_id || "amazon.titan-embed-text-v2:0",
     modelArn: event.embedding_model_arn || EMBED_MODEL_ARN,
     dimensions: Number(event.embedding_dimensions) || EMBED_DIM,
+    // Only Titan Text v2 and Cohere Embed v4 accept a configurable embedding
+    // dimension. For fixed-dimension models (Cohere v3, Titan G1/Multimodal)
+    // Bedrock rejects the KB if a `dimensions` config is supplied, so we omit
+    // it unless the web layer flagged the model as configurable.
+    configurableDims: event.embedding_configurable_dims === true,
     chunking: event.embedding_chunking || { strategy: "default" },
   };
 }
@@ -389,7 +394,22 @@ async function createVectorIndex(idxName, dimension) {
   throw new Error(`Vector index ${idxName} not observable after create`);
 }
 
-async function createBrainKb(kbName, modelArn, dimension, idxArn) {
+async function createBrainKb(kbName, modelArn, dimension, idxArn, configurableDims) {
+  const vectorConfig = {
+    embeddingModelArn: modelArn || EMBED_MODEL_ARN,
+    // Pass an explicit dimension ONLY for models that support it — fixed
+    // models (Cohere v3, Titan G1/Multimodal) 400 with "does not support
+    // configurable dimensions" if this block is present.
+    ...(configurableDims
+      ? {
+          embeddingModelConfiguration: {
+            bedrockEmbeddingModelConfiguration: {
+              dimensions: dimension || EMBED_DIM,
+            },
+          },
+        }
+      : {}),
+  };
   const res = await bedrock.send(
     new CreateKnowledgeBaseCommand({
       name: kbName,
@@ -397,14 +417,7 @@ async function createBrainKb(kbName, modelArn, dimension, idxArn) {
       roleArn: SHARED_KB_ROLE_ARN,
       knowledgeBaseConfiguration: {
         type: "VECTOR",
-        vectorKnowledgeBaseConfiguration: {
-          embeddingModelArn: modelArn || EMBED_MODEL_ARN,
-          embeddingModelConfiguration: {
-            bedrockEmbeddingModelConfiguration: {
-              dimensions: dimension || EMBED_DIM,
-            },
-          },
-        },
+        vectorKnowledgeBaseConfiguration: vectorConfig,
       },
       storageConfiguration: {
         type: "S3_VECTORS",
@@ -587,7 +600,8 @@ async function createBrain(event, { finalize = true } = {}) {
       `context101-brain-${brain_id}`,
       embedding.modelArn,
       embedding.dimensions,
-      indexArn(brain_id)
+      indexArn(brain_id),
+      embedding.configurableDims
     );
     const dsId = await createBrainDataSource(kbId, bucket, embedding.chunking);
     const tokenSecretArn = await createBrainToken(brain_id);
@@ -795,7 +809,8 @@ async function reembedBrain(event) {
       `context101-brain-${brainId}-${gen}`,
       embedding.modelArn,
       embedding.dimensions,
-      newIdxArn
+      newIdxArn,
+      embedding.configurableDims
     );
     newDs = await createBrainDataSource(newKb, newBucket, embedding.chunking);
 
