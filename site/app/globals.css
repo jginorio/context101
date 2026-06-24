@@ -348,11 +348,66 @@ a {
   }
 }
 
-/* "Built for teams" — reuses .sv2 steps, three across on desktop */
+/* "Built for teams" — reuses .sv2 steps, three across on desktop. Tightened
+   ("snug") spacing and numberless steps for a more scannable read. */
+.tm .sv2-p {
+  max-width: 56ch;
+}
+.tm .sv2-steps {
+  margin-top: 1.75rem;
+  gap: 1rem;
+}
+.tm .sv2-step {
+  padding: 1.15rem 1.25rem;
+}
 @media (min-width: 768px) {
   .tm .sv2-steps {
     grid-template-columns: repeat(3, 1fr);
     gap: 1rem;
+  }
+}
+
+/* "One corpus" — the two ways you use the reconciled brain. One panel split
+   into two cells sharing a hairline: one corpus, read or searched. */
+.corpus-modes {
+  margin-top: 2.25rem;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1px;
+  border: 1px solid color-mix(in srgb, var(--brain) 22%, var(--line));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--brain) 22%, var(--line));
+  overflow: hidden;
+}
+.corpus-mode {
+  padding: 1.6rem 1.7rem;
+  background: color-mix(in srgb, var(--accent-soft) 45%, var(--card));
+}
+.corpus-mode-head {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: var(--brain);
+}
+.corpus-mode-head svg {
+  flex: none;
+}
+.corpus-mode h3 {
+  margin: 0;
+  font-size: 1.08rem;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--fg);
+}
+.corpus-mode p {
+  margin: 0.7rem 0 0;
+  font-size: 0.94rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+@media (min-width: 720px) {
+  .corpus-modes {
+    grid-template-columns: 1fr 1fr;
   }
 }
 

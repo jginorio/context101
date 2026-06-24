@@ -22,6 +22,8 @@ backups/
 .agents/
 skills-lock.json
 .migration-inventory/
+# impeccable skill live-mode session scratch
+.impeccable/
 
 # Monorepo workspace (anchored so the CDK Lambda-layer node_modules stays tracked)
 /node_modules/

@@ -74,13 +74,21 @@ test("rejects an unknown model id (e.g. a Bedrock per-SKU variant)", () => {
   assert.equal(res.ok, false);
 });
 
-test("accepts the curated Cohere Embed v4 base id", () => {
+test("accepts a curated KB-supported Cohere model", () => {
   const res = resolveEmbeddingSelection(
-    { provider: "cohere", modelId: "cohere.embed-v4:0" },
+    { provider: "cohere", modelId: "cohere.embed-english-v3" },
     REGION
   );
   assert.ok(res.ok);
   if (res.ok) assert.equal(res.selection.dimensions, 1024);
+});
+
+test("rejects Cohere Embed v4 (not a KB-supported embedding model)", () => {
+  const res = resolveEmbeddingSelection(
+    { provider: "cohere", modelId: "cohere.embed-v4:0" },
+    REGION
+  );
+  assert.equal(res.ok, false);
 });
 
 test("rejects a model id that doesn't match the provider", () => {

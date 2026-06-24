@@ -64,10 +64,6 @@ export const KNOWN_EMBEDDING_DIMENSIONS: Record<
     supportedDimensions: [384],
     defaultDimension: 384,
   },
-  "cohere.embed-v4:0": {
-    supportedDimensions: [256, 512, 1024, 1536],
-    defaultDimension: 1024,
-  },
 };
 
 const FALLBACK_DIMENSIONS = { supportedDimensions: [1024], defaultDimension: 1024 };
@@ -81,7 +77,6 @@ export const FALLBACK_EMBEDDING_MODELS: {
   { id: "amazon.titan-embed-text-v2:0", provider: "aws", label: "Titan Text Embeddings V2" },
   { id: "amazon.titan-embed-text-v1", provider: "aws", label: "Titan Embeddings G1 - Text" },
   { id: "amazon.titan-embed-image-v1", provider: "aws", label: "Titan Multimodal Embeddings G1" },
-  { id: "cohere.embed-v4:0", provider: "cohere", label: "Cohere Embed v4" },
   { id: "cohere.embed-english-v3", provider: "cohere", label: "Cohere Embed English v3" },
   { id: "cohere.embed-multilingual-v3", provider: "cohere", label: "Cohere Embed Multilingual v3" },
 ];
@@ -98,7 +93,6 @@ export const EMBEDDING_MODEL_LABELS: Record<string, string> = {
   "cohere.embed-english-light-v3": "Embed English Light v3",
   "cohere.embed-multilingual-v3": "Embed Multilingual v3",
   "cohere.embed-multilingual-light-v3": "Embed Multilingual Light v3",
-  "cohere.embed-v4:0": "Embed v4",
 };
 
 /**

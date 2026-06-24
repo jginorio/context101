@@ -1,24 +1,10 @@
 import Link from "next/link";
-import Image from "next/image";
 import {
   ArrowRight,
-  Brain,
-  Building2,
-  CheckCircle2,
-  Cloud,
-  Inbox,
-  KeyRound,
-  LockKeyhole,
-  MessageSquarePlus,
-  Plug,
-  RefreshCw,
-  ShieldCheck,
-  SlidersHorizontal,
-  Sparkles,
-  UserPlus,
+  BookOpen,
+  Search,
 } from "lucide-react";
 import { BrainGlobe } from "@/components/brain-globe";
-import { Counter } from "@/components/counter";
 import { FadeIn } from "@context101/ui/fade-in";
 import { IntegrationsBeam } from "@context101/ui/integrations-beam";
 import { ProviderMarquee } from "@/components/provider-logos";
@@ -29,56 +15,10 @@ import { Marquee } from "@/components/ui/marquee";
 const REPO_URL = "https://github.com/jginorio/context101";
 const WAITLIST_URL = "https://tally.so/r/eqzrzO";
 
-const features = [
-  {
-    title: "Connect your sources",
-    body: "Bring your team's knowledge in from the tools you already use — Google Docs, Notion, GitHub, or plain markdown. Add a source once and Context101 keeps it all together in one brain.",
-    Icon: Plug,
-  },
-  {
-    title: "Read from one place",
-    body: "Every AI tool — Cursor, Claude, Devin, or your own agents — reads from that same brain through MCP. One source of truth, instead of scattered docs and copy-pasted context.",
-    Icon: Brain,
-  },
-];
-
-const caveats = [
-  "Org-based access with owner/admin/member roles, email invites, and instant session revocation on removal. Still alpha: per-brain MCP tokens can be revealed in-app, and there's no SSO or email verification yet.",
-  "Connectors are useful but early. Google Workspace, Notion, and GitHub sync into markdown, with GitHub currently using a pasted PAT.",
-  "AWS setup still has real prerequisites: us-east-1, Bedrock model access, Docker, CDK bootstrap, and provider OAuth setup for connectors.",
-];
-
-const faqs = [
-  {
-    question: "Why Titan embeddings instead of OpenAI embeddings?",
-    answer:
-      "Titan was the easiest fit for an AWS-first PoC: Bedrock Knowledge Bases can use it natively, which keeps deployment simple and avoids extra provider keys. There are likely better retrieval-quality options, and swapping embedding models is a reasonable future improvement.",
-  },
-  {
-    question: "Why Better Auth?",
-    answer:
-      "The first PoC used Cognito because it was easiest inside AWS. For the open-source SaaS path, Better Auth makes more sense: auth and organizations live in the same Postgres control plane self-hosters already deploy.",
-  },
-  {
-    question: "How does team access work?",
-    answer:
-      "Each organization has owners, admins, and members. Admins invite teammates by email, change roles, remove members (which revokes their sessions immediately), and can reset a member's password. Users can belong to multiple orgs and switch between them from a workspace picker at sign-in.",
-  },
-  {
-    question: "Can I use my own LLM provider?",
-    answer:
-      "Yes. Wiki generation runs on Amazon Bedrock out of the box, or you can bring your own API key for Anthropic, OpenAI, Google Gemini, or xAI Grok — chosen per brain. Keys are validated live and stored in AWS Secrets Manager, never in the database.",
-  },
-  {
-    question: "Why so many AWS services?",
-    answer:
-      "Most infrastructure choices were made to make the stack easy to deploy from CDK, not because they are the only possible architecture. The bias was: one cloud account, managed services, minimal external setup, and no bespoke operations layer for the first version. The control plane is moving to Postgres so Neon, Supabase, RDS, Aurora, and local Postgres are all realistic options.",
-  },
-  {
-    question: "What inspired this?",
-    answer:
-      "The workflow takes inspiration from Devin's agent knowledge experience and from DeepWiki-style generated documentation. Context101 applies those ideas to shared team knowledge exposed through MCP, not just repository documentation.",
-  },
+const limits = [
+  "Generated wiki pages are useful at PoC scale. Large corpora still need better batching, caching, and source selection.",
+  "Connectors sync into Context101 markdown today. Source-level writeback is still manual.",
+  "Hosted access is invite-controlled while billing, SSO, and email verification mature.",
 ];
 
 export default function HomePage() {
@@ -160,9 +100,7 @@ export default function HomePage() {
         <FadeIn className="cr2">
           <h2 className="sv2-h">Connect your sources. Read from one place.</h2>
           <p className="sv2-p">
-            Plug in the tools your team already uses, and every AI tool reads
-            from one shared source — no more scattered docs or copy-pasting
-            context into each tool.
+            Connect team docs once. Every AI tool reads the same source.
           </p>
           <div className="cr2-grid">
             <div className="cr2-beam">
@@ -175,8 +113,8 @@ export default function HomePage() {
                   <h3>Connect your sources</h3>
                   <p>
                     Bring your team&apos;s knowledge in from Google Docs, Notion,
-                    GitHub, or markdown. Add a source once and Context101 keeps it
-                    together in one brain.
+                    GitHub, or markdown. Add a source once and Context101 keeps
+                    it together in one brain.
                   </p>
                 </div>
               </li>
@@ -185,8 +123,9 @@ export default function HomePage() {
                 <div>
                   <h3>Read from one place</h3>
                   <p>
-                    Cursor, Claude, Devin, or your own agents read from that same
-                    brain through MCP. One source of truth, not scattered docs.
+                    Cursor, Claude, Devin, or your own agents read from that
+                    same brain through MCP. One source of truth, not scattered
+                    docs.
                   </p>
                 </div>
               </li>
@@ -199,140 +138,74 @@ export default function HomePage() {
         <FadeIn>
           <h2 className="sv2-h">Built for teams, with real access control.</h2>
           <p className="sv2-p">
-            Organizations, not just logins — roles, invites, and isolated brains
-            on a Better Auth + Postgres control plane you can self-host.
+            Organizations, roles, and isolated brains — on a self-hostable
+            Better Auth + Postgres control plane.
           </p>
           <ol className="sv2-steps">
             <li className="sv2-step">
-              <span className="sv2-num">01</span>
               <div>
                 <h3>Invite &amp; onboard</h3>
-                <p>
-                  Invite teammates by email; they create an account straight
-                  from the invite — no separate signup.
-                </p>
+                <p>Join from an email invite — no separate signup.</p>
               </div>
             </li>
             <li className="sv2-step">
-              <span className="sv2-num">02</span>
               <div>
                 <h3>Roles &amp; access</h3>
-                <p>
-                  Owners and admins manage roles. Remove a member and their
-                  sessions revoke instantly.
-                </p>
+                <p>Owners set roles. Remove a member, sessions revoke instantly.</p>
               </div>
             </li>
             <li className="sv2-step">
-              <span className="sv2-num">03</span>
               <div>
                 <h3>Multiple workspaces</h3>
-                <p>
-                  Belong to multiple orgs, pick one at sign-in, and spin up new
-                  orgs anytime.
-                </p>
+                <p>Switch orgs at sign-in, or spin up a new one anytime.</p>
               </div>
             </li>
           </ol>
         </FadeIn>
       </section>
 
-      {/* <section className="border-t section-divider py-14"> 
+      <section className="border-t section-divider py-14">
         <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            Write once. Retrieve from everywhere.
+          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em] text-balance">
+            Every source, reconciled into one corpus.
           </h2>
-          <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-            The motion is the system: sources flow into one brain, and every MCP
-            client reads from that same approved context.
+          <p className="mt-3.5 max-w-2xl text-base leading-7 text-muted-foreground text-pretty">
+            Context101 reconciles your connected docs into a single brain — one
+            place your tools read from, instead of scattered files.
           </p>
         </FadeIn>
-        <FadeIn
-          className="mt-7 overflow-hidden rounded-[30px] border border-[color-mix(in_srgb,var(--accent)_14%,var(--line))] bg-[radial-gradient(circle_at_50%_50%,rgba(184,85,201,0.08),transparent_46%),color-mix(in_srgb,var(--accent-soft)_52%,var(--card-2))] p-4 sm:p-7"
-          delayMs={100}
-        >
-          <IntegrationsBeam />
-        </FadeIn>
-      </section> */}
-
-      <section className="border-t section-divider py-14">
-        <div className="grid gap-6">
-          <FadeIn>
-            <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-              A generated wiki, not just raw search.
-            </h2>
-            <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-              Context101 can synthesize the raw files in a brain into a readable
-              wiki: topic pages, source citations, and architecture notes that
-              agents can retrieve before falling back to raw docs. The goal is
-              to give teammates a shared, reconciled view instead of a pile of
-              disconnected chunks.
+        <FadeIn className="corpus-modes" delayMs={80}>
+          <div className="corpus-mode">
+            <div className="corpus-mode-head">
+              <BookOpen aria-hidden size={20} />
+              <h3>Read it</h3>
+            </div>
+            <p>
+              Readable wiki pages — topic pages, citations, and architecture
+              notes, generated from the raw docs.
             </p>
-            <div className="mt-6 grid gap-3 sm:grid-cols-2">
-              <div className="surface-card p-5">
-                <Sparkles aria-hidden size={22} />
-                <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-                  Reconciled pages
-                </h3>
-                <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-                  The wiki generator groups related files into human-readable
-                  pages with citations back to the source material.
-                </p>
-              </div>
-              <div className="surface-card p-5">
-                <RefreshCw aria-hidden size={22} />
-                <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-                  Manual refresh
-                </h3>
-                <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-                  Regeneration is intentionally operator-controlled today so
-                  teams can manage Bedrock cost and review behavior as data
-                  grows.
-                </p>
-              </div>
+          </div>
+          <div className="corpus-mode">
+            <div className="corpus-mode-head">
+              <Search aria-hidden size={20} />
+              <h3>Search it</h3>
             </div>
-          </FadeIn>
-
-          <FadeIn delayMs={120}>
-            <figure className="surface-card surface-card--wide overflow-hidden">
-              <Image
-                src="/wiki-preview.png"
-                alt="Context101 generated wiki page showing synthesized prose, source citations, a Mermaid diagram, and code wiki navigation."
-                width={3024}
-                height={1720}
-                className="h-auto w-full"
-                sizes="(min-width: 1024px) 520px, 100vw"
-              />
-            </figure>
-            <div className="mt-4 surface-callout p-5">
-              <p className="font-mono text-xs text-muted-foreground">
-                Current caveat
-              </p>
-              <h3 className="mt-3 text-2xl font-semibold tracking-[-0.04em]">
-                Tested with roughly 100 documents, not thousands.
-              </h3>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                The current wiki flow was built for PoC-scale corpora. Once a
-                brain has a lot more data, the generator needs better batching,
-                incremental updates, source selection, and page-level caching.
-                Search can still work at larger sizes, but the generated wiki is
-                the part that needs more hardening.
-              </p>
-            </div>
-          </FadeIn>
-        </div>
+            <p>
+              Always-on retrieval over the source material, served to any AI
+              tool through MCP.
+            </p>
+          </div>
+        </FadeIn>
       </section>
 
       <section className="border-t section-divider py-14">
         <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            Your wiki, your model.
+          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em] text-balance">
+            Bring the model you trust.
           </h2>
-          <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-            Wiki generation isn&apos;t locked to one provider. Pick Amazon
-            Bedrock for a keyless, AWS-native setup, or bring your own API key
-            for Anthropic, OpenAI, Google Gemini, or xAI Grok — configured per
-            brain.
+          <p className="mt-3.5 max-w-2xl text-base leading-7 text-muted-foreground text-pretty">
+            Bedrock works out of the box. Anthropic, OpenAI, Gemini, and Grok
+            keys can be configured per brain and stored in AWS Secrets Manager.
           </p>
         </FadeIn>
         <FadeIn
@@ -341,212 +214,24 @@ export default function HomePage() {
         >
           <ProviderMarquee />
         </FadeIn>
-        <div className="mt-3.5 grid gap-3.5 md:grid-cols-3">
-          <FadeIn className="surface-card p-5">
-            <SlidersHorizontal aria-hidden size={22} />
-            <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-              Per-brain model
-            </h3>
-            <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-              Each brain chooses its own provider and model id, so a docs brain
-              and a code brain can run on different models — searchable model
-              lists are pulled live from each provider.
-            </p>
-          </FadeIn>
-          <FadeIn className="surface-card p-5" delayMs={80}>
-            <KeyRound aria-hidden size={22} />
-            <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-              Bring your own key
-            </h3>
-            <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-              Paste a provider key, validate it live, and pick from the models
-              it unlocks. Prefer to stay fully on AWS? Bedrock needs no key at
-              all.
-            </p>
-          </FadeIn>
-          <FadeIn className="surface-card p-5" delayMs={160}>
-            <LockKeyhole aria-hidden size={22} />
-            <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-              Keys stay secret
-            </h3>
-            <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-              API keys are written to AWS Secrets Manager — never stored in the
-              database and never shown again after saving.
-            </p>
-          </FadeIn>
-        </div>
-      </section>
-
-      <section className="border-t section-divider py-14">
-        <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            Agents can suggest. Humans still decide.
-          </h2>
-          <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-            Context101 is not just a place for humans to upload docs. MCP
-            clients can propose new knowledge or improvements while they work,
-            but those suggestions land in a review queue instead of writing
-            directly into the brain.
-          </p>
-        </FadeIn>
-
-        <FadeIn className="mt-7" delayMs={80}>
-          <figure className="surface-card surface-card--wide overflow-hidden">
-            <Image
-              src="/suggestions-review-preview.png"
-              alt="Context101 suggestions review drawer showing an agent-proposed update with a side-by-side diff and approve or reject actions."
-              width={3024}
-              height={1720}
-              className="h-auto w-full"
-              sizes="(min-width: 1024px) 1120px, 100vw"
-            />
-          </figure>
-        </FadeIn>
-
-        <div className="mt-7 grid gap-3.5 md:grid-cols-3">
-          <FadeIn className="surface-card p-5">
-            <MessageSquarePlus aria-hidden size={22} />
-            <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-              Propose from any MCP client
-            </h3>
-            <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-              Cursor, Claude, or another agent can call{" "}
-              <code>suggest_knowledge</code> when it discovers a missing fact,
-              clearer explanation, or update worth preserving.
-            </p>
-          </FadeIn>
-
-          <FadeIn className="surface-card p-5" delayMs={80}>
-            <Inbox aria-hidden size={22} />
-            <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-              Review before it lands
-            </h3>
-            <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-              Suggestions appear in the web app with rationale, proposed
-              content, and diffs for updates. Nothing becomes source material
-              until a person accepts it.
-            </p>
-          </FadeIn>
-
-          <FadeIn className="surface-card p-5" delayMs={160}>
-            <CheckCircle2 aria-hidden size={22} />
-            <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-              Accepted changes re-index
-            </h3>
-            <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-              Approved suggestions write back to S3, trigger ingestion, and
-              become part of future search and wiki generation for that brain.
-            </p>
-          </FadeIn>
-        </div>
-
-        <FadeIn className="mt-7 surface-callout p-5">
-          <strong>External-source caveat:</strong> if a suggestion improves
-          content that originally came from Google Docs, Notion, GitHub, or
-          another connector, Context101 does not push that fix back to the
-          original source of truth yet. Today you either update the source
-          manually or accept the suggestion into Context101&apos;s stored
-          markdown. Source-level writeback is a follow-up.
-        </FadeIn>
       </section>
 
       <section id="caveats" className="border-t section-divider py-14">
         <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em]">
-            Useful now, honest about limits.
+          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em] text-balance">
+            Alpha, stated plainly.
           </h2>
-          <p className="mt-3.5 max-w-3xl text-base leading-7 text-muted-foreground">
-            Context101 started as a PoC for an internal company problem. The
-            goal of open sourcing it is to let other teams deploy and evolve it,
-            while the hosted app matures behind invite-controlled access.
+          <p className="mt-3.5 max-w-2xl text-base leading-7 text-muted-foreground text-pretty">
+            Useful for trusted teams now. Still honest about the rough edges.
           </p>
         </FadeIn>
-        <div className="mt-7 grid gap-3.5 md:grid-cols-3">
-          {caveats.map((body, index) => (
-            <FadeIn
-              className="surface-card p-5"
-              key={body}
-              delayMs={index * 80}
-            >
-              {index === 0 ? (
-                <LockKeyhole aria-hidden size={22} />
-              ) : index === 1 ? (
-                <Plug aria-hidden size={22} />
-              ) : (
-                <Cloud aria-hidden size={22} />
-              )}
-              <h3 className="mt-4 text-lg font-semibold tracking-[-0.02em]">
-                {["Auth model", "Connectors", "AWS caveats"][index]}
-              </h3>
-              <p className="mt-2.5 text-sm leading-6 text-muted-foreground">
-                {body}
-              </p>
-            </FadeIn>
-          ))}
-        </div>
-        <FadeIn className="mt-7 surface-callout p-5">
-          <strong>Hosted alpha:</strong> the hosted app is moving toward paid
-          access, but billing gates are not live yet. Until then, access should
-          stay invite/allowlist controlled, with comped orgs like Platea handled
-          explicitly in the control plane.
-        </FadeIn>
-      </section>
 
-      <section className="border-t section-divider py-14 fq2">
-        <FadeIn>
-          <h2 className="fq2-h">Good to know.</h2>
-          <div className="fq2-list">
-            <details className="fq2-item">
-              <summary>
-                Bring your own LLM provider?
-                <span className="fq2-mark" aria-hidden="true" />
-              </summary>
-              <p>
-                Yes — Amazon Bedrock by default, or bring your own key
-                (Anthropic, OpenAI, Gemini, Grok) per brain. Keys live in AWS
-                Secrets Manager, never the database.
-              </p>
-            </details>
-            <details className="fq2-item">
-              <summary>
-                How does team access work?
-                <span className="fq2-mark" aria-hidden="true" />
-              </summary>
-              <p>
-                Orgs with owner / admin / member roles. Admins invite by email,
-                change roles, and remove members (revoking sessions instantly).
-                Users can belong to multiple orgs.
-              </p>
-            </details>
-            <details className="fq2-item">
-              <summary>
-                Why so many AWS services?
-                <span className="fq2-mark" aria-hidden="true" />
-              </summary>
-              <p>
-                To deploy from one CDK stack with managed services. The control
-                plane is moving to Postgres, so Neon, Supabase, RDS, or local
-                all work.
-              </p>
-            </details>
-            <details className="fq2-item">
-              <summary>
-                Why Titan embeddings?
-                <span className="fq2-mark" aria-hidden="true" />
-              </summary>
-              <p>
-                Easiest AWS-first fit — Bedrock Knowledge Bases use it natively,
-                with no extra provider keys. Swappable later.
-              </p>
-            </details>
-          </div>
-          <p className="fq2-credit">
-            Inspired by <a href="https://devin.ai">Devin</a> and{" "}
-            <a href="https://github.com/AsyncFuncAI/deepwiki-open">
-              DeepWiki Open
-            </a>
-            .
-          </p>
+        <FadeIn className="mt-7 surface-callout p-5">
+          <ul className="grid gap-3 text-sm leading-6 text-muted-foreground md:grid-cols-3">
+            {limits.map((limit) => (
+              <li key={limit}>{limit}</li>
+            ))}
+          </ul>
         </FadeIn>
       </section>
 

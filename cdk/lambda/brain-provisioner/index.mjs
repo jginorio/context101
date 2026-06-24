@@ -50,8 +50,6 @@ import {
   PutPublicAccessBlockCommand,
   PutBucketNotificationConfigurationCommand,
   ListObjectVersionsCommand,
-  ListObjectsV2Command,
-  CopyObjectCommand,
   DeleteObjectsCommand,
 } from "@aws-sdk/client-s3";
 import {
@@ -335,25 +333,51 @@ async function wireAutoIngestNotification(bucket) {
   } catch (err) {
     if (!isAlreadyExists(err)) throw err;
   }
-  await s3.send(
-    new PutBucketNotificationConfigurationCommand({
-      Bucket: bucket,
-      NotificationConfiguration: {
-        LambdaFunctionConfigurations: [
-          {
-            Id: "auto-ingest-created",
-            LambdaFunctionArn: AUTO_INGEST_FN_ARN,
-            Events: ["s3:ObjectCreated:*"],
-          },
-          {
-            Id: "auto-ingest-removed",
-            LambdaFunctionArn: AUTO_INGEST_FN_ARN,
-            Events: ["s3:ObjectRemoved:*"],
-          },
-        ],
-      },
-    })
-  );
+
+  // S3 validates the destination by checking the Lambda's resource policy
+  // permits invocation from this bucket. The AddPermission above is eventually
+  // consistent, so PutBucketNotification can fail right after with
+  // InvalidArgument "Unable to validate the following destination
+  // configurations" / "Not authorized to invoke function". Retry with backoff
+  // until the permission propagates.
+  const putNotification = () =>
+    s3.send(
+      new PutBucketNotificationConfigurationCommand({
+        Bucket: bucket,
+        NotificationConfiguration: {
+          LambdaFunctionConfigurations: [
+            {
+              Id: "auto-ingest-created",
+              LambdaFunctionArn: AUTO_INGEST_FN_ARN,
+              Events: ["s3:ObjectCreated:*"],
+            },
+            {
+              Id: "auto-ingest-removed",
+              LambdaFunctionArn: AUTO_INGEST_FN_ARN,
+              Events: ["s3:ObjectRemoved:*"],
+            },
+          ],
+        },
+      })
+    );
+
+  let lastErr;
+  for (let attempt = 0; attempt < 8; attempt++) {
+    try {
+      await putNotification();
+      return;
+    } catch (err) {
+      const name = err?.name || err?.Code;
+      const msg = err?.message || "";
+      const isPropagationLag =
+        name === "InvalidArgument" &&
+        /validate the following destination|not authorized to invoke/i.test(msg);
+      if (!isPropagationLag) throw err;
+      lastErr = err;
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  }
+  throw lastErr;
 }
 
 async function createVectorIndex(idxName, dimension) {
@@ -631,36 +655,6 @@ async function createBrain(event, { finalize = true } = {}) {
   }
 }
 
-// Copy every object from one brain's docs bucket into another's, preserving
-// keys (including `.metadata.json` sidecars). Paginated; each segment of the
-// key is URL-encoded individually so slashes are preserved in CopySource.
-async function copyBucketContents(srcBucket, dstBucket) {
-  let token;
-  let copied = 0;
-  do {
-    const res = await s3.send(
-      new ListObjectsV2Command({
-        Bucket: srcBucket,
-        ContinuationToken: token,
-      })
-    );
-    for (const obj of res.Contents || []) {
-      if (!obj.Key) continue;
-      const encodedKey = obj.Key.split("/").map(encodeURIComponent).join("/");
-      await s3.send(
-        new CopyObjectCommand({
-          Bucket: dstBucket,
-          Key: obj.Key,
-          CopySource: `${srcBucket}/${encodedKey}`,
-        })
-      );
-      copied++;
-    }
-    token = res.IsTruncated ? res.NextContinuationToken : undefined;
-  } while (token);
-  return copied;
-}
-
 async function startIngestion(kbId, dsId) {
   if (!kbId || !dsId) return;
   try {
@@ -784,26 +778,31 @@ async function reembedBrain(event) {
     throw new Error(`brain ${brainId} is ${row.status}, not ready`);
   }
 
+  if (!row.docs_bucket) {
+    throw new Error(`brain ${brainId} has no docs_bucket`);
+  }
   const old = {
-    bucket: row.docs_bucket,
     kbId: row.kb_id,
     dsId: row.ds_id,
     indexName: indexNameFromArn(row.vector_index_arn),
   };
 
-  // Generation salt — distinguishes the new resource names from the brain's
-  // current ones (which still exist and keep serving until the swap).
+  // The source documents don't change on a re-embed — only the embedding
+  // model / dimensions do, which means a new vector index + KB + data source.
+  // So we DON'T copy the bucket (that was the 5-minute timeout); the new data
+  // source points at the brain's EXISTING bucket and Bedrock re-embeds it in
+  // the background via the ingestion job. The bucket, bearer token, id, and
+  // MCP URL all stay exactly the same.
+  //
+  // Generation salt distinguishes the new index/KB names from the brain's
+  // current ones, which keep serving queries until the swap.
   const gen = randomBytes(4).toString("hex");
-  const newBucket = bucketName(brainId, gen);
   const newIdxName = indexName(brainId, gen);
   const newIdxArn = indexArnForName(newIdxName);
 
   let newKb;
   let newDs;
   try {
-    // 1. Provision the new resource set.
-    await createBrainBucket(newBucket);
-    await wireAutoIngestNotification(newBucket);
     await createVectorIndex(newIdxName, embedding.dimensions);
     newKb = await createBrainKb(
       `context101-brain-${brainId}-${gen}`,
@@ -812,21 +811,18 @@ async function reembedBrain(event) {
       newIdxArn,
       embedding.configurableDims
     );
-    newDs = await createBrainDataSource(newKb, newBucket, embedding.chunking);
-
-    // 2. Copy the brain's docs into the new bucket. The registry still points
-    //    at the OLD bucket, so auto-ingest ignores these PutObject events; we
-    //    trigger embedding explicitly after the swap.
-    if (old.bucket) {
-      const n = await copyBucketContents(old.bucket, newBucket);
-      console.log(`[brain=${brainId}] re-embed copied ${n} object(s)`);
-    }
+    // New data source over the SAME existing bucket.
+    newDs = await createBrainDataSource(
+      newKb,
+      row.docs_bucket,
+      embedding.chunking
+    );
   } catch (err) {
-    // Provisioning failed before the swap — the brain still points at its
-    // intact original resources. Best-effort clean up the partial new set.
+    // Failed before the swap — the brain still points at its intact original
+    // resources. Best-effort clean up the partial new index/KB/DS (never the
+    // bucket — it's the brain's live source data).
     console.error(`re-embed provisioning failed for ${brainId}:`, err);
     await teardownResources({
-      bucket: newBucket,
       kbId: newKb,
       dsId: newDs,
       indexName: newIdxName,
@@ -834,26 +830,25 @@ async function reembedBrain(event) {
     throw err;
   }
 
-  // 3. Atomically repoint the brain to the new resources + embedding settings.
-  //    id / token_secret_arn / connectors / suggestions are all untouched.
+  // Atomically repoint the brain to the new KB/index/data source + embedding
+  // settings. docs_bucket / token_secret_arn / connectors / suggestions are
+  // all untouched — only the vector layer moves.
   await pgExecute(
     DATABASE_URL,
     `update brains
-       set docs_bucket = $2,
-           vector_index_arn = $3,
-           kb_id = $4,
-           ds_id = $5,
-           embedding_model_provider = $6,
-           embedding_model_id = $7,
-           embedding_model_arn = $8,
-           embedding_dimensions = $9,
-           embedding_chunking = $10,
+       set vector_index_arn = $2,
+           kb_id = $3,
+           ds_id = $4,
+           embedding_model_provider = $5,
+           embedding_model_id = $6,
+           embedding_model_arn = $7,
+           embedding_dimensions = $8,
+           embedding_chunking = $9,
            error_msg = null,
            updated_at = now()
      where id = $1`,
     [
       brainId,
-      newBucket,
       newIdxArn,
       newKb,
       newDs,
@@ -865,14 +860,26 @@ async function reembedBrain(event) {
     ]
   );
 
-  // 4. Embed the copied content under the new model/chunking.
+  // Re-embed the existing bucket contents into the new index (async in Bedrock).
   await startIngestion(newKb, newDs);
 
-  // 5. Dispose of the brain's previous resources (no-op for CDK-managed ones).
-  try {
-    await teardownResources(old);
-  } catch (e) {
-    console.warn(`old-resource teardown after re-embed failed for ${brainId}:`, e.message);
+  // Dispose of the brain's PREVIOUS vector layer — but only if it was
+  // provisioner-managed. The default brain's original KB/index are
+  // CDK-managed (index `context101-index-*`), so we leave those intact and
+  // never delete the bucket.
+  if (old.indexName && old.indexName.startsWith("context101-brain-")) {
+    try {
+      await teardownResources({
+        kbId: old.kbId,
+        dsId: old.dsId,
+        indexName: old.indexName,
+      });
+    } catch (e) {
+      console.warn(
+        `old-resource teardown after re-embed failed for ${brainId}:`,
+        e.message
+      );
+    }
   }
 
   return { ok: true, brain_id: brainId, kb_id: newKb, ds_id: newDs };
