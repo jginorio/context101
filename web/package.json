@@ -13,10 +13,9 @@
     "lint": "eslint"
   },
   "dependencies": {
-    "@context101/design": "*",
-    "@context101/ui": "*",
     "@ark-ui/react": "^5.37.0",
     "@aws-sdk/client-bedrock": "^3.1057.0",
+    "@aws-sdk/client-bedrock-agent-runtime": "^3.1075.0",
     "@aws-sdk/client-bedrock-runtime": "^3.1033.0",
     "@aws-sdk/client-ecs": "^3.1034.0",
     "@aws-sdk/client-lambda": "^3.1035.0",
@@ -24,6 +23,8 @@
     "@aws-sdk/client-secrets-manager": "^3.1035.0",
     "@aws-sdk/client-sesv2": "^3.1062.0",
     "@base-ui/react": "^1.4.0",
+    "@context101/design": "*",
+    "@context101/ui": "*",
     "@neondatabase/serverless": "^1.1.0",
     "@tailwindcss/typography": "^0.5.19",
     "better-auth": "^1.6.11",

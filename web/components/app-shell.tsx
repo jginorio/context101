@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
 import { BrainSwitcher } from "@/components/brain-switcher";
+import { SidebarBrainPanel } from "@/components/sidebar-brain-panel";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -177,7 +178,9 @@ function SidebarInner({
           {contextPanel}
         </div>
       ) : (
-        <div className="min-h-0 flex-1" />
+        <div className="min-h-0 flex-1 overflow-y-auto border-t border-sidebar-border/60">
+          <SidebarBrainPanel onNavigate={onNavigate} />
+        </div>
       )}
       <div className="border-t border-sidebar-border p-2">
         <AccountMenu />

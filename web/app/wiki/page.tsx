@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { ChevronDown, ChevronRight, Code2, RefreshCw } from "lucide-react";
+import Link from "next/link";
+import {
+  ChevronDown,
+  ChevronRight,
+  Code2,
+  MessagesSquare,
+  RefreshCw,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -472,6 +479,13 @@ export default function WikiPage() {
         index?.description ?? "Read-only synthesis of the knowledge base"
       }
       contextPanel={navContent}
+      toolbar={
+        <Link href="/wiki/ask">
+          <Button variant="outline" size="sm">
+            <MessagesSquare className="mr-1 h-3.5 w-3.5" /> Ask the brain
+          </Button>
+        </Link>
+      }
     >
       <BrainStatusGate>
       <div className="flex min-h-0 flex-1">
