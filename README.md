@@ -1,13 +1,13 @@
 # Context101
 
 <p align="center">
-  <img src="https://img.shields.io/badge/status-alpha-F59E0B?style=flat-square" alt="Alpha" />
-  <img src="https://img.shields.io/badge/license-MIT-3B82F6?style=flat-square" alt="MIT License" />
-  <img src="https://img.shields.io/badge/protocol-MCP-111827?style=flat-square" alt="MCP" />
-  <img src="https://img.shields.io/badge/Amazon-Bedrock-FF9900?style=flat-square&logo=amazonaws&logoColor=white" alt="Amazon Bedrock" />
-  <img src="https://img.shields.io/badge/Next.js-111827?style=flat-square&logo=next.js&logoColor=white" alt="Next.js" />
-  <img src="https://img.shields.io/badge/Postgres-4169E1?style=flat-square&logo=postgresql&logoColor=white" alt="Postgres" />
-  <img src="https://img.shields.io/badge/TypeScript-3178C6?style=flat-square&logo=typescript&logoColor=white" alt="TypeScript" />
+  <img src="https://shieldcn.dev/badge/status-alpha.svg?variant=secondary" alt="Alpha" />
+  <img src="https://shieldcn.dev/badge/license-MIT.svg?variant=outline" alt="MIT License" />
+  <img src="https://shieldcn.dev/badge/protocol-MCP.svg?variant=default" alt="MCP" />
+  <img src="https://shieldcn.dev/badge/Amazon_Bedrock.svg?variant=branded&logo=amazonaws" alt="Amazon Bedrock" />
+  <img src="https://shieldcn.dev/badge/Next.js.svg?variant=branded&logo=nextdotjs" alt="Next.js" />
+  <img src="https://shieldcn.dev/badge/Postgres.svg?variant=branded&logo=postgresql" alt="Postgres" />
+  <img src="https://shieldcn.dev/badge/TypeScript.svg?variant=branded&logo=typescript" alt="TypeScript" />
 </p>
 
 An open-source, self-hosted **MCP knowledge base** for trusted internal teams. Backed by **Amazon Bedrock Knowledge Bases** (S3 + S3 Vectors) for content and retrieval, with a **Better Auth + Postgres** control plane.
