@@ -233,7 +233,7 @@ export function WikiChat() {
               onChange={(e) => setIncludeRaw(e.target.checked)}
               className="h-3.5 w-3.5 rounded border"
             />
-            Include raw sources (default: wiki only)
+            Include code sources (default: everything except code)
           </label>
           <span>Enter to send · Shift+Enter for newline</span>
         </div>
