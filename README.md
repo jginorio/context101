@@ -16,7 +16,7 @@ Create **as many brains as you want from the web admin UI** — each brain is a 
        └───────────────┼───────────────┘
                        ▼
             ┌─────────────────────┐
-            │  App Runner         │  ← one TLS URL, brain
+            │ CloudFront → Lambda │  ← one TLS URL, brain
             │  FastMCP container  │    resolved from URL path
             └──────────┬──────────┘
                        │
@@ -56,7 +56,7 @@ The control plane (orgs, brains, connectors, suggestions, and MCP token hashes) 
 │       ├── connector-dispatch/   # EventBridge 6h → fan-out across every brain's connectors
 │       └── connector-sync-{sheets,docs,slides,notion,github}/
 ├── server.py                     # Python MCP server (FastMCP + Postgres brain routing)
-├── Dockerfile                    # Used by App Runner
+├── Dockerfile                    # MCP server image (Lambda + legacy App Runner)
 ├── knowledge/                    # Optional bootstrap seed for the default brain
 ├── site/                         # Standalone public website / marketing page
 ├── web/                          # Deployable Next.js admin app (Amplify Hosting)
@@ -161,7 +161,7 @@ The seed flag is **off by default** so subsequent deploys never clobber whatever
 - `BrainProvisionerFnName` — the Lambda the `/brains` page invokes to create/delete a brain
 - `DocsBucketName` / `KnowledgeBaseId` — the default brain's bucket + KB (the `default` brain row lives in the Postgres `brains` registry)
 
-The web admin UI and App Runner MCP service are **gated on two CDK context flags** (they only deploy if you pass them). See the next two sections.
+The web admin UI and the MCP service are **gated on two CDK context flags** (they only deploy if you pass them). See the next two sections.
 
 ### 2. Deploy the MCP service + web admin UI
 
@@ -171,13 +171,25 @@ Both come up together once `CTX_TOKEN` and `CTX_GH_TOKEN` are in your `.deploy-e
 ./deploy.sh
 ```
 
-`McpUrl` and `WebAppDefaultDomain` appear in the outputs. Rotating the bearer token = edit `.deploy-env` and re-run the wrapper; rotating the GitHub PAT = same thing, or `gh auth refresh` if you're using the gh-CLI fallback.
+`McpLambdaUrl` and `WebAppDefaultDomain` appear in the outputs. Rotating the bearer token = edit `.deploy-env` and re-run the wrapper; rotating the GitHub PAT = same thing, or `gh auth refresh` if you're using the gh-CLI fallback.
 
 `WebAppDefaultDomain` is the URL to share with teammates (e.g. `https://main.abc123xyz.amplifyapp.com`). The first Amplify build takes ~4 min.
 
+**MCP compute:** the MCP server is a Lambda container (same Docker image, run via the [Lambda Web Adapter](https://github.com/awslabs/aws-lambda-web-adapter)) behind a Function URL + CloudFront — it scales to zero, so idle cost is ~$0/mo. Fresh deploys get *only* the Lambda path; `McpLambdaUrl` is the endpoint. Existing deployments that predate this also have the legacy App Runner service (`McpUrl` output) — see the migration runbook below to move off it. Cold starts add ~1–4 s to the first request after idle; per-brain bearer auth is identical on both paths.
+
+### Migrating an existing deployment off App Runner
+
+App Runner [closed to new customers in April 2026](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html) and costs ~$10/mo idle; the Lambda path replaces it for ~$0/mo. Existing stacks keep the App Runner service until you remove it explicitly (the CDK keeps it while `MCP_APPRUNNER` is unset), so the cutover is zero-downtime:
+
+1. **Deploy** (`./deploy.sh`). Both compute paths now serve the same brains; grab `McpLambdaUrl` and `McpDistributionDomain` from the outputs.
+2. **Smoke-test the Lambda path** — point one MCP client at `https://<McpDistributionDomain>/brain/<brain_id>/mcp` with the same bearer token and run a `search_knowledge`.
+3. **Custom domain** (skip if you don't use one): request an ACM cert in `us-east-1` for your MCP host (`aws acm request-certificate --domain-name mcp.example.dev --validation-method DNS`), create the validation CNAME at your DNS provider, wait for `ISSUED`, then set `MCP_DOMAIN_CERT_ARN=<cert-arn>` (with `MCP_PUBLIC_HOST` already set) in `.deploy-env` and re-deploy — the domain attaches to the CloudFront distribution.
+4. **Cut DNS over**: change the MCP host's CNAME from the App Runner domain to `<McpDistributionDomain>`. Clients keep working through the flip (same path shape, same tokens; the Lambda path runs the MCP session-less, which every streamable-HTTP client handles).
+5. **Remove App Runner**: once DNS has propagated and traffic looks clean in the Lambda's CloudWatch logs, unlink the custom domain from the App Runner service (console → App Runner → custom domains), set `MCP_APPRUNNER=false` in `.deploy-env`, and re-deploy. CloudFormation deletes the service; the ~$10/mo idle charge stops.
+
 ### Why the wrapper exists
 
-The stack's App Runner MCP service and the entire Amplify branch (web app + wiki-gen Fargate stack) are wrapped in `if (teamToken) { ... }` / `if (githubToken) { ... }` blocks. A bare `cdk deploy` with neither flag tells CloudFormation those resources should no longer exist — so it deletes them. **This has happened once already.** Recovery took ~30 min plus a new App Runner URL (= update every teammate's MCP client config). Accounts/orgs live in Postgres, so they survive a stack rebuild.
+The stack's MCP service (Lambda + CloudFront, plus the legacy App Runner service where still enabled) and the entire Amplify branch (web app + wiki-gen Fargate stack) are wrapped in `if (teamToken) { ... }` / `if (githubToken) { ... }` blocks. A bare `cdk deploy` with neither flag tells CloudFormation those resources should no longer exist — so it deletes them. **This has happened once already.** Recovery took ~30 min plus a new MCP URL (= update every teammate's MCP client config). Accounts/orgs live in Postgres, so they survive a stack rebuild.
 
 `./cdk/deploy.sh` refuses to call `cdk deploy / diff / destroy` without both tokens, sourced from `cdk/.deploy-env` (repo-local, gitignored) or `~/.context101/deploy-env` (user-global). It also falls back to `gh auth token` for the GitHub PAT so you can ignore that field if you have the gh CLI logged in.
 
@@ -246,7 +258,7 @@ uvicorn server:app --port 8787 --host 0.0.0.0
 
 Hit `http://localhost:8787/brain/default/mcp` with the default brain's bearer token (look it up under **About → Connect your MCP client** in the web UI, or read `context101-brain-default-token` from Secrets Manager).
 
-### 5b. Use the deployed App Runner service (team)
+### 5b. Use the deployed MCP service (team)
 
 Each brain gets its own URL and its own bearer token. Both come from the **About** page in the web admin UI — click "Copy" on the snippet for the brain you want to attach to.
 
@@ -307,7 +319,7 @@ Note: Better Auth controls access to the **web admin UI**. The **MCP endpoints**
 
 ## Managing brains
 
-Every brain is a fully isolated silo: its own S3 docs bucket, Bedrock Knowledge Base, vector index, suggestions queue, connectors table, and bearer token. Brains share the App Runner MCP service, the wiki Fargate task, Better Auth web login/orgs, and the connector OAuth client secrets.
+Every brain is a fully isolated silo: its own S3 docs bucket, Bedrock Knowledge Base, vector index, suggestions queue, connectors table, and bearer token. Brains share the MCP service, the wiki Fargate task, Better Auth web login/orgs, and the connector OAuth client secrets.
 
 ### Create a brain (web UI)
 
@@ -338,7 +350,7 @@ Click the trash icon on the brain's row on `/brains`, type the display name to c
 - Bedrock KB + S3 Vectors index: $0/mo idle (pay-per-query)
 - Suggestions + connectors: stored in Postgres; near-zero idle cost at normal alpha scale
 - Bearer-token secret: ~$0.40/mo
-- App Runner MCP: **shared** across all brains, ~$5–15/mo total
+- MCP service (Lambda + CloudFront): **shared** across all brains, ~$0/mo idle (legacy App Runner, where still enabled: ~$5–15/mo)
 
 So a hundred brains cost about the same as one, plus ~$40/mo in extra secrets.
 
@@ -931,7 +943,7 @@ The default brain's docs bucket and the shared S3 Vectors bucket have `RETAIN` p
 
 - **S3 Vectors** — cheapest vector store option; stays inside S3. One index per brain inside a shared vector bucket.
 - **Titan embed v2, 1024-dim** — native to Bedrock, no third-party API keys.
-- **App Runner** — one stable TLS URL serving every brain, ~$5–15/mo total (does not scale with brain count).
+- **Lambda + CloudFront** — one stable TLS URL serving every brain, scale-to-zero so ~$0/mo idle (does not scale with brain count). The same container image also runs on the legacy App Runner service during migration.
 - **Per-brain bearer tokens** — each brain has its own Secrets Manager secret. Compromise of one brain's token doesn't touch others.
 - **Postgres control plane** — Better Auth + app tables (brains, connectors, suggestions, MCP token hashes) live in Postgres.
 
@@ -955,4 +967,4 @@ The default brain's docs bucket and the shared S3 Vectors bucket have `RETAIN` p
 - **Per-folder descriptions** — drop a `_about.md` in each folder that explains what the folder is for. Bedrock indexes it like any other markdown so semantic search picks it up. Stronger variant: a custom ingestion-transformation Lambda that prepends folder context to every file.
 - **Hierarchical or semantic chunking** — better retrieval on long, structured docs. Higher ingestion cost.
 - **Multimodal ingestion** — Bedrock KB supports images and tables via `SupplementalDataStorageLocation`.
-- **Migrate App Runner → ECS Express Mode** — AWS announced (April 2026) that App Runner is closed to new customers. Existing services keep working but no new features. AWS's recommended successor is [ECS Express Mode](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html). Hold off until AWS announces an actual EOL date or ECS Express Mode is battle-tested. The migration adds ~$16/mo in ALB charges.
+- ~~**Migrate App Runner → ECS Express Mode**~~ — done differently: the MCP server now runs as a Lambda container (Web Adapter) behind a Function URL + CloudFront, which scales to zero (~$0/mo vs App Runner's ~$10/mo idle, and vs ~$16/mo in ALB charges for the ECS Express route). See "Migrating an existing deployment off App Runner" above for the cutover; remaining follow-up is deleting the legacy App Runner block from the stack once every deployment has cut over.

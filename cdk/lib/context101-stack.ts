@@ -6,6 +6,9 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as bedrock from "aws-cdk-lib/aws-bedrock";
 import * as apprunner from "aws-cdk-lib/aws-apprunner";
+import * as cloudfront from "aws-cdk-lib/aws-cloudfront";
+import * as origins from "aws-cdk-lib/aws-cloudfront-origins";
+import * as acm from "aws-cdk-lib/aws-certificatemanager";
 import * as ecr_assets from "aws-cdk-lib/aws-ecr-assets";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as s3deploy from "aws-cdk-lib/aws-s3-deployment";
@@ -814,8 +817,16 @@ export class Context101Stack extends cdk.Stack {
         "Lambda invoked by /api/brains/{create,delete} to provision per-brain resources.",
     });
 
-    // ── 8. Optional: App Runner service hosting the MCP server ────────
+    // ── 8. Optional: MCP service hosting ───────────────────────────────
     //      Only provisioned if -c token=<value> is passed at deploy time.
+    //
+    //      Primary compute is a Lambda container (same Docker image, run via
+    //      the Lambda Web Adapter) behind a Function URL + CloudFront — it
+    //      scales to zero, so the idle cost is ~$0/mo vs App Runner's
+    //      always-provisioned ~$10/mo. The legacy App Runner service is kept
+    //      during migration and removed by deploying with
+    //      -c MCP_APPRUNNER=false once DNS has been cut over to CloudFront
+    //      (see "Migrating off App Runner" in the README).
 
     if (teamToken) {
       // a) Store the bearer token in Secrets Manager
@@ -826,117 +837,230 @@ export class Context101Stack extends cdk.Stack {
       });
       defaultBrainTokenSecret = tokenSecret;
 
-      // b) Build Docker image from the repo root (parent of cdk/)
-      const image = new ecr_assets.DockerImageAsset(this, "McpImage", {
-        directory: path.resolve(__dirname, "..", ".."),
-        platform: ecr_assets.Platform.LINUX_AMD64,
-        file: "Dockerfile",
-      });
-
-      // c) App Runner instance role — runtime perms (what the MCP can do).
+      // b) Runtime permissions shared by both compute targets.
       //   The MCP server resolves the active brain on each request from
-      //   BrainsTable + the per-brain token secret, then reads/writes that
-      //   brain's KB, bucket, and suggestions table. Permissions are
-      //   wildcarded across context101-brain-* so newly-provisioned brains
-      //   work without redeploying.
-      const instanceRole = new iam.Role(this, "AppRunnerInstanceRole", {
-        assumedBy: new iam.ServicePrincipal("tasks.apprunner.amazonaws.com"),
-        description: "Runtime role for the Context101 MCP App Runner service",
-      });
-      // Bedrock Retrieve on any brain's KB. KB ARNs aren't known at synth
-      // for runtime-provisioned brains; the role-level wildcard is the gate.
-      instanceRole.addToPolicy(
-        new iam.PolicyStatement({
-          sid: "RetrieveAnyBrainKb",
-          actions: ["bedrock:Retrieve"],
-          resources: [
-            `arn:aws:bedrock:${this.region}:${this.account}:knowledge-base/*`,
-          ],
-        })
-      );
-      // Default brain bucket + every future brain bucket.
-      docsBucket.grantRead(instanceRole);
-      instanceRole.addToPolicy(
-        new iam.PolicyStatement({
-          sid: "ReadBrainBuckets",
-          actions: ["s3:GetObject", "s3:ListBucket"],
-          resources: [
-            `arn:aws:s3:::${namePrefix}-brain-*`,
-            `arn:aws:s3:::${namePrefix}-brain-*/*`,
-          ],
-        })
-      );
-      // The MCP server resolves the active brain from the Postgres `brains`
-      // registry (over HTTP via DATABASE_URL). Bearer tokens validate
-      // against Postgres `mcp_tokens`, with a Secrets Manager fallback —
-      // default brain's token plus any future brain's token.
-      tokenSecret.grantRead(instanceRole);
-      instanceRole.addToPolicy(
-        new iam.PolicyStatement({
-          sid: "ReadBrainTokenSecrets",
-          actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
-          resources: [
-            `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-bearer-token*`,
-            `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-brain-*`,
-          ],
-        })
-      );
+      //   the Postgres registry + the per-brain token secret, then reads
+      //   that brain's KB and bucket. Permissions are wildcarded across
+      //   context101-brain-* so newly-provisioned brains work without
+      //   redeploying.
+      const grantMcpRuntimePerms = (role: iam.IRole) => {
+        // Bedrock Retrieve on any brain's KB. KB ARNs aren't known at synth
+        // for runtime-provisioned brains; the role-level wildcard is the gate.
+        role.addToPrincipalPolicy(
+          new iam.PolicyStatement({
+            sid: "RetrieveAnyBrainKb",
+            actions: ["bedrock:Retrieve"],
+            resources: [
+              `arn:aws:bedrock:${this.region}:${this.account}:knowledge-base/*`,
+            ],
+          })
+        );
+        // Default brain bucket + every future brain bucket.
+        docsBucket.grantRead(role);
+        role.addToPrincipalPolicy(
+          new iam.PolicyStatement({
+            sid: "ReadBrainBuckets",
+            actions: ["s3:GetObject", "s3:ListBucket"],
+            resources: [
+              `arn:aws:s3:::${namePrefix}-brain-*`,
+              `arn:aws:s3:::${namePrefix}-brain-*/*`,
+            ],
+          })
+        );
+        // The MCP server resolves the active brain from the Postgres `brains`
+        // registry (over HTTP via DATABASE_URL). Bearer tokens validate
+        // against Postgres `mcp_tokens`, with a Secrets Manager fallback —
+        // default brain's token plus any future brain's token.
+        tokenSecret.grantRead(role);
+        role.addToPrincipalPolicy(
+          new iam.PolicyStatement({
+            sid: "ReadBrainTokenSecrets",
+            actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
+            resources: [
+              `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-bearer-token*`,
+              `arn:aws:secretsmanager:${this.region}:${this.account}:secret:${namePrefix}-brain-*`,
+            ],
+          })
+        );
+      };
 
-      // d) App Runner access role — permission to pull from ECR
-      const accessRole = new iam.Role(this, "AppRunnerAccessRole", {
-        assumedBy: new iam.ServicePrincipal("build.apprunner.amazonaws.com"),
-      });
-      accessRole.addManagedPolicy(
-        iam.ManagedPolicy.fromAwsManagedPolicyName(
-          "service-role/AWSAppRunnerServicePolicyForECRAccess"
-        )
-      );
+      // c) Lambda container from the repo-root Dockerfile. The image bundles
+      //    the Lambda Web Adapter as an extension, so the same uvicorn server
+      //    runs unmodified; MCP_STATELESS_HTTP=1 makes every request
+      //    self-contained (Lambda serves one request per execution
+      //    environment, so in-memory MCP sessions can't be pinned).
+      const mcpLambdaEnv: Record<string, string> = {
+        MCP_STATELESS_HTTP: "1",
+        PORT: "8787",
+        // AWS_REGION is reserved on Lambda; the runtime provides it.
+      };
+      for (const { name, value } of openSaasEnvVars) {
+        mcpLambdaEnv[name] = value;
+      }
 
-      // e) The service itself
-      const service = new apprunner.CfnService(this, "McpService", {
-        serviceName: `${namePrefix}-mcp`,
-        sourceConfiguration: {
-          authenticationConfiguration: { accessRoleArn: accessRole.roleArn },
-          autoDeploymentsEnabled: false,
-          imageRepository: {
-            imageIdentifier: image.imageUri,
-            imageRepositoryType: "ECR",
-            imageConfiguration: {
-              port: "8787",
-              runtimeEnvironmentVariables: [
-                { name: "AWS_REGION", value: this.region },
-                // The MCP server resolves the active brain per-request from
-                // the Postgres `brains` registry (DATABASE_URL in openSaas env).
-                ...openSaasEnvVars,
-              ],
+      const mcpFn = new lambda.DockerImageFunction(this, "McpLambda", {
+        description:
+          "Context101 MCP server (FastMCP container via Lambda Web Adapter)",
+        code: lambda.DockerImageCode.fromImageAsset(
+          path.resolve(__dirname, "..", ".."),
+          {
+            file: "Dockerfile",
+            platform: ecr_assets.Platform.LINUX_AMD64,
+          }
+        ),
+        memorySize: 1024,
+        timeout: cdk.Duration.seconds(120),
+        environment: mcpLambdaEnv,
+        logGroup: new logs.LogGroup(this, "McpLambdaLogs", {
+          retention: logs.RetentionDays.ONE_MONTH,
+          removalPolicy: cdk.RemovalPolicy.DESTROY,
+        }),
+      });
+      grantMcpRuntimePerms(mcpFn.role!);
+
+      // Bearer auth lives in the app (per-brain token validation in
+      // server.py's middleware), so the URL itself is unauthenticated.
+      const mcpFnUrl = mcpFn.addFunctionUrl({
+        authType: lambda.FunctionUrlAuthType.NONE,
+      });
+
+      // d) CloudFront in front of the Function URL — custom-domain support
+      //    (Function URLs have none) and a stable host for DNS cutover.
+      //    CachingDisabled + AllViewerExceptHostHeader forwards the
+      //    Authorization and mcp-session-id headers on POSTs untouched.
+      //    The custom domain only attaches once both MCP_PUBLIC_HOST and
+      //    MCP_DOMAIN_CERT_ARN (an issued us-east-1 ACM cert for that host)
+      //    are configured; until then the distribution's *.cloudfront.net
+      //    domain works immediately.
+      const mcpCertArn = this.node.tryGetContext("MCP_DOMAIN_CERT_ARN") as
+        | string
+        | undefined;
+      const mcpPublicDomain = mcpPublicHost
+        ?.replace(/^https?:\/\//, "")
+        .replace(/\/.*$/, "");
+
+      const mcpDistribution = new cloudfront.Distribution(this, "McpDistribution", {
+        comment: "Context101 MCP — Lambda Function URL origin",
+        defaultBehavior: {
+          origin: new origins.FunctionUrlOrigin(mcpFnUrl, {
+            // Tool calls (KB retrieve, S3 reads) normally finish in seconds;
+            // 60s is CloudFront's max without a quota increase.
+            readTimeout: cdk.Duration.seconds(60),
+          }),
+          allowedMethods: cloudfront.AllowedMethods.ALLOW_ALL,
+          cachePolicy: cloudfront.CachePolicy.CACHING_DISABLED,
+          originRequestPolicy:
+            cloudfront.OriginRequestPolicy.ALL_VIEWER_EXCEPT_HOST_HEADER,
+          viewerProtocolPolicy: cloudfront.ViewerProtocolPolicy.HTTPS_ONLY,
+        },
+        ...(mcpPublicDomain && mcpCertArn
+          ? {
+              domainNames: [mcpPublicDomain],
+              certificate: acm.Certificate.fromCertificateArn(
+                this,
+                "McpDomainCert",
+                mcpCertArn
+              ),
+            }
+          : {}),
+      });
+
+      const mcpLambdaBase = cdk.Fn.join("", [
+        "https://",
+        mcpDistribution.distributionDomainName,
+      ]);
+      mcpServiceUrl = mcpLambdaBase;
+
+      new cdk.CfnOutput(this, "McpLambdaUrl", {
+        value: cdk.Fn.join("", [mcpLambdaBase, "/mcp"]),
+        description:
+          "MCP endpoint on Lambda+CloudFront. Requires Authorization: Bearer <token> header.",
+      });
+      new cdk.CfnOutput(this, "McpDistributionDomain", {
+        value: mcpDistribution.distributionDomainName,
+        description:
+          "CNAME target for the MCP custom domain when cutting over from App Runner.",
+      });
+
+      // e) Legacy App Runner service — kept while DNS still points at it.
+      //    Remove after cutover with -c MCP_APPRUNNER=false.
+      const appRunnerEnabled =
+        (
+          (this.node.tryGetContext("MCP_APPRUNNER") as string | undefined) ??
+          "true"
+        ).toLowerCase() !== "false";
+
+      if (appRunnerEnabled) {
+        // Build Docker image from the repo root (parent of cdk/). Same
+        // content as the Lambda asset above, so CDK dedupes to one build.
+        const image = new ecr_assets.DockerImageAsset(this, "McpImage", {
+          directory: path.resolve(__dirname, "..", ".."),
+          platform: ecr_assets.Platform.LINUX_AMD64,
+          file: "Dockerfile",
+        });
+
+        const instanceRole = new iam.Role(this, "AppRunnerInstanceRole", {
+          assumedBy: new iam.ServicePrincipal("tasks.apprunner.amazonaws.com"),
+          description: "Runtime role for the Context101 MCP App Runner service",
+        });
+        grantMcpRuntimePerms(instanceRole);
+
+        // App Runner access role — permission to pull from ECR
+        const accessRole = new iam.Role(this, "AppRunnerAccessRole", {
+          assumedBy: new iam.ServicePrincipal("build.apprunner.amazonaws.com"),
+        });
+        accessRole.addManagedPolicy(
+          iam.ManagedPolicy.fromAwsManagedPolicyName(
+            "service-role/AWSAppRunnerServicePolicyForECRAccess"
+          )
+        );
+
+        const service = new apprunner.CfnService(this, "McpService", {
+          serviceName: `${namePrefix}-mcp`,
+          sourceConfiguration: {
+            authenticationConfiguration: { accessRoleArn: accessRole.roleArn },
+            autoDeploymentsEnabled: false,
+            imageRepository: {
+              imageIdentifier: image.imageUri,
+              imageRepositoryType: "ECR",
+              imageConfiguration: {
+                port: "8787",
+                runtimeEnvironmentVariables: [
+                  { name: "AWS_REGION", value: this.region },
+                  // The MCP server resolves the active brain per-request from
+                  // the Postgres `brains` registry (DATABASE_URL in openSaas env).
+                  ...openSaasEnvVars,
+                ],
+              },
             },
           },
-        },
-        instanceConfiguration: {
-          instanceRoleArn: instanceRole.roleArn,
-          cpu: "0.25 vCPU",
-          memory: "0.5 GB",
-        },
-        healthCheckConfiguration: { protocol: "TCP" },
-      });
+          instanceConfiguration: {
+            instanceRoleArn: instanceRole.roleArn,
+            cpu: "0.25 vCPU",
+            memory: "0.5 GB",
+          },
+          healthCheckConfiguration: { protocol: "TCP" },
+        });
 
-      const mcpUrl = cdk.Fn.join("", [
-        "https://",
-        service.attrServiceUrl,
-        "/mcp",
-      ]);
-      mcpServiceUrl = cdk.Fn.join("", ["https://", service.attrServiceUrl]);
+        // While App Runner is still deployed it stays the advertised host
+        // (that's where the custom domain points until cutover).
+        mcpServiceUrl = cdk.Fn.join("", ["https://", service.attrServiceUrl]);
 
-      new cdk.CfnOutput(this, "McpUrl", {
-        value: mcpUrl,
-        description:
-          "Share with the team. Requires Authorization: Bearer <token> header.",
-      });
+        new cdk.CfnOutput(this, "McpUrl", {
+          value: cdk.Fn.join("", ["https://", service.attrServiceUrl, "/mcp"]),
+          description:
+            "Legacy App Runner MCP endpoint. Requires Authorization: Bearer <token> header.",
+        });
+      }
 
       // Expose to the Amplify build so /about can render a copy-pasteable
-      // MCP client config without a hardcoded URL/token in source.
+      // MCP client config without a hardcoded URL/token in source. Prefers
+      // the stable public host (custom domain) when configured.
       mcpEnvVars.push(
-        { name: "NEXT_PUBLIC_MCP_URL", value: mcpUrl },
+        {
+          name: "NEXT_PUBLIC_MCP_URL",
+          value: cdk.Fn.join("", [mcpPublicHost ?? mcpServiceUrl, "/mcp"]),
+        },
         { name: "NEXT_PUBLIC_MCP_TOKEN", value: teamToken }
       );
     }
