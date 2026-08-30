@@ -1,11 +1,20 @@
-FROM python:3.12-slim
-
 # AWS Lambda Web Adapter — lets this same image run as a Lambda container
 # (Function URL behind CloudFront) with no handler code: the adapter runs as
 # a Lambda extension and proxies invocations to the uvicorn server below.
 # Outside Lambda (App Runner, local docker) /opt/extensions is never
 # executed, so it's inert there and one image serves both compute targets.
-COPY --from=public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 /lambda-adapter /opt/extensions/lambda-adapter
+#
+# Pulled via an explicit named stage rather than an inline
+# `COPY --from=<image>`: Docker's legacy (non-BuildKit) builder — e.g.
+# Colima on macOS without the buildx plugin — resolves inline external-image
+# COPYs against the host platform and dies with "failed to export image:
+# NotFound: content digest" on cross-platform builds. A named FROM stage
+# honors the build's --platform flag on both builders.
+FROM public.ecr.aws/awsguru/aws-lambda-adapter:0.9.1 AS lambda-adapter
+
+FROM python:3.12-slim
+
+COPY --from=lambda-adapter /lambda-adapter /opt/extensions/lambda-adapter
 ENV PORT=8787
 
 WORKDIR /app
