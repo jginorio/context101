@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { SOURCE_TYPES, type ConnectorType } from "@/lib/source-providers";
 
 type SourceType = ConnectorType;
@@ -62,7 +63,7 @@ const COPY: Record<SourceType, Copy> = {
   github: {
     title: "Add a GitHub repo",
     description:
-      "Paste a repo URL and a Personal Access Token with `repo` scope (or `public_repo` for public-only). We pull every markdown + code file (skipping lockfiles, node_modules, builds), wrap them in fenced markdown, and re-sync every 6 hours. The token is stored in Secrets Manager — never sent to the client again.",
+      "Paste a repo URL and a Personal Access Token with `repo` scope (or `public_repo` for public-only). We pull markdown + code files (skipping lockfiles, node_modules, builds), wrap them in fenced markdown, and re-sync every 6 hours. Optionally scope the connection to specific folders or files — and add multiple connections to the same repo, each scoped to different paths. The token is stored in Secrets Manager — never sent to the client again.",
     urlLabel: "Repo URL",
     urlPlaceholder: "https://github.com/owner/repo",
     labelPlaceholder: "context101 platform repo",
@@ -81,6 +82,7 @@ export function AddSourceDialog({
   const [label, setLabel] = React.useState("");
   const [url, setUrl] = React.useState("");
   const [pat, setPat] = React.useState("");
+  const [pathsText, setPathsText] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
 
   React.useEffect(() => {
@@ -88,6 +90,7 @@ export function AddSourceDialog({
       setLabel("");
       setUrl("");
       setPat("");
+      setPathsText("");
       setSubmitting(false);
     }
   }, [open]);
@@ -110,6 +113,14 @@ export function AddSourceDialog({
           label: label.trim(),
           resource_url: url.trim(),
           ...(needsPat ? { github_pat: pat.trim() } : {}),
+          ...(needsPat && pathsText.trim()
+            ? {
+                paths: pathsText
+                  .split("\n")
+                  .map((s) => s.trim())
+                  .filter(Boolean),
+              }
+            : {}),
         }),
       });
       const j = await r.json();
@@ -181,6 +192,30 @@ export function AddSourceDialog({
                 with <code className="font-mono">repo</code> scope (private)
                 or <code className="font-mono">public_repo</code> (public
                 only). Stored encrypted in Secrets Manager.
+              </p>
+            </div>
+          )}
+          {needsPat && (
+            <div>
+              <p className="text-xs font-medium mb-1">
+                Paths to sync{" "}
+                <span className="font-normal text-muted-foreground">
+                  (optional — empty syncs the whole repo)
+                </span>
+              </p>
+              <Textarea
+                value={pathsText}
+                onChange={(e) => setPathsText(e.target.value)}
+                placeholder={"apps/plateapr.com/docs/analytics/\nREADME.md\napps/*/docs/**"}
+                disabled={submitting}
+                rows={3}
+                className="font-mono text-xs"
+              />
+              <p className="mt-1 text-xs text-muted-foreground">
+                One folder, file, or glob per line, relative to the repo
+                root. Only matching files sync. You can add more
+                connections to the same repo later, each scoped to
+                different paths.
               </p>
             </div>
           )}
