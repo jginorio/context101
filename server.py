@@ -226,33 +226,35 @@ mcp = FastMCP(
     "Context101",
     instructions="""You are the librarian for Context101, a shared team knowledge base.
 
-Retrieval is two-tier:
+Retrieval is raw-first:
 
-  • search_knowledge returns chunks from the *canonical wiki* — synthesized,
-    deduplicated pages generated from the team's raw sources. This is the
-    default path. Wiki chunks cite their provenance via inline `Sources: [file]()`
-    footnotes and via the `source_files` metadata on each page.
+  • search_knowledge searches the whole brain — raw source docs (manual
+    uploads, Notion/Google/suggestion content) plus the synthesized wiki
+    overview pages. Raw chunks are always as fresh as the last connector
+    sync; wiki chunks add cross-source overviews. Synced code files and
+    per-repo code wikis are excluded so they don't dominate results by
+    sheer volume — reach those via read_knowledge.
 
-  • read_knowledge can fetch any document by its S3 key — including the raw
-    source docs the wiki was synthesized from. Use it when a canonical chunk
-    cites a raw file and you need the ground-truth content (e.g. to verify the
-    synthesized claim or pull a detail that didn't make it into the wiki).
+  • read_knowledge can fetch any document by its S3 key — including code
+    sources and code-wiki pages excluded from search. Use it when a chunk
+    cites a file and you need the full ground-truth content.
 
 Workflow:
   1. Call search_knowledge with a natural-language question. You get ranked
-     canonical chunks with their wiki page's S3 key and a relevance score.
-  2. If the canonical chunk references a source file and you need the full
-     detail, call read_knowledge(s3_key) on the cited source.
+     chunks with their document's S3 key and a relevance score.
+  2. If a chunk references another file (e.g. a wiki page's `Sources:
+     [file]()` footnote) and you need the full detail, call
+     read_knowledge(s3_key) on it.
   3. Use list_sources if you just want to enumerate what's in the bucket.
   4. If you discover something worth preserving (a missing fact, an
      inaccuracy, a better explanation), call suggest_knowledge. The
      suggestion goes to a human-review queue — never written to the brain
-     automatically. Approved suggestions flow to the raw docs and surface
-     in the canonical wiki on the next regeneration.
+     automatically. Approved suggestions become raw docs and are searchable
+     as soon as they're ingested (~1 min).
 
 Available tools:
-- search_knowledge(query, limit=5): semantic search over canonical wiki chunks
-- read_knowledge(s3_key): full content of any document (raw or wiki)
+- search_knowledge(query, limit=5): semantic search over the brain (raw docs + wiki pages; code excluded)
+- read_knowledge(s3_key): full content of any document (raw, wiki, or code)
 - list_sources(): list all documents in the S3 bucket
 - suggest_knowledge(title, content, target_path?, rationale?, trigger?):
     propose a new doc or update an existing one; goes to the review queue
@@ -282,12 +284,16 @@ def _source_key_from_retrieval(result: dict[str, Any]) -> str:
 
 @mcp.tool()
 def search_knowledge(query: str, limit: int = 5) -> str:
-    """Semantic search against the active brain's canonical wiki.
+    """Semantic search across the active brain — raw docs and wiki pages.
 
-    Retrieval is scoped to wiki chunks — synthesized pages the generator
-    produces from the raw corpus, tagged `source=wiki` via .metadata.json
-    sidecars. Raw source docs are excluded here; reach them via
-    read_knowledge when a wiki chunk cites a specific file.
+    Retrieval is raw-first: it covers everything in the brain's vector
+    index — manually uploaded docs, connector-synced content (Notion,
+    Google Docs/Sheets/Slides), approved suggestions, and the synthesized
+    wiki overview pages — so results are as fresh as the last ingest, not
+    the last wiki regeneration. Only code is excluded (`source=github` raw
+    repo files and `source=code-wiki` per-repo wiki pages), because those
+    outnumber everything else and would crowd out team knowledge; reach
+    them via read_knowledge.
 
     Args:
         query: Natural-language question, e.g. "how do I find active listings in Amplia"
@@ -305,7 +311,12 @@ def search_knowledge(query: str, limit: int = 5) -> str:
         retrievalConfiguration={
             "vectorSearchConfiguration": {
                 "numberOfResults": limit,
-                "filter": {"equals": {"key": "source", "value": "wiki"}},
+                # notIn also matches documents with no `source` attribute at
+                # all (manual uploads have no .metadata.json sidecar), so this
+                # is "everything except code" rather than an allowlist.
+                "filter": {
+                    "notIn": {"key": "source", "value": ["github", "code-wiki"]}
+                },
             }
         },
     )
@@ -331,14 +342,14 @@ def search_knowledge(query: str, limit: int = 5) -> str:
 def read_knowledge(s3_key: str) -> str:
     """Read the full content of any document in the active brain's bucket.
 
-    This is the escape hatch to ground-truth content. search_knowledge only
-    returns canonical wiki chunks, which are synthesized and may compress or
-    omit detail. When a wiki chunk cites a raw source (either inline via
-    `Sources: [file]()` or in the page's `source_files` metadata), use this
-    to pull the full unedited source.
+    This is the escape hatch to full ground-truth content. search_knowledge
+    returns chunks, which may cut off mid-document, and excludes code sources
+    entirely. Use this to pull a complete document: a raw doc a chunk came
+    from, a source a wiki page cites (inline via `Sources: [file]()`), or the
+    code files search doesn't cover (`sources/github/…`, `wiki/code/…`).
 
-    Works on both raw docs (e.g. "domain-knowledge/amplia.md") and wiki pages
-    (e.g. "wiki/overview.md") — whatever key you pass.
+    Works on any key — raw docs (e.g. "domain-knowledge/amplia.md"), wiki
+    pages (e.g. "wiki/overview.md"), or code sources.
 
     Args:
         s3_key: Object key inside the docs bucket, e.g. "domain-knowledge/amplia.md"
