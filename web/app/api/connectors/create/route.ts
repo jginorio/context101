@@ -133,6 +133,27 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Optional GitHub path scoping: sync only these folders / files / globs
+  // (empty ⇒ whole repo). Stored in the connector's metadata jsonb; the
+  // sync Lambda filters the repo tree against it. Multiple connectors may
+  // scope different paths of the same repo.
+  let githubPaths: string[] = [];
+  if (type === "github" && body.paths !== undefined) {
+    if (
+      !Array.isArray(body.paths) ||
+      body.paths.some((p: unknown) => typeof p !== "string")
+    ) {
+      return NextResponse.json(
+        { error: "paths must be an array of strings" },
+        { status: 400 }
+      );
+    }
+    githubPaths = (body.paths as string[])
+      .map((p) => p.trim().replace(/^\/+/, "").slice(0, 500))
+      .filter(Boolean)
+      .slice(0, 100);
+  }
+
   const resourceId = parseResourceId(type, body.resource_url);
   if (!resourceId) {
     return NextResponse.json(
@@ -173,6 +194,8 @@ export async function POST(request: NextRequest) {
       await pgUpdateConnector(auth.orgId, brain.brain_id, id, {
         status: "syncing",
         tokenSecretArn: created.ARN,
+        // Freshly inserted rows have metadata = {}, so a replace is a set.
+        ...(githubPaths.length ? { metadata: { paths: githubPaths } } : {}),
       });
       const fn = syncFnNameFor("github");
       if (fn) {

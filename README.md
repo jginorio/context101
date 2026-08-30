@@ -573,6 +573,20 @@ Generate the token at https://github.com/settings/tokens. Two flavors work:
 
 Avoid pasting `gho_…` tokens emitted by `gh auth token` — those are the gh CLI's OAuth tokens and rotate when gh refreshes them, breaking the connector with 401s the next time it tries to sync.
 
+##### Path scoping (sync only what you care about)
+
+By default a GitHub connection syncs the whole repo (minus the built-in lockfile/node_modules/build exclusions). The **Paths to sync** field in the add dialog narrows a connection to specific folders, files, or globs — one per line, relative to the repo root:
+
+```
+apps/plateapr.com/docs/analytics/     ← a folder (everything under it)
+README.md                             ← an exact file
+apps/*/docs/**                        ← a glob (* stays in one path segment, ** crosses)
+```
+
+Only matching files are pulled, pruned, and counted. The scope lives in the connector row's `metadata.paths`, so it also gates the change detector: for a scoped connection the code-wiki regen fires only when a file *inside the scope* changes, not on every commit to the repo.
+
+**Multiple connections per repo.** You can add several connections to the same repo, each scoped to different paths (e.g. one for `apps/plateapr.com/docs/`, another for `packages/analytics/`). They all write into the shared `sources/github/<owner>-<repo>/` prefix — the synced tree is the union of every connection's scope — and each connection only prunes or deletes files inside its own scope, so they never step on each other. Deleting one connection removes only the files it wrote (matched via the `connector_id` in each file's metadata sidecar).
+
 ### Notion auth model vs Google
 
 A practical quirk: **Google returns a refresh token** (access tokens expire every hour, we refresh on each sync), while **Notion returns a long-lived access token** (no expiry, no refresh flow). Both land in the same per-connector secret (`context101-connector-<uuid>`) but with different shapes:

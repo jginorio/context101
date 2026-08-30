@@ -24,10 +24,12 @@ import { bucketForBrain, s3 } from "@/utils/s3";
  *   - the connector row
  *   - the per-connection secret (force delete, no recovery window)
  *   - this connector's S3 files. Notion packs every connector in a workspace
- *     under one shared prefix (sources/notion/<workspace-slug>/), so we delete
- *     only the objects this connector wrote (matched via the sidecar's
- *     connector_id). Other types use a per-resource prefix that belongs to a
- *     single connector, so a wholesale prefix delete is safe there.
+ *     under one shared prefix (sources/notion/<workspace-slug>/), and GitHub
+ *     packs every (possibly path-scoped) connector for a repo under
+ *     sources/github/<repo-slug>/ — for both we delete only the objects this
+ *     connector wrote (matched via the sidecar's connector_id). Google types
+ *     use a per-resource prefix that belongs to a single connector, so a
+ *     wholesale prefix delete is safe there.
  */
 export async function POST(request: NextRequest) {
   const auth = await readAuthContext(request);
@@ -72,13 +74,20 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    if (row.type === "notion") {
-      // Shared workspace prefix: delete only the objects whose sidecar
-      // connector_id matches this connector, so we don't nuke other Notion
-      // connectors that live under the same workspace.
-      const prefix = row.notion_workspace_name
-        ? `sources/notion/${slugify(row.notion_workspace_name) || "notion"}/`
-        : "sources/notion/";
+    if (row.type === "notion" || row.type === "github") {
+      // Shared prefixes: delete only the objects whose sidecar
+      // connector_id matches this connector. Notion packs a workspace's
+      // connectors under one prefix; GitHub packs a repo's (possibly
+      // path-scoped) connectors under sources/github/<repo-slug>/ — so a
+      // wholesale prefix delete would nuke sibling connectors' files.
+      const prefix =
+        row.type === "notion"
+          ? row.notion_workspace_name
+            ? `sources/notion/${slugify(row.notion_workspace_name) || "notion"}/`
+            : "sources/notion/"
+          : row.resource_title
+            ? `sources/github/${slugify(row.resource_title) || "item"}/`
+            : "sources/github/";
       const toDelete: string[] = [];
       let token: string | undefined;
       do {

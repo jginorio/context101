@@ -66,6 +66,9 @@ export type Connector = {
   notion_workspace_name?: string;
   notion_tree?: NotionTreeNode;
   github_account_login?: string;
+  // GitHub only: repo paths this connection is scoped to (empty/absent =
+  // whole repo). Folder prefixes, exact files, or globs.
+  github_paths?: string[];
   item_count?: number;
   last_synced_at?: string;
   last_error?: string;
@@ -243,6 +246,10 @@ export function toClientConnector(row: ConnectorRow): Connector {
     notion_workspace_name: metaString(meta, "notion_workspace_name"),
     notion_tree: (meta.notion_tree as NotionTreeNode | undefined) ?? undefined,
     github_account_login: metaString(meta, "github_account_login"),
+    github_paths:
+      Array.isArray(meta.paths) && meta.paths.length > 0
+        ? (meta.paths as string[]).filter((p) => typeof p === "string")
+        : undefined,
     item_count: row.itemCount ?? undefined,
     last_synced_at: row.lastSyncedAt
       ? row.lastSyncedAt.toISOString()

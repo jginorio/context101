@@ -59,6 +59,7 @@ type Connector = {
   google_account_email?: string;
   notion_workspace_name?: string;
   github_account_login?: string;
+  github_paths?: string[];
   item_count?: number;
   last_synced_at?: string;
   last_error?: string;
@@ -301,6 +302,19 @@ function SourcesContent() {
                           ? (c.github_account_login ?? "—")
                           : (c.google_account_email ?? "—")}
                     </dd>
+                    {c.type === "github" && (
+                      <>
+                        <dt className="text-muted-foreground">Paths</dt>
+                        <dd
+                          className="truncate font-mono text-[11px]"
+                          title={c.github_paths?.join("\n")}
+                        >
+                          {c.github_paths?.length
+                            ? c.github_paths.join(", ")
+                            : "whole repo"}
+                        </dd>
+                      </>
+                    )}
                     <dt className="text-muted-foreground">Last synced</dt>
                     <dd>
                       {c.last_synced_at
