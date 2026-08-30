@@ -48,8 +48,9 @@ RULES
  * Body: { message: string, history?: {role,text}[], includeRaw?: boolean }
  *
  * A retrieval playground for the active brain: runs a Bedrock KB Retrieve
- * (wiki-filtered like the MCP `search_knowledge` tool, unless includeRaw),
- * then streams a grounded Claude answer. Responds as NDJSON so the client can
+ * (raw-first like the MCP `search_knowledge` tool — everything except code
+ * sources; includeRaw lifts that filter so code chunks show too), then
+ * streams a grounded Claude answer. Responds as NDJSON so the client can
  * render the retrieved chunks (with scores + source keys) and the streamed
  * answer together:
  *   {"type":"sources","sources":[...]}\n
@@ -87,7 +88,10 @@ export async function POST(request: NextRequest) {
         .slice(-8)
     : [];
 
-  // 1. Retrieve from the brain's KB — mirror the MCP tool's wiki filter.
+  // 1. Retrieve from the brain's KB — mirror the MCP tool's raw-first filter:
+  // everything except code (synced repo files + per-repo code wikis). notIn
+  // also matches docs with no `source` attribute (manual uploads have no
+  // sidecar). includeRaw lifts the filter entirely so code chunks show too.
   let sources: Source[] = [];
   try {
     const ret = await agentRuntime.send(
@@ -99,7 +103,11 @@ export async function POST(request: NextRequest) {
             numberOfResults: NUM_RESULTS,
             ...(includeRaw
               ? {}
-              : { filter: { equals: { key: "source", value: "wiki" } } }),
+              : {
+                  filter: {
+                    notIn: { key: "source", value: ["github", "code-wiki"] },
+                  },
+                }),
           },
         },
       })
