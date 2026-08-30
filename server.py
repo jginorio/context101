@@ -489,6 +489,19 @@ def _json_response(status: int, body: dict[str, Any]):
     return JSONResponse(body, status_code=status)
 
 
+# MCP_STATELESS_HTTP=1 makes every request self-contained instead of binding
+# clients to an in-memory session (mcp-session-id). Required on Lambda: each
+# execution environment serves one request at a time, so a follow-up POST can
+# land on a different instance that has never seen the session id. Leave it
+# unset for long-lived containers (App Runner / local docker), where stateful
+# sessions are fine.
+MCP_STATELESS_HTTP = os.environ.get("MCP_STATELESS_HTTP", "").lower() in (
+    "1",
+    "true",
+    "yes",
+)
+
+
 # FastMCP exposes its HTTP transport as a Starlette ASGI app. Depending on
 # the FastMCP version the accessor is `streamable_http_app()` (preferred)
 # or `http_app()`. We support both so this server runs on either.
@@ -496,6 +509,16 @@ def _build_mcp_asgi():
     for attr in ("streamable_http_app", "http_app"):
         fn = getattr(mcp, attr, None)
         if callable(fn):
+            if MCP_STATELESS_HTTP:
+                try:
+                    return fn(stateless_http=True)
+                except TypeError:
+                    print(
+                        "[mcp] MCP_STATELESS_HTTP=1 but this FastMCP version's "
+                        f"`{attr}` accessor doesn't accept stateless_http — "
+                        "running stateful. Sessions will break behind "
+                        "load-balanced/serverless compute."
+                    )
             return fn()
     raise RuntimeError(
         "FastMCP instance has no HTTP ASGI app accessor "

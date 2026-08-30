@@ -32,7 +32,14 @@
 #   DATABASE_URL, DATABASE_DRIVER, DATABASE_PREPARE,
 #   BETTER_AUTH_SECRET, BETTER_AUTH_URL, MCP_TOKEN_PEPPER,
 #   APP_MODE, ALLOW_PUBLIC_SIGNUP, BILLING_ENABLED, APP_URL, MARKETING_URL,
-#   MCP_PUBLIC_HOST, SES_REGION, SES_FROM_EMAIL, SES_REPLY_TO_EMAIL.
+#   MCP_PUBLIC_HOST, MCP_DOMAIN_CERT_ARN, MCP_APPRUNNER,
+#   SES_REGION, SES_FROM_EMAIL, SES_REPLY_TO_EMAIL.
+#
+# MCP compute (see "Migrating off App Runner" in the README):
+#   MCP_DOMAIN_CERT_ARN — issued us-east-1 ACM cert ARN for the MCP custom
+#     domain; attaches MCP_PUBLIC_HOST to the CloudFront distribution.
+#   MCP_APPRUNNER=false — removes the legacy App Runner service after DNS
+#     has been cut over to CloudFront.
 
 set -euo pipefail
 
@@ -169,6 +176,8 @@ add_context_if_set "BILLING_ENABLED"
 add_context_if_set "APP_URL"
 add_context_if_set "MARKETING_URL"
 add_context_if_set "MCP_PUBLIC_HOST"
+add_context_if_set "MCP_DOMAIN_CERT_ARN"
+add_context_if_set "MCP_APPRUNNER"
 add_context_if_set "SES_REGION"
 add_context_if_set "SES_FROM_EMAIL"
 add_context_if_set "SES_REPLY_TO_EMAIL"
