@@ -129,8 +129,16 @@ function SourcesContent() {
   React.useEffect(() => {
     const connected = search.get("connected");
     const oauthError = search.get("oauth_error");
+    const githubApp = search.get("githubapp");
     if (connected) toast.success("Connected — first sync is running");
     if (oauthError) toast.error(`OAuth: ${oauthError}`);
+    if (githubApp === "created")
+      toast.success(
+        "GitHub App created — add a GitHub source to pick your repos"
+      );
+    if (githubApp === "installed")
+      toast.success("GitHub App installed — repos are now connectable");
+    if (githubApp === "error") toast.error("GitHub App setup failed");
   }, [search]);
 
   // Poll while anything is syncing

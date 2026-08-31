@@ -21,6 +21,12 @@ import {
   type ConnectorType,
 } from "@/utils/connectors";
 import { readAuthContext, resolveBrainFromRequest } from "@/lib/brains-server";
+import {
+  getGithubAppConfig,
+  installUrl,
+  installationCanAccessRepo,
+  mintInstallationToken,
+} from "@/utils/github-app";
 import { bucketForBrain } from "@/utils/s3";
 import { getPublicOrigin } from "@/utils/public-origin";
 
@@ -121,14 +127,23 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  // GitHub uses a Personal Access Token, not OAuth. We expect the token
-  // in the body so we can short-circuit the OAuth dance.
-  if (
-    type === "github" &&
-    (typeof body.github_pat !== "string" || !body.github_pat.trim())
-  ) {
+  // GitHub authenticates one of two ways:
+  //   - GitHub App (preferred, tokenless): available once the deployment's
+  //     app is registered via /api/connectors/github-app/create. The user
+  //     grants per-repo access on GitHub's own install screen; the sync
+  //     Lambda mints short-lived installation tokens.
+  //   - Personal Access Token: legacy fallback, pasted into the dialog.
+  const githubPat =
+    type === "github" && typeof body.github_pat === "string"
+      ? body.github_pat.trim()
+      : "";
+  const githubApp = type === "github" && !githubPat ? await getGithubAppConfig() : null;
+  if (type === "github" && !githubPat && !githubApp) {
     return NextResponse.json(
-      { error: "github_pat is required for type=github" },
+      {
+        error:
+          "github_pat is required (or set up the GitHub App under Sources → GitHub for tokenless connections)",
+      },
       { status: 400 }
     );
   }
@@ -176,7 +191,74 @@ export async function POST(request: NextRequest) {
     });
     const id = inserted.id;
 
-    // ── GitHub short-circuit (no OAuth dance) ─────────────────────────
+    // ── GitHub via GitHub App (tokenless) ──────────────────────────────
+    // If the installation already covers the repo, sync immediately with
+    // no redirect at all. Otherwise send the user to GitHub's install
+    // screen; the app's setup-callback resumes this connector from `state`.
+    if (type === "github" && githubApp) {
+      const baseMetadata: Record<string, unknown> = {};
+      if (githubPaths.length) baseMetadata.paths = githubPaths;
+
+      let coveredNow = false;
+      if (githubApp.installation_id) {
+        try {
+          const token = await mintInstallationToken(
+            githubApp,
+            githubApp.installation_id
+          );
+          coveredNow = await installationCanAccessRepo(token, resourceId);
+        } catch (e) {
+          console.warn("github app repo-access check failed:", e);
+        }
+      }
+
+      if (coveredNow) {
+        await pgUpdateConnector(auth.orgId, brain.brain_id, id, {
+          status: "syncing",
+          metadata: {
+            ...baseMetadata,
+            auth: "github-app",
+            github_installation_id: githubApp.installation_id,
+            github_app_secret_arn: githubApp.secret_arn,
+          },
+        });
+        const fn = syncFnNameFor("github");
+        if (fn) {
+          await lambdaClient
+            .send(
+              new InvokeCommand({
+                FunctionName: fn,
+                InvocationType: "Event",
+                Payload: new TextEncoder().encode(
+                  JSON.stringify({
+                    connectorId: id,
+                    docsBucket,
+                    brainId: brain.brain_id,
+                  })
+                ),
+              })
+            )
+            .catch((e) => console.error("initial sync invoke failed:", e));
+        }
+        return NextResponse.json({
+          id,
+          oauthUrl: `/sources?brain=${encodeURIComponent(brain.brain_id)}&connected=${id}`,
+        });
+      }
+
+      // Repo not covered (or nothing installed yet) → GitHub's repo picker.
+      if (githubPaths.length) {
+        await pgUpdateConnector(auth.orgId, brain.brain_id, id, {
+          metadata: baseMetadata,
+        });
+      }
+      return NextResponse.json({
+        id,
+        oauthUrl: installUrl(githubApp.slug, `${brain.brain_id}:${id}`),
+      });
+    }
+
+    // ── GitHub via PAT (legacy short-circuit, no OAuth dance) ──────────
     // PAT is the auth — store it in a per-connector secret, flip the row
     // to "syncing", fire the sync Lambda, and tell the client to redirect
     // straight to /sources?connected=<id>.
