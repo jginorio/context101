@@ -10,12 +10,18 @@ applications:
             # of its own). cwd persists across Amplify phases, so cd back into
             # web/ at the end — the build phase below runs there.
             #
-            # rm the lockfile before install: it's generated on macOS and npm's
-            # optional-dependency platform bug then skips the linux-x64 native
-            # binaries (lightningcss / @tailwindcss/oxide / @next/swc), breaking
-            # `next build`. A fresh install on the linux container resolves the
-            # correct platform binaries.
-            - cd .. && rm -f package-lock.json && npm install --cache .npm && cd web
+            # `npm ci` — install EXACTLY the committed lockfile. The previous
+            # `rm package-lock.json && npm install` hack (macOS lockfiles used
+            # to omit linux-x64 native binaries) made every build resolve
+            # dependencies fresh, so prod silently ran different versions than
+            # anyone tested locally — it shipped better-auth 1.7.2 while the
+            # lockfile pins 1.6.11, breaking sign-in. The lockfile now records
+            # all platforms' native binaries (lightningcss / @tailwindcss/oxide
+            # / @next/swc linux entries are present), so `npm ci` builds clean
+            # on the linux container. If a future macOS npm regenerates the
+            # lockfile without them, fix the lockfile (regenerate on linux or
+            # with `npm install --os=linux --cpu=x64` entries), don't delete it.
+            - cd .. && npm ci --cache .npm && cd web
         build:
           commands:
             # Amplify exposes console/branch env vars to the build container,
