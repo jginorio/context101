@@ -562,9 +562,19 @@ https://<WebAppDefaultDomain>/api/connectors/oauth/callback
 
 CDK references both secrets by *name* (`secretsmanager.Secret.fromSecretNameV2`), so you can rotate values without re-running `cdk deploy`. Add a new JSON version and the next sync picks it up.
 
-#### GitHub (no OAuth — Personal Access Token)
+#### GitHub — via the GitHub App (recommended, tokenless)
 
-The GitHub connector skips the OAuth dance entirely. When you click **Add new source → GitHub**, the dialog asks for a PAT directly; it's stored in the per-connector secret (`context101-connector-<uuid>`) like every other token, just shaped as `{ "github_pat": "…" }` instead of `{ "refresh_token": "…" }` or `{ "access_token": "…" }`.
+Register a **GitHub App** for your deployment once and GitHub connections become completely tokenless:
+
+1. In the add-source dialog (or directly at `/api/connectors/github-app/create`), click **Set up the GitHub App**. This uses GitHub's [app-manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest): GitHub shows a pre-filled "Create GitHub App" page (permissions: Contents + Metadata, read-only), you click **Create**, and the credentials land in the `context101-connector-github-app` secret automatically. Nothing is copy-pasted — not even during setup.
+2. Adding a GitHub source is now just: paste the repo URL (+ optional paths). If the app already has access to that repo, the connector syncs immediately with **no redirect at all**. If not, GitHub's own install screen opens once — check the repos you want (per-repo consent, like a fine-grained PAT) — and you land back on Sources with the sync running.
+3. No credential is stored per connection: the sync Lambda mints a fresh 1-hour installation token from the app's private key on every run. Revoke or audit access anytime from GitHub → Settings → Installed GitHub Apps.
+
+The `installation_id` is recorded app-wide, so every later connection to a covered repo — including extra path-scoped connections to the same repo — is instant.
+
+#### GitHub — via Personal Access Token (legacy fallback)
+
+Without the GitHub App configured, the dialog asks for a PAT directly; it's stored in the per-connector secret (`context101-connector-<uuid>`) like every other token, just shaped as `{ "github_pat": "…" }` instead of `{ "refresh_token": "…" }` or `{ "access_token": "…" }`.
 
 Generate the token at https://github.com/settings/tokens. Two flavors work:
 
@@ -969,7 +979,7 @@ The default brain's docs bucket and the shared S3 Vectors bucket have `RETAIN` p
 - **Per-brain RBAC** — Better Auth organizations are in place; per-brain roles are still a follow-up.
 - **Per-user MCP auth** — graduate from per-brain bearer tokens once you need per-person audit trails. The current MCP path validates hashed bearer tokens in Postgres when configured.
 - **Sub-brain metadata filters** — within one brain, scope queries with metadata sidecars (`team`, `freshness`, `audience`). Already partially wired up via the `source` sidecar filter (search excludes `github`/`code-wiki`). Extend `search_knowledge` with an optional `filter` arg and compose it via Bedrock's `andAll`.
-- **GitHub OAuth flow** — today the GitHub connector takes a PAT. A GitHub App / OAuth flow would scope per-user, support per-repo install consent, and avoid the rotation footgun with `gho_` tokens issued via `gh auth token`.
+- ~~**GitHub OAuth flow**~~ — done as a **GitHub App** (see [GitHub — via the GitHub App](#github--via-the-github-app-recommended-tokenless)): registered per deployment via the app-manifest flow, per-repo install consent, short-lived installation tokens minted per sync, PAT path kept as fallback.
 - **Chat connector (Slack / Discord)** — ingest pinned messages + specific channel transcripts into `sources/chat/<channel>/<day>.md`. More interesting for "what did we decide last week" retrieval than for structured knowledge.
 - **Per-page code-wiki cache** — today the cost guard skips the *entire* code-wiki regen when the repo's tree SHA hasn't moved. A finer-grained version would cache each page by the hash of its `relevant_files`.
 - **Deep links to wiki pages** — `/wiki?repo=foo-bar&slug=architecture` to URL-restore selection across reloads.

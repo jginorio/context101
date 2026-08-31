@@ -63,7 +63,7 @@ const COPY: Record<SourceType, Copy> = {
   github: {
     title: "Add a GitHub repo",
     description:
-      "Paste a repo URL and a Personal Access Token with `repo` scope (or `public_repo` for public-only). We pull markdown + code files (skipping lockfiles, node_modules, builds), wrap them in fenced markdown, and re-sync every 6 hours. Optionally scope the connection to specific folders or files — and add multiple connections to the same repo, each scoped to different paths. The token is stored in Secrets Manager — never sent to the client again.",
+      "Paste a repo URL. We pull markdown + code files (skipping lockfiles, node_modules, builds), wrap them in fenced markdown, and re-sync every 6 hours. Optionally scope the connection to specific folders or files — and add multiple connections to the same repo, each scoped to different paths.",
     urlLabel: "Repo URL",
     urlPlaceholder: "https://github.com/owner/repo",
     labelPlaceholder: "context101 platform repo",
@@ -84,6 +84,10 @@ export function AddSourceDialog({
   const [pat, setPat] = React.useState("");
   const [pathsText, setPathsText] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
+  // null = still checking; once known, drives token vs tokenless UX.
+  const [githubAppConfigured, setGithubAppConfigured] = React.useState<
+    boolean | null
+  >(null);
 
   React.useEffect(() => {
     if (open) {
@@ -93,13 +97,25 @@ export function AddSourceDialog({
       setPathsText("");
       setSubmitting(false);
     }
-  }, [open]);
+    if (open && type === "github") {
+      setGithubAppConfigured(null);
+      fetch("/api/connectors/github-app")
+        .then((r) => (r.ok ? r.json() : { configured: false }))
+        .then((j) => setGithubAppConfigured(!!j.configured))
+        .catch(() => setGithubAppConfigured(false));
+    }
+  }, [open, type]);
 
   const copy = COPY[type];
   const Icon = SOURCE_TYPES[type].icon;
-  const needsPat = type === "github";
+  const isGithub = type === "github";
+  // The PAT field only appears when the GitHub App isn't set up.
+  const needsPat = isGithub && githubAppConfigured === false;
   const ready =
-    !!label.trim() && !!url.trim() && (!needsPat || !!pat.trim());
+    !!label.trim() &&
+    !!url.trim() &&
+    (!isGithub || githubAppConfigured !== null) &&
+    (!needsPat || !!pat.trim());
 
   async function connect() {
     if (!ready) return;
@@ -113,7 +129,7 @@ export function AddSourceDialog({
           label: label.trim(),
           resource_url: url.trim(),
           ...(needsPat ? { github_pat: pat.trim() } : {}),
-          ...(needsPat && pathsText.trim()
+          ...(isGithub && pathsText.trim()
             ? {
                 paths: pathsText
                   .split("\n")
@@ -195,7 +211,26 @@ export function AddSourceDialog({
               </p>
             </div>
           )}
-          {needsPat && (
+          {isGithub && githubAppConfigured === true && (
+            <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-700 dark:text-emerald-400">
+              Tokenless via the GitHub App — if the app doesn&apos;t have
+              access to this repo yet, GitHub will show its repo picker once.
+            </p>
+          )}
+          {isGithub && githubAppConfigured === false && (
+            <p className="text-xs text-muted-foreground">
+              Tired of tokens?{" "}
+              <a
+                href="/api/connectors/github-app/create"
+                className="underline hover:text-foreground"
+              >
+                Set up the GitHub App
+              </a>{" "}
+              once (~20s on GitHub) and future connections need no PAT —
+              you&apos;ll pick repos on GitHub&apos;s own consent screen.
+            </p>
+          )}
+          {isGithub && (
             <div>
               <p className="text-xs font-medium mb-1">
                 Paths to sync{" "}
@@ -219,7 +254,7 @@ export function AddSourceDialog({
               </p>
             </div>
           )}
-          {!needsPat && (
+          {!isGithub && (
             <p className="text-xs text-muted-foreground">
               You only need <strong>Viewer</strong> access — sync is read-only.
             </p>
@@ -243,7 +278,11 @@ export function AddSourceDialog({
             ) : type === "notion" ? (
               "Connect Notion workspace"
             ) : type === "github" ? (
-              "Add repo"
+              githubAppConfigured ? (
+                "Connect via GitHub"
+              ) : (
+                "Add repo"
+              )
             ) : (
               "Connect Google account"
             )}
