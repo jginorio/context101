@@ -42,6 +42,17 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
       provider: "pg",
       schema: authSchema,
     }),
+    advanced: {
+      ipAddress: {
+        // Better Auth ≥1.3 no longer trusts client-IP headers by default
+        // (spoofing hardening), and its rate limiter only runs in
+        // production — so on Amplify (behind CloudFront, which sets
+        // X-Forwarded-For) every visitor collapsed into one shared
+        // per-path bucket and sign-in got collectively throttled.
+        // Opting into the header restores per-client rate limiting.
+        ipAddressHeaders: ["x-forwarded-for"],
+      },
+    },
     emailAndPassword: {
       enabled: true,
       disableSignUp,
