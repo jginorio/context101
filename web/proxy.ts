@@ -25,6 +25,7 @@ export const config = {
   //  - / (a tiny server redirect into the authenticated app)
   //  - /login and /setup
   //  - /accept-invitation (invited users may not have an account/session yet)
+  //  - /reset-password (the emailed reset link is used while logged out)
   //  - /api/auth and /api/setup
   //  - /api/invitation (public invite lookup + invite-scoped signup)
   //  - /_next (Next.js internals)
@@ -32,6 +33,6 @@ export const config = {
   // Using `.+` instead of `.*` so the empty path (i.e. `/`) doesn't match
   // and is served as the public landing without an auth round-trip.
   matcher: [
-    "/((?!login|setup|accept-invitation|api/auth|api/setup|api/invitation|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).+)",
+    "/((?!login|setup|accept-invitation|reset-password|api/auth|api/setup|api/invitation|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).+)",
   ],
 };
