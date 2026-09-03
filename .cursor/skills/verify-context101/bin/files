@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Authenticated /api/files helper. Usage:
+#   files list [prefix]
+#   files get <key>
+#   files put <key> [content]
+#   files move <from> <to>
+#   files delete <key> [--folder]
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+BASE="${VERIFY_BASE_URL:-http://localhost:3000}"
+
+cookie=$("$ROOT/auth-cookie")
+auth=(-H "Cookie: $cookie" -H 'Content-Type: application/json')
+
+cmd="${1:-}"
+shift || true
+
+case "$cmd" in
+  list)
+    prefix="${1:-}"
+    curl -sS "${auth[@]}" \
+      "$BASE/api/files/list?prefix=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$prefix")"
+    echo
+    ;;
+  get)
+    key="${1:?key required}"
+    curl -sS "${auth[@]}" \
+      "$BASE/api/files/get?key=$(python3 -c 'import urllib.parse,sys; print(urllib.parse.quote(sys.argv[1], safe=""))' "$key")"
+    echo
+    ;;
+  put)
+    key="${1:?key required}"
+    content="${2:-}"
+    python3 - "$key" "$content" <<'PY' | curl -sS "${auth[@]}" -X POST "$BASE/api/files/put" -d @-
+import json, sys
+print(json.dumps({"key": sys.argv[1], "content": sys.argv[2]}))
+PY
+    echo
+    ;;
+  move)
+    from="${1:?from required}"
+    to="${2:?to required}"
+    python3 - "$from" "$to" <<'PY' | curl -sS "${auth[@]}" -X POST "$BASE/api/files/move" -d @-
+import json, sys
+print(json.dumps({"from": sys.argv[1], "to": sys.argv[2]}))
+PY
+    echo
+    ;;
+  delete)
+    key="${1:?key required}"
+    recursive=false
+    if [[ "${2:-}" == "--folder" ]]; then
+      recursive=true
+    fi
+    python3 - "$key" "$recursive" <<'PY' | curl -sS "${auth[@]}" -X POST "$BASE/api/files/delete" -d @-
+import json, sys
+print(json.dumps({"key": sys.argv[1], "recursive": sys.argv[2] == "true"}))
+PY
+    echo
+    ;;
+  *)
+    echo "usage: files {list|get|put|move|delete} ..." >&2
+    exit 2
+    ;;
+esac

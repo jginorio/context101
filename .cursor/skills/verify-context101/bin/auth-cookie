@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+# Sign in via Better Auth and print a Cookie header value (no trailing newline
+# on the cookie itself). Requires CONTEXT101_USER and CONTEXT101_PASSWORD.
+set -euo pipefail
+
+BASE="${VERIFY_BASE_URL:-http://localhost:3000}"
+EMAIL="${CONTEXT101_USER:-}"
+PASSWORD="${CONTEXT101_PASSWORD:-}"
+
+if [[ -z "$EMAIL" || -z "$PASSWORD" ]]; then
+  echo "CONTEXT101_USER and CONTEXT101_PASSWORD must be set" >&2
+  exit 2
+fi
+
+hdr=$(mktemp)
+body=$(mktemp)
+trap 'rm -f "$hdr" "$body"' EXIT
+
+code=$(curl -sS -o "$body" -D "$hdr" -w '%{http_code}' \
+  -X POST "$BASE/api/auth/sign-in/email" \
+  -H 'Content-Type: application/json' \
+  --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
+
+if [[ "$code" != "200" ]]; then
+  echo "sign-in failed: HTTP $code $(head -c 200 "$body")" >&2
+  exit 1
+fi
+
+cookie=$(awk 'BEGIN{IGNORECASE=1} /^set-cookie:/ {
+  sub(/^set-cookie:[[:space:]]*/,"")
+  split($0, a, ";")
+  print a[1]
+  exit
+}' "$hdr")
+
+if [[ -z "$cookie" ]]; then
+  echo "sign-in returned 200 but no Set-Cookie" >&2
+  exit 1
+fi
+
+printf '%s\n' "$cookie"

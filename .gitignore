@@ -40,6 +40,9 @@ site/.env*
 site/next-env.d.ts
 site/*.tsbuildinfo
 
+# Verification-skill run artifacts (proof stays on disk for the run; do not commit)
+.cursor/skills/verify-context101/artifacts/
+
 # Web app
 web/node_modules/
 web/.next/
