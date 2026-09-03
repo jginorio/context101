@@ -9,7 +9,7 @@ This directory is the maintained source for verifying user-facing behavior of th
 - Session is the `CONTEXT101_USER` account; active brain is **Default**.
 - Mutating runs use a unique prefix `verify/<run-id>/` and record it in `/tmp/verify-context101-run.id`.
 - Do not start a second Next.js on `:3000`. Reuse the environment instance when doctor passes.
-- Chrome DevTools: inject the session cookie and open `/knowledge`. Skip `/login` (Aurora WebGL crashes this agent Chrome).
+- Chrome DevTools: inject the session cookie and open `/knowledge`. Skip `/login` if the agent browser cannot render the WebGL login shell.
 
 ## Driving conventions
 

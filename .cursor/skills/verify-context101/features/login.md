@@ -29,6 +29,6 @@ Preconditions:
 ## Gotchas
 
 - Hosted `BETTER_AUTH_URL` rejects browser fetches from `http://localhost:3000` (`INVALID_ORIGIN`). Curl without Origin works.
-- Login shell mounts Aurora (WebGL). Headless/agent Chrome throws and Next shows "This page couldn't load".
+- The login page uses a WebGL shell. Some agent browsers throw and Next shows "This page couldn't load".
 - Cookie is `HttpOnly` + `Secure` + `__Secure-` prefix. Inject it as a request header; `document.cookie` cannot set it.
 - Do not print the password or the full cookie in artifacts. Redact to `len` / `has_user`.

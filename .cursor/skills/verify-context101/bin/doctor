@@ -52,7 +52,7 @@ fi
 if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
   ok "AWS_ACCESS_KEY_ID is set (len ${#AWS_ACCESS_KEY_ID})"
 else
-  bad "AWS_ACCESS_KEY_ID unset after aws-env (need plateapr_* or finditpr_* or standard AWS_* )"
+  bad "AWS_ACCESS_KEY_ID unset after aws-env (set AWS_* or a host *_aws_access_key_id pair)"
 fi
 
 if [[ "$fail" -ne 0 ]]; then

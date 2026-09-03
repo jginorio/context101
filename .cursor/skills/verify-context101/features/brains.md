@@ -22,7 +22,7 @@ Preconditions:
 - At least the Default brain exists and is `ready`.
 
 - **List.** Navigate to `/brains`. Button `New brain` is visible. Default appears as a card/row with status ready.
-- **Switch.** On `/knowledge`, click `Active brain: Default. Switch brain`. Choose another ready brain if one exists (e.g. Platea Analytics). The tree refresh key bumps and tabs clear. Switch back to Default before finishing.
+- **Switch.** On `/knowledge`, click `Active brain: Default. Switch brain`. Choose another ready brain if one exists. The tree refresh key bumps and tabs clear. Switch back to Default before finishing.
 - **Proof.** Screenshot `artifacts/brains/list.png` with Default visible. Do not capture bearer tokens.
 
 ## Gotchas

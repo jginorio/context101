@@ -26,15 +26,15 @@ The environment `start` script is `npm --prefix web run dev` and typically alrea
 2. Stop **those PIDs only** (`kill <pid>`), never `pkill -f`.
 3. `source .cursor/skills/verify-context101/bin/aws-env && npm --prefix web run dev`.
 
-`aws-env` maps Cloud Agent secrets `plateapr_aws_access_key_id` / `plateapr_aws_secret_access_key` (fallback `finditpr_*`) onto `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY`, and sets `AWS_REGION` from `SES_REGION` or `AWS_DEFAULT_REGION` when present.
+`aws-env` uses `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` when set. If those are empty, it copies the first `*_aws_access_key_id` / `*_aws_secret_access_key` pair from the process environment (host-injected aliases). It sets `AWS_REGION` from `SES_REGION` or `AWS_DEFAULT_REGION` when present. It never prints key material.
 
 Required env for a driveable instance:
 
-- `CONTEXT101_USER` / `CONTEXT101_PASSWORD` — Better Auth email sign-in
+- `CONTEXT101_USER` / `CONTEXT101_PASSWORD` — Better Auth email sign-in (values stay in the environment; do not write them into this skill or into artifacts)
 - `DATABASE_URL` — already required by the app
-- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (or the plateapr_/finditpr_ names above)
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (or a host alias pair as above)
 
-`BETTER_AUTH_URL` in this environment is the hosted origin. Browser `fetch` to `/api/auth/sign-in/email` from `http://localhost:3000` returns `INVALID_ORIGIN`. Sign in with **curl** (no Origin header) via `bin/auth-cookie`.
+If `BETTER_AUTH_URL` is a hosted origin, browser `fetch` to `/api/auth/sign-in/email` from `http://localhost:3000` returns `INVALID_ORIGIN`. Sign in with **curl** (no Origin header) via `bin/auth-cookie`.
 
 ## Doctor
 
@@ -61,7 +61,7 @@ Prefer the browser for library rename/delete (that is the feature users touch). 
 COOKIE=$(.cursor/skills/verify-context101/bin/auth-cookie)
 ```
 
-In Chrome DevTools, do **not** open `/login` in this Cloud Agent Chrome (Aurora WebGL throws and Next shows "This page couldn't load"). Instead:
+In Chrome DevTools, skip `/login` if the agent browser cannot render the WebGL login shell (Next then shows "This page couldn't load"). Instead:
 
 1. `emulate` `extraHttpHeaders` to `{"Cookie":"<cookie>"}`.
 2. `navigate_page` to `http://localhost:3000/knowledge`.
@@ -86,7 +86,7 @@ Stable handles:
 
 Right-click is not a Chrome DevTools `click` option. Dispatch `contextmenu` on `[data-slot="tree-view-item"]` (files) or `[data-slot="tree-view-branch-control"]` (folders) via `evaluate_script`, then `click` the menuitem.
 
-Isolation: every mutating run uses a unique prefix `verify/<run-id>/` (example: `verify/20260903-2100/e2e.md`). Never reuse production filenames from the screenshot (`directory-analytics.md`). Do not drive the user's unsaved editor state.
+Isolation: every mutating run uses a unique prefix `verify/<run-id>/` (example: `verify/20260903-2100/e2e.md`). Never rename or delete existing library files. Do not drive the user's unsaved editor state.
 
 The default brain is `default` (cookie `ctx_brain` / query `?brain=`). Stay on Default unless the feature file says otherwise.
 
@@ -114,7 +114,7 @@ Standards:
 - Confirm the side effect with a second channel: `bin/files list` / `bin/files get` after each mutation.
 - Mocks are not allowed for this skill's happy path. If S3 is unreachable, doctor fails and the run stops.
 
-Copy user-facing screenshots you want in a walkthrough to `/opt/cursor/artifacts/` as well.
+Keep proof under `artifacts/<feature>/` (gitignored). Do not commit screenshots of a real library.
 
 ## Cleanup
 
