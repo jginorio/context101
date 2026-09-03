@@ -5,6 +5,8 @@ import {
   ExternalLink,
   FileText,
   LoaderCircle,
+  Pencil,
+  Trash2,
   TriangleAlert,
 } from "lucide-react";
 
@@ -24,6 +26,7 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
@@ -84,6 +87,8 @@ export type TreeContext = {
   // Connector-synced files are browse-only; the tree still supports opening
   // them in the viewer.
   mode?: "editable" | "browse";
+  onRename?: (key: string, isFolder: boolean) => void;
+  onDelete?: (key: string, isFolder: boolean) => void;
 };
 
 // Compute the destination key when dropping `src` into folder `destPrefix`.
@@ -155,12 +160,44 @@ function TreeNode({
       node.name
     );
 
+    // The virtual "Uploaded Files" root (empty prefix) is not a real S3
+    // folder — skip rename/delete so we don't wipe the whole library.
+    const canMutate =
+      ctx.mode === "editable" && node.key !== "" && !!(ctx.onRename || ctx.onDelete);
+
+    const branchItem = (
+      <TreeViewBranchItem icon={node.headerIcon ? null : undefined}>
+        {label}
+      </TreeViewBranchItem>
+    );
+
     return (
       <TreeViewNode indexPath={indexPath} node={node}>
         <TreeViewBranch>
-          <TreeViewBranchItem icon={node.headerIcon ? null : undefined}>
-            {label}
-          </TreeViewBranchItem>
+          {canMutate ? (
+            <ContextMenu>
+              <ContextMenuTrigger className="contents">
+                {branchItem}
+              </ContextMenuTrigger>
+              <ContextMenuContent>
+                {ctx.onRename ? (
+                  <ContextMenuItem onClick={() => ctx.onRename?.(node.key, true)}>
+                    <Pencil /> Rename
+                  </ContextMenuItem>
+                ) : null}
+                {ctx.onDelete ? (
+                  <ContextMenuItem
+                    variant="destructive"
+                    onClick={() => ctx.onDelete?.(node.key, true)}
+                  >
+                    <Trash2 /> Delete
+                  </ContextMenuItem>
+                ) : null}
+              </ContextMenuContent>
+            </ContextMenu>
+          ) : (
+            branchItem
+          )}
           <TreeViewBranchContent>
             {node.children?.map((child, index) => (
               <TreeNode
@@ -197,9 +234,12 @@ function TreeNode({
     </TreeViewNode>
   );
 
-  // Files get a right-click menu (Open / Open in new tab). Status/loading
-  // rows don't.
+  // Files get a right-click menu (Open / Open in new tab, plus rename
+  // and delete when the tree is editable). Status/loading rows don't.
   if (node.kind !== "file") return row;
+
+  const canMutate =
+    ctx.mode === "editable" && !!(ctx.onRename || ctx.onDelete);
 
   return (
     <ContextMenu>
@@ -212,6 +252,24 @@ function TreeNode({
           <ContextMenuItem onClick={() => ctx.onOpenInNewTab?.(node.key)}>
             <ExternalLink /> Open in new tab
           </ContextMenuItem>
+        ) : null}
+        {canMutate ? (
+          <>
+            <ContextMenuSeparator />
+            {ctx.onRename ? (
+              <ContextMenuItem onClick={() => ctx.onRename?.(node.key, false)}>
+                <Pencil /> Rename
+              </ContextMenuItem>
+            ) : null}
+            {ctx.onDelete ? (
+              <ContextMenuItem
+                variant="destructive"
+                onClick={() => ctx.onDelete?.(node.key, false)}
+              >
+                <Trash2 /> Delete
+              </ContextMenuItem>
+            ) : null}
+          </>
         ) : null}
       </ContextMenuContent>
     </ContextMenu>

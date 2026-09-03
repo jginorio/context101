@@ -62,6 +62,8 @@ export function KnowledgeSidebar({
   onOpenInNewTab,
   onNewFile,
   onNewFolder,
+  onRename,
+  onDelete,
 }: {
   selectedKey: string | null;
   refreshKey: number;
@@ -69,6 +71,8 @@ export function KnowledgeSidebar({
   onOpenInNewTab?: (key: string) => void;
   onNewFile: (parentPrefix: string) => void;
   onNewFolder: (parentPrefix: string) => void;
+  onRename?: (key: string, isFolder: boolean) => void;
+  onDelete?: (key: string, isFolder: boolean) => void;
 }) {
   const { closeMobileNav } = useAppShell();
 
@@ -83,6 +87,8 @@ export function KnowledgeSidebar({
     },
     onOpenInNewTab,
     mode: "editable",
+    onRename,
+    onDelete,
   };
 
   const browseCtx: TreeContext = {

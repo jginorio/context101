@@ -7,10 +7,18 @@ import { KnowledgeSidebar } from "@/components/knowledge-sidebar";
 import { KnowledgeTabs } from "@/components/knowledge-tabs";
 import { KnowledgeViewer } from "@/components/knowledge-viewer";
 import { NewItemDialog } from "@/components/new-item-dialog";
+import { RenameDialog } from "@/components/rename-dialog";
+import { DeleteItemDialog } from "@/components/delete-item-dialog";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
 import { useBrain } from "@/lib/brain-context";
+import {
+  applyDeleteToKeys,
+  applyRenameToKeys,
+  isRemovedByDelete,
+  remapKeyAfterRename,
+} from "@/lib/knowledge-keys";
 
 export default function Home() {
   const { currentBrainId } = useBrain();
@@ -72,8 +80,41 @@ export default function Home() {
     mode: "file" | "folder";
     parentPrefix: string;
   } | null>(null);
+  const [renameTarget, setRenameTarget] = React.useState<{
+    key: string;
+    isFolder: boolean;
+  } | null>(null);
+  const [deleteTarget, setDeleteTarget] = React.useState<{
+    key: string;
+    isFolder: boolean;
+  } | null>(null);
 
   const refresh = () => setRefreshKey((k) => k + 1);
+
+  const handleRenamed = React.useCallback(
+    (from: string, to: string, isFolder: boolean) => {
+      setOpenTabs((prev) => applyRenameToKeys(prev, from, to, isFolder));
+      setActiveKey((cur) =>
+        cur ? remapKeyAfterRename(cur, from, to, isFolder) : cur
+      );
+      setRefreshKey((k) => k + 1);
+    },
+    []
+  );
+
+  const handleDeleted = React.useCallback((key: string, isFolder: boolean) => {
+    setOpenTabs((prev) => {
+      const next = applyDeleteToKeys(prev, key, isFolder);
+      setActiveKey((cur) => {
+        if (!cur || !isRemovedByDelete(cur, key, isFolder)) return cur;
+        if (next.length === 0) return null;
+        const idx = prev.indexOf(cur);
+        return next[Math.min(Math.max(idx, 0), next.length - 1)];
+      });
+      return next;
+    });
+    setRefreshKey((k) => k + 1);
+  }, []);
 
   const tree = (
     <KnowledgeSidebar
@@ -85,6 +126,8 @@ export default function Home() {
       onNewFolder={(parentPrefix) =>
         setNewItem({ mode: "folder", parentPrefix })
       }
+      onRename={(key, isFolder) => setRenameTarget({ key, isFolder })}
+      onDelete={(key, isFolder) => setDeleteTarget({ key, isFolder })}
     />
   );
 
@@ -159,6 +202,36 @@ export default function Home() {
             parentPrefix={newItem.parentPrefix}
             onOpenChange={(o) => !o && setNewItem(null)}
             onCreated={refresh}
+          />
+        )}
+
+        {renameTarget && (
+          <RenameDialog
+            open={!!renameTarget}
+            currentKey={renameTarget.key}
+            isFolder={renameTarget.isFolder}
+            onOpenChange={(o) => !o && setRenameTarget(null)}
+            onRenamed={(newKey) => {
+              handleRenamed(
+                renameTarget.key,
+                newKey,
+                renameTarget.isFolder
+              );
+              setRenameTarget(null);
+            }}
+          />
+        )}
+
+        {deleteTarget && (
+          <DeleteItemDialog
+            open={!!deleteTarget}
+            itemKey={deleteTarget.key}
+            isFolder={deleteTarget.isFolder}
+            onOpenChange={(o) => !o && setDeleteTarget(null)}
+            onDeleted={() => {
+              handleDeleted(deleteTarget.key, deleteTarget.isFolder);
+              setDeleteTarget(null);
+            }}
           />
         )}
 
