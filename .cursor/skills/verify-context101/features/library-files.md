@@ -11,6 +11,7 @@ Library files lets a user create, rename, and delete markdown files and folders 
 - `lib-delete-file` deletes a file after a confirmation dialog.
 - `lib-delete-folder` deletes a folder recursively after confirmation.
 - `lib-http` performs the same mutations through `bin/files`.
+- `lib-ingest` is the vector-index follow-up — see [library-ingest](./library-ingest.md). A list/get pass alone does not prove Bedrock ingested the new key.
 
 ## How to get to it (user POV)
 

@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+# Authenticated Bedrock Retrieve via /api/wiki/retrieve (no Claude).
+# Usage:
+#   retrieve "query text"
+#   retrieve --expect-key KEY [--canary TOKEN] [--timeout SEC] [--interval SEC] "query"
+#   retrieve --absent-key KEY [--canary TOKEN] [--timeout SEC] [--interval SEC] "query"
+#   retrieve --absent-canary TOKEN [--timeout SEC] [--interval SEC] "query"
+#
+# Proof JSON never includes other documents' passage text — only keys,
+# whether our canary appears, and hit counts.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+BASE="${VERIFY_BASE_URL:-http://localhost:3000}"
+
+expect_key=""
+absent_key=""
+absent_canary=""
+canary=""
+timeout="${VERIFY_RETRIEVE_TIMEOUT:-480}"
+interval="${VERIFY_RETRIEVE_INTERVAL:-15}"
+once=1
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --expect-key) expect_key="${2:?}"; once=0; shift 2 ;;
+    --absent-key) absent_key="${2:?}"; once=0; shift 2 ;;
+    --absent-canary) absent_canary="${2:?}"; once=0; shift 2 ;;
+    --canary) canary="${2:?}"; shift 2 ;;
+    --timeout) timeout="${2:?}"; shift 2 ;;
+    --interval) interval="${2:?}"; shift 2 ;;
+    --) shift; break ;;
+    -*) echo "unknown flag $1" >&2; exit 2 ;;
+    *) break ;;
+  esac
+done
+
+query="${1:-}"
+if [[ -z "$query" ]]; then
+  echo "usage: retrieve [--expect-key KEY] [--absent-key KEY] [--absent-canary TOKEN] [--canary TOKEN] QUERY" >&2
+  exit 2
+fi
+
+cookie=$("$ROOT/auth-cookie")
+
+proof_from_sources() {
+  python3 - "$query" "$expect_key" "$absent_key" "$canary" "$absent_canary" <<'PY'
+import json, sys
+query, expect_key, absent_key, canary, absent_canary = sys.argv[1:6]
+raw = sys.stdin.read()
+try:
+    body = json.loads(raw)
+except json.JSONDecodeError:
+    print(json.dumps({"ok": False, "error": "non-json", "body": raw[:240]}))
+    sys.exit(0)
+if not isinstance(body, dict) or "sources" not in body:
+    print(json.dumps({"ok": False, "error": body.get("error", "no sources"), "body": raw[:240]}))
+    sys.exit(0)
+sources = body.get("sources") or []
+keys = [s.get("key") or "" for s in sources if isinstance(s, dict)]
+texts = [s.get("text") or "" for s in sources if isinstance(s, dict)]
+blob = "\n".join(texts)
+canary_hits = 0
+if canary:
+    canary_hits = sum(1 for t in texts if canary in t) + sum(1 for k in keys if canary in k)
+matched = [k for k in keys if expect_key and k == expect_key]
+ok = True
+if expect_key and expect_key not in keys:
+    ok = False
+if absent_key and absent_key in keys:
+    ok = False
+if absent_canary and any(absent_canary in t for t in texts):
+    ok = False
+print(json.dumps({
+    "ok": ok,
+    "query": query,
+    "keys": keys,
+    "expect_key": expect_key or None,
+    "absent_key": absent_key or None,
+    "canary": canary or absent_canary or None,
+    "canary_hits": canary_hits,
+    "matched_expect": matched,
+    "hit_count": len(keys),
+}, indent=2))
+sys.exit(0 if ok else 1)
+PY
+}
+
+one_shot() {
+  curl -sS -H "Cookie: $cookie" -H "Content-Type: application/json" \
+    -X POST "$BASE/api/wiki/retrieve" \
+    --data "$(python3 -c 'import json,sys; print(json.dumps({"message": sys.argv[1]}))' "$query")"
+}
+
+if [[ "$once" -eq 1 && -z "$expect_key" && -z "$absent_key" && -z "$absent_canary" ]]; then
+  raw=$(one_shot)
+  echo "$raw" | proof_from_sources
+  exit $?
+fi
+
+deadline=$((SECONDS + timeout))
+attempt=0
+last=""
+while (( SECONDS < deadline )); do
+  attempt=$((attempt + 1))
+  raw=$(one_shot)
+  if proof=$(echo "$raw" | proof_from_sources); then
+    echo "retrieve: condition met on attempt $attempt" >&2
+    printf '%s\n' "$proof"
+    exit 0
+  fi
+  last="$raw"
+  echo "retrieve: attempt $attempt not yet met; sleeping ${interval}s" >&2
+  sleep "$interval"
+done
+
+echo "retrieve: timed out after ${timeout}s (${attempt} attempts)" >&2
+echo "$last" | proof_from_sources || true
+exit 1

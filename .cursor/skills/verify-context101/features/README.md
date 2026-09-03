@@ -17,6 +17,7 @@ This directory is the maintained source for verifying user-facing behavior of th
 - Prefer ARIA names (`New file`, `Rename`, treeitem filenames) over CSS or coordinates.
 - Right-click via `evaluate_script` `contextmenu` on the tree row, then click the menuitem.
 - After every mutation, confirm with `bin/files list` / `bin/files get`.
+- After create/rename/delete, prove the vector index with `bin/retrieve` (see [library-ingest](./library-ingest.md)).
 - Restore by deleting the `verify/<run-id>/` prefix. Keep artifacts.
 
 ## Proof and skip reporting
@@ -30,6 +31,7 @@ This directory is the maintained source for verifying user-facing behavior of th
 ## Features
 
 - [Library files](./library-files.md) — create, rename, and delete uploaded files and folders (primary).
+- [Library ingest](./library-ingest.md) — wait until Bedrock Retrieve ranks the new key after those mutations.
 - [Knowledge viewer](./knowledge-viewer.md) — open a file, preview, edit, save.
 - [Login](./login.md) — email sign-in and session cookie.
 - [Brains](./brains.md) — switch and inspect brains (do not provision or delete brains in a default run).

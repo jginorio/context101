@@ -1,19 +1,15 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
-  BedrockAgentRuntimeClient,
-  RetrieveCommand,
-} from "@aws-sdk/client-bedrock-agent-runtime";
-import {
   BedrockRuntimeClient,
   ConverseStreamCommand,
   type Message,
 } from "@aws-sdk/client-bedrock-runtime";
 
 import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { retrieveSources } from "@/lib/wiki-retrieve";
 
 const region = process.env.AWS_REGION ?? "us-east-1";
-const agentRuntime = new BedrockAgentRuntimeClient({ region });
 const bedrock = new BedrockRuntimeClient({ region });
 
 // US cross-region inference profile for Claude Opus 4.7 — matches utils/bedrock.
@@ -22,16 +18,6 @@ const NUM_RESULTS = 6;
 
 type Source = { n: number; key: string; score: number | null; text: string };
 type HistoryTurn = { role: "user" | "assistant"; text: string };
-
-function keyFromUri(uri: string | undefined): string {
-  if (!uri) return "";
-  if (uri.startsWith("s3://")) {
-    const rest = uri.slice(5);
-    const slash = rest.indexOf("/");
-    return slash >= 0 ? rest.slice(slash + 1) : rest;
-  }
-  return uri;
-}
 
 function systemPrompt(brainName: string): string {
   return `You are a retrieval QA assistant for the "${brainName}" knowledge base. You answer questions strictly from the retrieved context passages provided with each question — this is a tool for testing what the knowledge base actually returns.
@@ -94,30 +80,12 @@ export async function POST(request: NextRequest) {
   // sidecar). includeRaw lifts the filter entirely so code chunks show too.
   let sources: Source[] = [];
   try {
-    const ret = await agentRuntime.send(
-      new RetrieveCommand({
-        knowledgeBaseId: brain.kb_id,
-        retrievalQuery: { text: message },
-        retrievalConfiguration: {
-          vectorSearchConfiguration: {
-            numberOfResults: NUM_RESULTS,
-            ...(includeRaw
-              ? {}
-              : {
-                  filter: {
-                    notIn: { key: "source", value: ["github", "code-wiki"] },
-                  },
-                }),
-          },
-        },
-      })
-    );
-    sources = (ret.retrievalResults ?? []).map((r, i) => ({
-      n: i + 1,
-      key: keyFromUri(r.location?.s3Location?.uri),
-      score: r.score ?? null,
-      text: (r.content?.text ?? "").trim(),
-    }));
+    sources = await retrieveSources({
+      knowledgeBaseId: brain.kb_id,
+      query: message,
+      includeRaw,
+      numberOfResults: NUM_RESULTS,
+    });
   } catch (err) {
     return NextResponse.json(
       { error: `retrieval failed: ${err instanceof Error ? err.message : String(err)}` },

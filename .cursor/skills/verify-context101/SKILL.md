@@ -52,8 +52,9 @@ Two harnesses, both going through the **same user-facing routes**:
 
 1. **Chrome DevTools MCP** (browser) — Knowledge UI, context menus, dialogs.
 2. **`bin/files`** (HTTP) — `PUT/GET/list/move/delete` on `/api/files/*` with a session cookie.
+3. **`bin/retrieve`** (HTTP) — `POST /api/wiki/retrieve` (Bedrock Retrieve, no Claude). Use this to wait until the vector index matches S3.
 
-Prefer the browser for library rename/delete (that is the feature users touch). Use `bin/files` to prove the S3 side effect and as a second entry point.
+Prefer the browser for library rename/delete (that is the feature users touch). Use `bin/files` to prove the S3 side effect. Use `bin/retrieve` to prove auto-ingest remapped or dropped the key. `/wiki/ask` is the same retrieve plus a streamed answer — do not poll it.
 
 ### Auth (always)
 
@@ -103,6 +104,15 @@ The default brain is `default` (cookie `ctx_brain` / query `?brain=`). Stay on D
 
 A successful `put`/`move`/`delete` JSON includes `"ok": true`. `list` after move must show the new name and not the old one.
 
+```bash
+.cursor/skills/verify-context101/bin/retrieve "Where does the purple lantern moth nest CANARY"
+.cursor/skills/verify-context101/bin/retrieve --expect-key "verify/RUN/e2e.md" --canary "CANARY" --timeout 480 "Where does the purple lantern moth nest CANARY"
+.cursor/skills/verify-context101/bin/retrieve --expect-key "verify/RUN/e2e-renamed.md" --absent-key "verify/RUN/e2e.md" --canary "CANARY" --timeout 480 "Where does the purple lantern moth nest CANARY"
+.cursor/skills/verify-context101/bin/retrieve --absent-key "verify/RUN/e2e-renamed.md" --absent-canary "CANARY" --timeout 480 "Where does the purple lantern moth nest CANARY"
+```
+
+A wait returns `"ok": true` when the key/canary condition holds. Default timeout is 480s (ingest is a full KB sync and may queue behind an in-flight job).
+
 ## Evidence
 
 Write proof under `.cursor/skills/verify-context101/artifacts/<feature>/`. That directory is gitignored. Cleanup must not delete it.
@@ -111,8 +121,9 @@ Standards:
 
 - Exercise `/knowledge` (or the mapped UI) and `/api/files/*`. Do not call S3 from the agent as the primary proof — the app's file API is the user boundary.
 - Capture the action and the resulting state: screenshot or ARIA snapshot of the tree **before**, the dialog/menu **during**, and the tree **after**.
-- Confirm the side effect with a second channel: `bin/files list` / `bin/files get` after each mutation.
-- Mocks are not allowed for this skill's happy path. If S3 is unreachable, doctor fails and the run stops.
+- Confirm the S3 side effect with `bin/files list` / `bin/files get` after each mutation.
+- Confirm the vector-index side effect with `bin/retrieve` after create, rename, and delete (see [library-ingest](features/library-ingest.md)). A list/get pass is not enough for ingest.
+- Mocks are not allowed for this skill's happy path. If S3 is unreachable, doctor fails and the run stops. If retrieve returns `this brain has no knowledge base yet`, stop.
 
 Keep proof under `artifacts/<feature>/` (gitignored). Do not commit screenshots of a real library.
 
@@ -137,6 +148,7 @@ All executable; invoke from the repo root:
 | `bin/doctor` | read-only health check |
 | `bin/launch` | reuse or start `:3000` with AWS env |
 | `bin/files` | authenticated list/get/put/move/delete |
+| `bin/retrieve` | Bedrock Retrieve via `/api/wiki/retrieve`; can wait on a key/canary |
 | `bin/cleanup` | remove `verify/` scratch keys; stop only our Next |
 
 Feature recipes live in [`features/`](features/README.md).
