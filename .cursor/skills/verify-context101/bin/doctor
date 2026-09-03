@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+# Read-only health check: is this Context101 web instance worth driving?
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=aws-env
+source "$ROOT/aws-env"
+
+BASE="${VERIFY_BASE_URL:-http://localhost:3000}"
+fail=0
+
+say() { printf '%s\n' "$*"; }
+bad() { printf 'FAIL %s\n' "$*" >&2; fail=1; }
+ok() { printf 'OK   %s\n' "$*"; }
+
+# Port / process
+if ! curl -sS -o /dev/null -w '' --max-time 3 "$BASE/login"; then
+  bad "no HTTP listener at $BASE"
+else
+  ok "HTTP $BASE answers"
+fi
+
+# Auth
+if cookie=$("$ROOT/auth-cookie" 2>/dev/null); then
+  ok "sign-in cookie issued"
+else
+  bad "sign-in failed (need CONTEXT101_USER / CONTEXT101_PASSWORD)"
+  cookie=""
+fi
+
+# Session
+if [[ -n "$cookie" ]]; then
+  sess=$(curl -sS -H "Cookie: $cookie" "$BASE/api/auth/get-session" || true)
+  if echo "$sess" | grep -q '"user"'; then
+    ok "session has a user"
+  else
+    bad "get-session has no user"
+  fi
+fi
+
+# S3 via the app (not a raw AWS call) — proves Next has AWS creds
+if [[ -n "$cookie" ]]; then
+  list=$(curl -sS -H "Cookie: $cookie" "$BASE/api/files/list?prefix=" || true)
+  if echo "$list" | grep -q '"folders"'; then
+    ok "GET /api/files/list returns folders/files"
+  else
+    bad "GET /api/files/list failed — Next likely lacks AWS credentials. Restart next with aws-env sourced. Body: $(echo "$list" | head -c 160)"
+  fi
+fi
+
+# AWS mapping present for helpers / next restart
+if [[ -n "${AWS_ACCESS_KEY_ID:-}" ]]; then
+  ok "AWS_ACCESS_KEY_ID is set (len ${#AWS_ACCESS_KEY_ID})"
+else
+  bad "AWS_ACCESS_KEY_ID unset after aws-env (need plateapr_* or finditpr_* or standard AWS_* )"
+fi
+
+if [[ "$fail" -ne 0 ]]; then
+  say "doctor: unhealthy"
+  exit 1
+fi
+say "doctor: healthy"
+exit 0

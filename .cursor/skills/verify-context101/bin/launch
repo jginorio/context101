@@ -1,0 +1,51 @@
+#!/usr/bin/env bash
+# Start (or reuse) the Context101 Next.js admin on :3000 with AWS creds.
+# Does not start a second instance if :3000 already answers.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+# shellcheck source=aws-env
+source "$ROOT/aws-env"
+
+BASE="${VERIFY_BASE_URL:-http://localhost:3000}"
+REPO="${VERIFY_REPO_ROOT:-$(cd "$ROOT/../../../.." && pwd)}"
+LOG="${VERIFY_LAUNCH_LOG:-/tmp/verify-context101-next.log}"
+
+if curl -sS -o /dev/null --max-time 2 "$BASE/login"; then
+  echo "already listening at $BASE"
+  # If S3 is broken, refuse rather than double-bind the port.
+  if ! "$ROOT/doctor" >/tmp/verify-context101-doctor.txt 2>&1; then
+    echo "port is up but doctor failed. Restart this instance with AWS creds:" >&2
+    echo "  1. kill the specific next-server / next-dev PIDs (not by name)" >&2
+    echo "  2. source $ROOT/aws-env && npm --prefix \"$REPO/web\" run dev" >&2
+    cat /tmp/verify-context101-doctor.txt >&2
+    exit 1
+  fi
+  echo "reusing existing instance"
+  exit 0
+fi
+
+if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
+  echo "AWS_ACCESS_KEY_ID is required to launch a driveable instance" >&2
+  exit 2
+fi
+
+cd "$REPO/web"
+# Copy install-mcps.sh the same way predev does.
+cp ../scripts/install-mcps.sh public/install-mcps.sh 2>/dev/null || true
+
+nohup npm run dev >"$LOG" 2>&1 &
+echo $! > /tmp/verify-context101-next.pid
+echo "started next pid=$(cat /tmp/verify-context101-next.pid) log=$LOG"
+
+for i in $(seq 1 40); do
+  if curl -sS -o /dev/null --max-time 1 "$BASE/login"; then
+    echo "ready at $BASE"
+    exit 0
+  fi
+  sleep 0.5
+done
+
+echo "next did not become ready; last log:" >&2
+tail -n 40 "$LOG" >&2
+exit 1
