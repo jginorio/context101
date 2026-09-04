@@ -23,6 +23,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { cn } from "@/lib/utils";
+import { useExternalFileDrop } from "@/lib/use-external-file-drop";
 
 type Ext = "md" | "csv" | "json" | "other";
 
@@ -63,11 +65,13 @@ export function KnowledgeViewer({
   fileKey,
   onDeleted,
   onOpenKey,
+  onUploadFiles,
 }: {
   fileKey: string | null;
   onDeleted: () => void;
   // Open a linked document (e.g. a Notion child page) in a tab.
   onOpenKey?: (key: string) => void;
+  onUploadFiles?: (parentPrefix: string, files: File[]) => void;
 }) {
   const [content, setContent] = React.useState<string | null>(null);
   const [draft, setDraft] = React.useState<string>("");
@@ -146,16 +150,32 @@ export function KnowledgeViewer({
     }
   }
 
+  const emptyDrop = useExternalFileDrop(!!onUploadFiles && !fileKey, (files) => {
+    onUploadFiles?.("", files);
+  });
+
   if (!fileKey) {
     return (
-      <div className="flex h-full items-center justify-center bg-[radial-gradient(circle_at_50%_40%,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_55%)] p-6 text-sm text-muted-foreground">
+      <div
+        className={cn(
+          "flex h-full items-center justify-center bg-[radial-gradient(circle_at_50%_40%,color-mix(in_oklch,var(--primary)_8%,transparent),transparent_55%)] p-6 text-sm text-muted-foreground",
+          emptyDrop.active && "bg-accent/40 ring-2 ring-inset ring-primary/40"
+        )}
+        data-drop-prefix=""
+        {...emptyDrop.handlers}
+      >
         <div className="flex max-w-xs flex-col items-center gap-3 text-center">
           <BrainOrb className="size-20" />
           <div>
-            <p className="font-medium text-foreground">Select a file to view</p>
+            <p className="font-medium text-foreground">
+              {emptyDrop.active
+                ? "Drop markdown files to upload"
+                : "Select a file to view"}
+            </p>
             <p className="mt-1 text-xs leading-relaxed">
-              Choose a document from uploaded files or connected sources in the
-              sidebar.
+              Choose a document from the sidebar, or drop one or more{" "}
+              <span className="font-medium text-foreground">.md</span> files
+              here or onto a folder in the library.
             </p>
           </div>
         </div>

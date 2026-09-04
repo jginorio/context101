@@ -30,6 +30,8 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
+import { parentPrefixOfKey } from "@/lib/knowledge-upload";
+import { useExternalFileDrop } from "@/lib/use-external-file-drop";
 
 type Entry =
   | { type: "folder"; key: string; name: string }
@@ -47,10 +49,9 @@ type ListResponse = {
   files: Extract<Entry, { type: "file" }>[];
 };
 
-// ── Drag & drop payload ──────────────────────────────────────────────
-// We use a single custom MIME type so drag events from outside the app
-// (e.g. dragging a .md file from the OS) don't accidentally trigger a
-// move. If the payload isn't our MIME type, we don't handle the drop.
+// ── In-app tree move payload ─────────────────────────────────────────
+// Custom MIME so OS file drops (multiple .md files onto a folder) are
+// handled as uploads, not as a library move.
 export const DRAG_MIME = "application/x-context101";
 export type DragPayload = { key: string; isFolder: boolean };
 
@@ -89,6 +90,9 @@ export type TreeContext = {
   mode?: "editable" | "browse";
   onRename?: (key: string, isFolder: boolean) => void;
   onDelete?: (key: string, isFolder: boolean) => void;
+  // OS drag-and-drop of one or more markdown files onto a folder
+  // (or onto a file, which uses that file's parent folder).
+  onUploadFiles?: (parentPrefix: string, files: File[]) => void;
 };
 
 // Compute the destination key when dropping `src` into folder `destPrefix`.
@@ -141,6 +145,12 @@ function statusNode(
 
 const LoadingIcon = () => <LoaderCircle className="animate-spin" />;
 
+function dropHighlight(active: boolean) {
+  return active
+    ? "bg-accent text-foreground ring-1 ring-inset ring-primary/40"
+    : undefined;
+}
+
 function TreeNode({
   node,
   indexPath,
@@ -150,6 +160,19 @@ function TreeNode({
   indexPath: number[];
   ctx: TreeContext;
 }) {
+  const uploadPrefix =
+    node.kind === "folder"
+      ? node.key
+      : node.kind === "file"
+        ? parentPrefixOfKey(node.key)
+        : null;
+  const canUpload =
+    ctx.mode === "editable" && !!ctx.onUploadFiles && uploadPrefix !== null;
+  const drop = useExternalFileDrop(canUpload, (files) => {
+    if (uploadPrefix === null) return;
+    ctx.onUploadFiles?.(uploadPrefix, files);
+  });
+
   if (node.kind === "folder") {
     const label = node.headerIcon ? (
       <span className="flex min-w-0 items-center gap-1.5">
@@ -166,7 +189,12 @@ function TreeNode({
       ctx.mode === "editable" && node.key !== "" && !!(ctx.onRename || ctx.onDelete);
 
     const branchItem = (
-      <TreeViewBranchItem icon={node.headerIcon ? null : undefined}>
+      <TreeViewBranchItem
+        icon={node.headerIcon ? null : undefined}
+        className={dropHighlight(drop.active)}
+        data-drop-prefix={canUpload ? node.key : undefined}
+        {...drop.handlers}
+      >
         {label}
       </TreeViewBranchItem>
     );
@@ -226,8 +254,11 @@ function TreeNode({
       <TreeViewContent
         className={cn(
           disabled && "pointer-events-none italic text-muted-foreground",
-          node.status === "error" && "text-destructive"
+          node.status === "error" && "text-destructive",
+          dropHighlight(drop.active)
         )}
+        data-drop-prefix={canUpload ? uploadPrefix ?? undefined : undefined}
+        {...(disabled ? {} : drop.handlers)}
       >
         <TreeViewItem icon={icon}>{node.name}</TreeViewItem>
       </TreeViewContent>
@@ -347,14 +378,19 @@ export function FolderNode({
     requestVersion.current += 1;
     listingsRef.current = {};
     setListings({});
-    setExpanded(initialExpanded);
+    // Keep folders the user already opened so a drop-refresh doesn't
+    // collapse the destination.
+    setExpanded((prev) => [...new Set([...initialExpanded, ...prev])]);
   }, [ctx.refreshKey, initialExpanded]);
 
   React.useEffect(() => {
     if (!showRoot || prefetch || defaultOpen) {
       void loadPrefix(prefix);
     }
-  }, [defaultOpen, loadPrefix, prefix, prefetch, showRoot, ctx.refreshKey]);
+    for (const id of expanded) {
+      void loadPrefix(id);
+    }
+  }, [defaultOpen, expanded, loadPrefix, prefix, prefetch, showRoot, ctx.refreshKey]);
 
   function buildChildren(parentPrefix: string): KnowledgeTreeNode[] {
     const state = listings[parentPrefix];
@@ -444,6 +480,21 @@ export function FolderNode({
 
   const selectedValue = ctx.selectedKey ? [ctx.selectedKey] : [];
 
+  const treeCtx = React.useMemo<TreeContext>(() => {
+    if (!ctx.onUploadFiles) return ctx;
+    return {
+      ...ctx,
+      onUploadFiles: (parentPrefix, files) => {
+        if (parentPrefix && !expanded.includes(parentPrefix)) {
+          setExpanded((prev) =>
+            prev.includes(parentPrefix) ? prev : [...prev, parentPrefix]
+          );
+        }
+        ctx.onUploadFiles?.(parentPrefix, files);
+      },
+    };
+  }, [ctx, expanded]);
+
   return (
     <TreeView
       collection={collection}
@@ -465,7 +516,7 @@ export function FolderNode({
     >
       <TreeViewTree className="text-sm">
         {rootNode.children?.map((node, index) => (
-          <TreeNode indexPath={[index]} key={node.id} node={node} ctx={ctx} />
+          <TreeNode indexPath={[index]} key={node.id} node={node} ctx={treeCtx} />
         ))}
       </TreeViewTree>
     </TreeView>
