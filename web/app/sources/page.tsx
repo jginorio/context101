@@ -25,12 +25,6 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { AddSourceDialog } from "@/components/add-source-dialog";
 import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
@@ -101,7 +95,13 @@ function SourcesContent() {
   const [items, setItems] = React.useState<Connector[] | null>(null);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [addOpen, setAddOpen] = React.useState(false);
   const [addType, setAddType] = React.useState<ConnectorType | null>(null);
+
+  function openAdd(type?: ConnectorType) {
+    setAddType(type ?? null);
+    setAddOpen(true);
+  }
   const [confirmRemove, setConfirmRemove] = React.useState<Connector | null>(
     null
   );
@@ -189,23 +189,11 @@ function SourcesContent() {
         />
         <span className="hidden sm:inline">Refresh</span>
       </Button>
-      <DropdownMenu>
-        <DropdownMenuTrigger>
-          <span className="inline-flex h-9 items-center gap-1 rounded-md bg-primary px-2 text-sm text-primary-foreground hover:opacity-90 sm:px-3">
-            <Plus className="h-3.5 w-3.5" />
-            <span className="hidden sm:inline">Add new source</span>
-            <span className="sm:hidden">Add</span>
-          </span>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          {PROVIDER_GROUPS.flatMap((g) => g.types).map((t) => (
-            <DropdownMenuItem key={t} onClick={() => setAddType(t)}>
-              <TypeIcon type={t} className="mr-2 h-3.5 w-3.5" />
-              {SOURCE_TYPES[t].menuLabel}
-            </DropdownMenuItem>
-          ))}
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <Button size="sm" onClick={() => openAdd()}>
+        <Plus className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Add new source</span>
+        <span className="sm:hidden">Add</span>
+      </Button>
     </>
   );
 
@@ -218,7 +206,7 @@ function SourcesContent() {
         {PROVIDER_GROUPS.flatMap((g) => g.types).map((t) => (
           <button
             key={t}
-            onClick={() => setAddType(t)}
+            onClick={() => openAdd(t)}
             className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
           >
             <TypeIcon type={t} className="h-4 w-4 shrink-0" />
@@ -380,9 +368,12 @@ function SourcesContent() {
         </div>
 
         <AddSourceDialog
-          open={!!addType}
-          onOpenChange={(v) => !v && setAddType(null)}
-          type={addType ?? "docs"}
+          open={addOpen}
+          onOpenChange={(v) => {
+            setAddOpen(v);
+            if (!v) setAddType(null);
+          }}
+          type={addType}
         />
 
         <AlertDialog

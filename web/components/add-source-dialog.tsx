@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Loader2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,7 +15,12 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { SOURCE_TYPES, type ConnectorType } from "@/lib/source-providers";
+import {
+  CONNECTOR_TYPES,
+  SOURCE_TYPES,
+  TypeIcon,
+  type ConnectorType,
+} from "@/lib/source-providers";
 
 type SourceType = ConnectorType;
 
@@ -70,14 +75,47 @@ const COPY: Record<SourceType, Copy> = {
   },
 };
 
-export function AddSourceDialog({
-  open,
-  onOpenChange,
-  type,
+function SourcePicker({
+  onSelect,
 }: {
-  open: boolean;
+  onSelect: (type: ConnectorType) => void;
+}) {
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle>Add a source</DialogTitle>
+        <DialogDescription>
+          Choose a provider, then fill in the connection details.
+        </DialogDescription>
+      </DialogHeader>
+      <div className="flex flex-col gap-2">
+        {CONNECTOR_TYPES.map((t) => (
+          <button
+            key={t}
+            type="button"
+            onClick={() => onSelect(t)}
+            className="flex w-full items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted/60"
+          >
+            <TypeIcon type={t} className="h-5 w-5 shrink-0" />
+            <span className="flex-1 text-sm font-medium">
+              {SOURCE_TYPES[t].menuLabel}
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          </button>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function SourceParamsForm({
+  type,
+  onBack,
+  onOpenChange,
+}: {
+  type: ConnectorType;
+  onBack: () => void;
   onOpenChange: (open: boolean) => void;
-  type: SourceType;
 }) {
   const [label, setLabel] = React.useState("");
   const [url, setUrl] = React.useState("");
@@ -90,21 +128,19 @@ export function AddSourceDialog({
   >(null);
 
   React.useEffect(() => {
-    if (open) {
-      setLabel("");
-      setUrl("");
-      setPat("");
-      setPathsText("");
-      setSubmitting(false);
-    }
-    if (open && type === "github") {
+    setLabel("");
+    setUrl("");
+    setPat("");
+    setPathsText("");
+    setSubmitting(false);
+    if (type === "github") {
       setGithubAppConfigured(null);
       fetch("/api/connectors/github-app")
         .then((r) => (r.ok ? r.json() : { configured: false }))
         .then((j) => setGithubAppConfigured(!!j.configured))
         .catch(() => setGithubAppConfigured(false));
     }
-  }, [open, type]);
+  }, [type]);
 
   const copy = COPY[type];
   const Icon = SOURCE_TYPES[type].icon;
@@ -152,142 +188,181 @@ export function AddSourceDialog({
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <Icon className="h-4 w-4" /> {copy.title}
-          </DialogTitle>
-          <DialogDescription>{copy.description}</DialogDescription>
-        </DialogHeader>
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 pr-8">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onBack}
+            disabled={submitting}
+            aria-label="Back to source types"
+            className="-ml-1"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <Icon className="h-4 w-4" /> {copy.title}
+        </DialogTitle>
+        <DialogDescription>{copy.description}</DialogDescription>
+      </DialogHeader>
 
-        <div className="space-y-3">
+      <div className="space-y-3">
+        <div>
+          <p className="mb-1 text-xs font-medium">Label</p>
+          <Input
+            value={label}
+            onChange={(e) => setLabel(e.target.value)}
+            placeholder={copy.labelPlaceholder}
+            disabled={submitting}
+            autoFocus
+          />
+        </div>
+        <div>
+          <p className="mb-1 text-xs font-medium">{copy.urlLabel}</p>
+          <Input
+            value={url}
+            onChange={(e) => setUrl(e.target.value)}
+            placeholder={copy.urlPlaceholder}
+            disabled={submitting}
+            className="font-mono text-xs"
+          />
+        </div>
+        {needsPat && (
           <div>
-            <p className="text-xs font-medium mb-1">Label</p>
+            <p className="mb-1 text-xs font-medium">Personal Access Token</p>
             <Input
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder={copy.labelPlaceholder}
-              disabled={submitting}
-              autoFocus
-            />
-          </div>
-          <div>
-            <p className="text-xs font-medium mb-1">{copy.urlLabel}</p>
-            <Input
-              value={url}
-              onChange={(e) => setUrl(e.target.value)}
-              placeholder={copy.urlPlaceholder}
+              type="password"
+              value={pat}
+              onChange={(e) => setPat(e.target.value)}
+              placeholder="ghp_… or github_pat_…"
               disabled={submitting}
               className="font-mono text-xs"
             />
-          </div>
-          {needsPat && (
-            <div>
-              <p className="text-xs font-medium mb-1">
-                Personal Access Token
-              </p>
-              <Input
-                type="password"
-                value={pat}
-                onChange={(e) => setPat(e.target.value)}
-                placeholder="ghp_… or github_pat_…"
-                disabled={submitting}
-                className="font-mono text-xs"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                Create one at{" "}
-                <a
-                  href="https://github.com/settings/tokens"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="underline hover:text-foreground"
-                >
-                  github.com/settings/tokens
-                </a>{" "}
-                with <code className="font-mono">repo</code> scope (private)
-                or <code className="font-mono">public_repo</code> (public
-                only). Stored encrypted in Secrets Manager.
-              </p>
-            </div>
-          )}
-          {isGithub && githubAppConfigured === true && (
-            <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-700 dark:text-emerald-400">
-              Tokenless via the GitHub App — if the app doesn&apos;t have
-              access to this repo yet, GitHub will show its repo picker once.
-            </p>
-          )}
-          {isGithub && githubAppConfigured === false && (
-            <p className="text-xs text-muted-foreground">
-              Tired of tokens?{" "}
+            <p className="mt-1 text-xs text-muted-foreground">
+              Create one at{" "}
               <a
-                href="/api/connectors/github-app/create"
+                href="https://github.com/settings/tokens"
+                target="_blank"
+                rel="noreferrer"
                 className="underline hover:text-foreground"
               >
-                Set up the GitHub App
+                github.com/settings/tokens
               </a>{" "}
-              once (~20s on GitHub) and future connections need no PAT —
-              you&apos;ll pick repos on GitHub&apos;s own consent screen.
+              with <code className="font-mono">repo</code> scope (private) or{" "}
+              <code className="font-mono">public_repo</code> (public only).
+              Stored encrypted in Secrets Manager.
             </p>
-          )}
-          {isGithub && (
-            <div>
-              <p className="text-xs font-medium mb-1">
-                Paths to sync{" "}
-                <span className="font-normal text-muted-foreground">
-                  (optional — empty syncs the whole repo)
-                </span>
-              </p>
-              <Textarea
-                value={pathsText}
-                onChange={(e) => setPathsText(e.target.value)}
-                placeholder={"apps/plateapr.com/docs/analytics/\nREADME.md\napps/*/docs/**"}
-                disabled={submitting}
-                rows={3}
-                className="font-mono text-xs"
-              />
-              <p className="mt-1 text-xs text-muted-foreground">
-                One folder, file, or glob per line, relative to the repo
-                root. Only matching files sync. You can add more
-                connections to the same repo later, each scoped to
-                different paths.
-              </p>
-            </div>
-          )}
-          {!isGithub && (
-            <p className="text-xs text-muted-foreground">
-              You only need <strong>Viewer</strong> access — sync is read-only.
+          </div>
+        )}
+        {isGithub && githubAppConfigured === true && (
+          <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-700 dark:text-emerald-400">
+            Tokenless via the GitHub App — if the app doesn&apos;t have access
+            to this repo yet, GitHub will show its repo picker once.
+          </p>
+        )}
+        {isGithub && githubAppConfigured === false && (
+          <p className="text-xs text-muted-foreground">
+            Tired of tokens?{" "}
+            <a
+              href="/api/connectors/github-app/create"
+              className="underline hover:text-foreground"
+            >
+              Set up the GitHub App
+            </a>{" "}
+            once (~20s on GitHub) and future connections need no PAT —
+            you&apos;ll pick repos on GitHub&apos;s own consent screen.
+          </p>
+        )}
+        {isGithub && (
+          <div>
+            <p className="mb-1 text-xs font-medium">
+              Paths to sync{" "}
+              <span className="font-normal text-muted-foreground">
+                (optional — empty syncs the whole repo)
+              </span>
             </p>
-          )}
-        </div>
+            <Textarea
+              value={pathsText}
+              onChange={(e) => setPathsText(e.target.value)}
+              placeholder={"apps/plateapr.com/docs/analytics/\nREADME.md\napps/*/docs/**"}
+              disabled={submitting}
+              rows={3}
+              className="font-mono text-xs"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              One folder, file, or glob per line, relative to the repo root.
+              Only matching files sync. You can add more connections to the
+              same repo later, each scoped to different paths.
+            </p>
+          </div>
+        )}
+        {!isGithub && (
+          <p className="text-xs text-muted-foreground">
+            You only need <strong>Viewer</strong> access — sync is read-only.
+          </p>
+        )}
+      </div>
 
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => onOpenChange(false)}
-            disabled={submitting}
-          >
-            Cancel
-          </Button>
-          <Button onClick={connect} disabled={submitting || !ready}>
-            {submitting ? (
-              <>
-                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                {type === "github" ? "Adding…" : "Redirecting…"}
-              </>
-            ) : type === "notion" ? (
-              "Connect Notion workspace"
-            ) : type === "github" ? (
-              githubAppConfigured ? (
-                "Connect via GitHub"
-              ) : (
-                "Add repo"
-              )
+      <DialogFooter>
+        <Button
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+          disabled={submitting}
+        >
+          Cancel
+        </Button>
+        <Button onClick={connect} disabled={submitting || !ready}>
+          {submitting ? (
+            <>
+              <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+              {type === "github" ? "Adding…" : "Redirecting…"}
+            </>
+          ) : type === "notion" ? (
+            "Connect Notion workspace"
+          ) : type === "github" ? (
+            githubAppConfigured ? (
+              "Connect via GitHub"
             ) : (
-              "Connect Google account"
-            )}
-          </Button>
-        </DialogFooter>
+              "Add repo"
+            )
+          ) : (
+            "Connect Google account"
+          )}
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+export function AddSourceDialog({
+  open,
+  onOpenChange,
+  type = null,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  // When set, skip the picker and open directly on that source's params.
+  type?: ConnectorType | null;
+}) {
+  const [selected, setSelected] = React.useState<ConnectorType | null>(type);
+
+  React.useEffect(() => {
+    if (open) setSelected(type ?? null);
+  }, [open, type]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="md:max-w-md">
+        {selected ? (
+          <SourceParamsForm
+            type={selected}
+            onBack={() => setSelected(null)}
+            onOpenChange={onOpenChange}
+          />
+        ) : (
+          <SourcePicker onSelect={setSelected} />
+        )}
       </DialogContent>
     </Dialog>
   );
