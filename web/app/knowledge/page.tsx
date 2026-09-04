@@ -20,6 +20,11 @@ import {
   isRemovedByDelete,
   remapKeyAfterRename,
 } from "@/lib/knowledge-keys";
+import {
+  describeUploadResult,
+  uploadMarkdownFiles,
+} from "@/lib/knowledge-upload";
+import { toast } from "sonner";
 
 export default function Home() {
   const { currentBrainId } = useBrain();
@@ -93,6 +98,41 @@ export default function Home() {
 
   const refresh = () => setRefreshKey((k) => k + 1);
 
+  const uploading = React.useRef(false);
+  const handleUploadFiles = React.useCallback(
+    async (parentPrefix: string, files: File[]) => {
+      if (uploading.current) {
+        toast.info("Upload already in progress");
+        return;
+      }
+      uploading.current = true;
+      const toastId = toast.loading(
+        files.length === 1 ? "Uploading file…" : `Uploading ${files.length} files…`
+      );
+      try {
+        const result = await uploadMarkdownFiles(parentPrefix, files);
+        const summary = describeUploadResult(result);
+        if (summary.tone === "success") toast.success(summary.message, { id: toastId });
+        else if (summary.tone === "error") toast.error(summary.message, { id: toastId });
+        else toast.info(summary.message, { id: toastId });
+
+        if (result.uploaded.length > 0) {
+          setRefreshKey((k) => k + 1);
+          const toOpen = result.uploaded.slice(-5);
+          toOpen.forEach((key, i) => openTab(key, i === toOpen.length - 1));
+        }
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : String(error),
+          { id: toastId }
+        );
+      } finally {
+        uploading.current = false;
+      }
+    },
+    [openTab]
+  );
+
   const handleRenamed = React.useCallback(
     (from: string, to: string, isFolder: boolean) => {
       setOpenTabs((prev) => applyRenameToKeys(prev, from, to, isFolder));
@@ -131,6 +171,7 @@ export default function Home() {
       onRename={(key, isFolder) => setRenameTarget({ key, isFolder })}
       onDelete={(key, isFolder) => setDeleteTarget({ key, isFolder })}
       onAddSource={() => setAddSourceOpen(true)}
+      onUploadFiles={handleUploadFiles}
     />
   );
 
@@ -211,6 +252,7 @@ export default function Home() {
                 refresh();
               }}
               onOpenKey={(key) => openTab(key)}
+              onUploadFiles={handleUploadFiles}
             />
           </div>
         </div>
