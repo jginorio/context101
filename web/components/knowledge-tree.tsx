@@ -29,9 +29,28 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { toast } from "sonner";
+
 import { cn } from "@/lib/utils";
+import {
+  type DragPayload,
+  computeMoveTarget,
+  itemName,
+  moveItem,
+} from "@/lib/knowledge-move";
 import { parentPrefixOfKey } from "@/lib/knowledge-upload";
 import { useExternalFileDrop } from "@/lib/use-external-file-drop";
+import {
+  mergeDragProps,
+  useTreeMoveDrag,
+  useTreeMoveDrop,
+} from "@/lib/use-tree-move";
+
+export {
+  DRAG_MIME,
+  computeMoveTarget,
+  type DragPayload,
+} from "@/lib/knowledge-move";
 
 type Entry =
   | { type: "folder"; key: string; name: string }
@@ -49,32 +68,10 @@ type ListResponse = {
   files: Extract<Entry, { type: "file" }>[];
 };
 
-// ── In-app tree move payload ─────────────────────────────────────────
-// Custom MIME so OS file drops (multiple .md files onto a folder) are
-// handled as uploads, not as a library move.
-export const DRAG_MIME = "application/x-context101";
-export type DragPayload = { key: string; isFolder: boolean };
-
 export async function fetchList(prefix: string): Promise<ListResponse> {
   const r = await fetch(`/api/files/list?prefix=${encodeURIComponent(prefix)}`);
   if (!r.ok) throw new Error(`list ${prefix} failed: ${r.status}`);
   return r.json();
-}
-
-export async function moveItem(from: string, to: string): Promise<void> {
-  const r = await fetch("/api/files/move", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ from, to }),
-  });
-  const j = await r.json().catch(() => null);
-  if (!r.ok) throw new Error(j?.error ?? `move failed: ${r.status}`);
-}
-
-function lastSegment(key: string, isFolder: boolean): string {
-  const trimmed = isFolder ? key.replace(/\/$/, "") : key;
-  const idx = trimmed.lastIndexOf("/");
-  return idx >= 0 ? trimmed.slice(idx + 1) : trimmed;
 }
 
 // ── Tree context shared between nodes ────────────────────────────────
@@ -93,28 +90,11 @@ export type TreeContext = {
   // OS drag-and-drop of one or more markdown files onto a folder
   // (or onto a file, which uses that file's parent folder).
   onUploadFiles?: (parentPrefix: string, files: File[]) => void;
+  // In-app drag of a library file onto a folder (or onto Uploaded Files
+  // to move it to the library root). Same S3 move as rename.
+  onMoved?: (from: string, to: string, isFolder: boolean) => void;
+  performMove?: (src: DragPayload, destPrefix: string) => void;
 };
-
-// Compute the destination key when dropping `src` into folder `destPrefix`.
-// Returns null if the drop should be rejected (same parent, moving folder
-// into itself/descendant, etc).
-export function computeMoveTarget(
-  src: DragPayload,
-  destPrefix: string
-): string | null {
-  const name = lastSegment(src.key, src.isFolder);
-  const currentParent = src.isFolder
-    ? src.key.slice(0, -(name.length + 1)) // strip "name/"
-    : src.key.slice(0, src.key.length - name.length);
-
-  // Same parent = no-op
-  if (currentParent === destPrefix) return null;
-
-  // Moving a folder into itself or a descendant
-  if (src.isFolder && destPrefix.startsWith(src.key)) return null;
-
-  return src.isFolder ? `${destPrefix}${name}/` : `${destPrefix}${name}`;
-}
 
 type LoadState =
   | { status: "loading" }
@@ -160,18 +140,38 @@ function TreeNode({
   indexPath: number[];
   ctx: TreeContext;
 }) {
-  const uploadPrefix =
+  const destPrefix =
     node.kind === "folder"
       ? node.key
       : node.kind === "file"
         ? parentPrefixOfKey(node.key)
         : null;
   const canUpload =
-    ctx.mode === "editable" && !!ctx.onUploadFiles && uploadPrefix !== null;
+    ctx.mode === "editable" && !!ctx.onUploadFiles && destPrefix !== null;
+  const canReceiveMove =
+    ctx.mode === "editable" && !!ctx.performMove && destPrefix !== null;
+  const canDragFile =
+    ctx.mode === "editable" && !!ctx.performMove && node.kind === "file";
+  const dragPayload = React.useMemo<DragPayload>(
+    () => ({ key: node.key, isFolder: node.kind === "folder" }),
+    [node.key, node.kind]
+  );
+
   const drop = useExternalFileDrop(canUpload, (files) => {
-    if (uploadPrefix === null) return;
-    ctx.onUploadFiles?.(uploadPrefix, files);
+    if (destPrefix === null) return;
+    ctx.onUploadFiles?.(destPrefix, files);
   });
+  const moveDrop = useTreeMoveDrop(canReceiveMove, destPrefix ?? "", (src) => {
+    if (destPrefix === null) return;
+    ctx.performMove?.(src, destPrefix);
+  });
+  const moveDrag = useTreeMoveDrag(canDragFile, dragPayload);
+  const rowDragProps = mergeDragProps(
+    drop.handlers,
+    moveDrop.handlers,
+    canDragFile ? moveDrag.props : null
+  );
+  const highlighted = dropHighlight(drop.active || moveDrop.active);
 
   if (node.kind === "folder") {
     const label = node.headerIcon ? (
@@ -191,9 +191,10 @@ function TreeNode({
     const branchItem = (
       <TreeViewBranchItem
         icon={node.headerIcon ? null : undefined}
-        className={dropHighlight(drop.active)}
-        data-drop-prefix={canUpload ? node.key : undefined}
-        {...drop.handlers}
+        className={highlighted}
+        data-drop-prefix={canUpload || canReceiveMove ? node.key : undefined}
+        data-tree-key={node.key}
+        {...rowDragProps}
       >
         {label}
       </TreeViewBranchItem>
@@ -255,10 +256,16 @@ function TreeNode({
         className={cn(
           disabled && "pointer-events-none italic text-muted-foreground",
           node.status === "error" && "text-destructive",
-          dropHighlight(drop.active)
+          highlighted,
+          canDragFile && "cursor-grab",
+          moveDrag.dragging && "opacity-60"
         )}
-        data-drop-prefix={canUpload ? uploadPrefix ?? undefined : undefined}
-        {...(disabled ? {} : drop.handlers)}
+        data-drop-prefix={
+          canUpload || canReceiveMove ? destPrefix ?? undefined : undefined
+        }
+        data-tree-key={node.kind === "file" ? node.key : undefined}
+        aria-grabbed={moveDrag.dragging || undefined}
+        {...(disabled ? {} : rowDragProps)}
       >
         <TreeViewItem icon={icon}>{node.name}</TreeViewItem>
       </TreeViewContent>
@@ -342,23 +349,9 @@ export function FolderNode({
   );
   const requestVersion = React.useRef(0);
   const listingsRef = React.useRef<Record<string, LoadState>>({});
+  const movingRef = React.useRef(false);
   const [expanded, setExpanded] = React.useState<string[]>(initialExpanded);
   const [listings, setListings] = React.useState<Record<string, LoadState>>({});
-
-  const treeCtx = React.useMemo<TreeContext>(() => {
-    if (!ctx.onUploadFiles) return ctx;
-    return {
-      ...ctx,
-      onUploadFiles: (parentPrefix, files) => {
-        if (parentPrefix && !expanded.includes(parentPrefix)) {
-          setExpanded((prev) =>
-            prev.includes(parentPrefix) ? prev : [...prev, parentPrefix]
-          );
-        }
-        ctx.onUploadFiles?.(parentPrefix, files);
-      },
-    };
-  }, [ctx, expanded]);
 
   const setListingState = React.useCallback(
     (targetPrefix: string, state: LoadState) => {
@@ -388,6 +381,62 @@ export function FolderNode({
       });
     }
   }, [setListingState]);
+
+  const expandDest = React.useCallback((parentPrefix: string) => {
+    if (!parentPrefix) return;
+    setExpanded((prev) =>
+      prev.includes(parentPrefix) ? prev : [...prev, parentPrefix]
+    );
+  }, []);
+
+  const runMove = React.useCallback(
+    async (src: DragPayload, destPrefix: string) => {
+      const to = computeMoveTarget(src, destPrefix);
+      if (!to || movingRef.current) return;
+      movingRef.current = true;
+      try {
+        await loadPrefix(destPrefix);
+        const state = listingsRef.current[destPrefix];
+        if (state?.status === "loaded") {
+          const name = itemName(src.key, src.isFolder);
+          const clash = src.isFolder
+            ? state.data.folders.some((folder) => folder.name === name)
+            : state.data.files.some((file) => file.name === name);
+          if (clash) {
+            toast.error(`${name} already exists there`);
+            return;
+          }
+        }
+        await moveItem(src.key, to);
+        toast.success(`Moved ${itemName(src.key, src.isFolder)}`);
+        expandDest(destPrefix);
+        ctx.onMoved?.(src.key, to, src.isFolder);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : String(error));
+      } finally {
+        movingRef.current = false;
+      }
+    },
+    [ctx, expandDest, loadPrefix]
+  );
+
+  const treeCtx = React.useMemo<TreeContext>(() => {
+    if (!ctx.onUploadFiles && !ctx.onMoved) return ctx;
+    return {
+      ...ctx,
+      onUploadFiles: ctx.onUploadFiles
+        ? (parentPrefix, files) => {
+            expandDest(parentPrefix);
+            ctx.onUploadFiles?.(parentPrefix, files);
+          }
+        : undefined,
+      performMove: ctx.onMoved
+        ? (src, destPrefix) => {
+            void runMove(src, destPrefix);
+          }
+        : undefined,
+    };
+  }, [ctx, expandDest, runMove]);
 
   React.useEffect(() => {
     requestVersion.current += 1;
