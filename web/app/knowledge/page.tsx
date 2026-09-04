@@ -255,12 +255,12 @@ export default function Home() {
           />
         )}
 
-        <AddSourceDialog
-          open={addSourceOpen}
-          onOpenChange={setAddSourceOpen}
-        />
-
       </BrainStatusGate>
+
+      <AddSourceDialog
+        open={addSourceOpen}
+        onOpenChange={setAddSourceOpen}
+      />
     </AppShell>
   );
 }

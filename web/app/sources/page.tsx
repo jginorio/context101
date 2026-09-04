@@ -367,15 +367,6 @@ function SourcesContent() {
           </article>
         </div>
 
-        <AddSourceDialog
-          open={addOpen}
-          onOpenChange={(v) => {
-            setAddOpen(v);
-            if (!v) setAddType(null);
-          }}
-          type={addType}
-        />
-
         <AlertDialog
           open={!!confirmRemove}
           onOpenChange={(v) => !v && setConfirmRemove(null)}
@@ -408,6 +399,15 @@ function SourcesContent() {
           </AlertDialogContent>
         </AlertDialog>
       </BrainStatusGate>
+
+      <AddSourceDialog
+        open={addOpen}
+        onOpenChange={(v) => {
+          setAddOpen(v);
+          if (!v) setAddType(null);
+        }}
+        type={addType}
+      />
     </AppShell>
   );
 }
