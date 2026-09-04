@@ -82,7 +82,7 @@ Stable handles:
 | Folder row | treeitem named the folder (`Uploaded Files` is the virtual root, `data-tree-key=""`) |
 | File context menu | menuitem `Open`, `Open in new tab`, `Rename`, `Delete` |
 | Folder context menu | menuitem `Rename`, `Delete` |
-| Rename dialog | dialog `Rename file` / `Rename folder` |
+| Rename editor | inline textbox `[data-slot="tree-view-node-rename-input"]` on the row (no dialog); Enter or blur saves, Escape cancels |
 | Delete dialog | alertdialog `Delete file?` / `Delete folder?` |
 | Create dialog | dialog `New file` / `New folder` |
 

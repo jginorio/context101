@@ -6,8 +6,8 @@ Library files lets a user create, rename, move, and delete markdown files and fo
 
 - `lib-create-file` creates a `.md` file from the toolbar New file dialog.
 - `lib-create-folder` creates a folder from New folder (S3 key `name/.keep`).
-- `lib-rename-file` renames a file from the tree context menu.
-- `lib-rename-folder` renames a real folder (not the Uploaded Files root).
+- `lib-rename-file` renames a file inline on the tree row (context menu Rename or F2).
+- `lib-rename-folder` renames a real folder the same way (not the Uploaded Files root).
 - `lib-move-file` drags a library `.md` file onto a folder (or onto Uploaded Files / a parent folder to move it out).
 - `lib-upload-drop` drops one or more OS `.md` files onto a folder, a file row (parent folder), or the empty viewer.
 - `lib-delete-file` deletes a file after a confirmation dialog.
@@ -19,7 +19,7 @@ Library files lets a user create, rename, move, and delete markdown files and fo
 
 - Open Knowledge (`/knowledge`), Library → Uploaded Files.
 - Choose `New file` or `New folder` in the page toolbar (or the Library `…` menu).
-- Right-click a file or folder row in the tree and choose Rename or Delete.
+- Right-click a file or folder row in the tree and choose Rename (edits the name in place) or Delete. F2 on a focused row also starts renaming.
 - Drag a library file onto a folder row (into that folder) or onto **Uploaded Files** / a parent folder (out of the current folder).
 - Drop `.md` files from the OS onto a folder, a file row, or the empty viewer.
 - Call `POST /api/files/put`, `/move`, `/delete` while signed in.
@@ -34,7 +34,7 @@ Preconditions:
 
 - **Create file (UI).** Choose `New file`. Click button `New file`. Dialog `New file` opens. Fill the textbox with `verify-e2e.md` if creating at root, or use HTTP for a namespaced key (the dialog always creates under the parent prefix; toolbar uses root). Prefer HTTP for isolation: `bin/files put "${RUN}e2e.md" "# verify e2e"`. If you do create at root, append the key to `/tmp/verify-context101-extra-keys` so cleanup can delete it. Toast `File created` or JSON `"ok": true`. `bin/files list "$RUN"` contains `e2e.md`.
 - **Create file proof.** `bin/files get "${RUN}e2e.md"` returns content `# verify e2e`. Screenshot the tree showing `e2e.md` at `artifacts/library-files/01-created.png`.
-- **Rename file (UI).** Dispatch `contextmenu` on the treeitem `e2e.md`. Menu includes `Rename` and `Delete`. Click `Rename`. Dialog `Rename file` shows key `${RUN}e2e.md`. Fill the textbox with `e2e-renamed.md` and click `Rename`. Toast `Renamed`.
+- **Rename file (UI).** Dispatch `contextmenu` on the treeitem `e2e.md`. Menu includes `Rename` and `Delete`. Click `Rename`. The row turns into a focused textbox (`[data-slot="tree-view-node-rename-input"]`) with `e2e.md` preselected. Fill it with `e2e-renamed.md` and press Enter (clicking outside the input saves too; Escape cancels). Toast `Renamed to e2e-renamed.md`.
 - **Rename file proof.** `bin/files list "$RUN"` contains `e2e-renamed.md` and not `e2e.md`. `bin/files get "${RUN}e2e-renamed.md"` still has `# verify e2e`. Screenshot `artifacts/library-files/02-renamed.png`.
 - **Delete file (UI).** Context-menu `e2e-renamed.md` → `Delete`. Alertdialog `Delete file?` shows the key. Click `Delete`. Toast `File deleted`.
 - **Delete file proof.** `bin/files list "$RUN"` no longer lists `e2e-renamed.md`. Screenshot `artifacts/library-files/03-deleted.png`.
@@ -54,6 +54,7 @@ Preconditions:
 - List hides `.keep` and `.metadata.json`. An empty folder still exists in S3 after create.
 - After rename/move/delete the tree refreshes from `refreshKey`. Wait for the new treeitem name, not a fixed sleep.
 - Library files are `draggable` (`cursor-grab`). Drop targets are folder rows (`data-tree-key` / `data-drop-prefix`) and file rows (parent prefix). Same-parent drops are no-ops; a name clash toasts `<name> already exists there`.
+- Rename is a same-parent move through `/api/files/move`. Submitting the unchanged name, an empty name, or a name containing `/` is a silent no-op; a clash toasts `<name> already exists here`. Renaming a folder collapses it (its expanded key changed).
 - Chrome DevTools MCP has no drag action. Prefer a real mouse drag (computer-use). Synthetic `DragEvent` + `DataTransfer` often arrives empty in Chrome — do not treat a failed synthetic drop as a product bug.
 - Do not drag onto **Uploaded Files** in a namespaced verify run: that moves the file to the library root. Drop onto the parent folder instead.
 - OS drops use the `Files` MIME and upload; in-app moves use `application/x-context101`. They do not share a handler.

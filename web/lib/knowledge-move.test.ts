@@ -3,6 +3,7 @@ import { test } from "node:test";
 
 import {
   computeMoveTarget,
+  computeRenameTarget,
   currentParentOf,
   isTreeMoveDrag,
   itemName,
@@ -87,6 +88,27 @@ test("computeMoveTarget rejects moving a folder into itself or a child", () => {
     computeMoveTarget({ key: "analytics/", isFolder: true }, "reports/"),
     "reports/analytics/"
   );
+});
+
+test("computeRenameTarget keeps the item in its parent folder", () => {
+  assert.equal(computeRenameTarget({ key: "a.md", isFolder: false }, "b.md"), "b.md");
+  assert.equal(
+    computeRenameTarget({ key: "analytics/a.md", isFolder: false }, "b.md"),
+    "analytics/b.md"
+  );
+  assert.equal(
+    computeRenameTarget({ key: "a/b/", isFolder: true }, "c"),
+    "a/c/"
+  );
+  assert.equal(computeRenameTarget({ key: "b/", isFolder: true }, " c "), "c/");
+});
+
+test("computeRenameTarget rejects no-ops and illegal names", () => {
+  assert.equal(computeRenameTarget({ key: "a.md", isFolder: false }, "a.md"), null);
+  assert.equal(computeRenameTarget({ key: "b/", isFolder: true }, "b"), null);
+  assert.equal(computeRenameTarget({ key: "a.md", isFolder: false }, "  "), null);
+  assert.equal(computeRenameTarget({ key: "a.md", isFolder: false }, "x/y.md"), null);
+  assert.equal(computeRenameTarget({ key: "a.md", isFolder: false }, ".."), null);
 });
 
 test("isTreeMoveDrag is true only for the in-app MIME", () => {

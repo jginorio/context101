@@ -7,10 +7,15 @@ import { KnowledgeSidebar } from "@/components/knowledge-sidebar";
 import { KnowledgeTabs } from "@/components/knowledge-tabs";
 import { KnowledgeViewer } from "@/components/knowledge-viewer";
 import { NewItemDialog } from "@/components/new-item-dialog";
-import { RenameDialog } from "@/components/rename-dialog";
 import { DeleteItemDialog } from "@/components/delete-item-dialog";
 import { AddSourceDialog } from "@/components/add-source-dialog";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
 import { useBrain } from "@/lib/brain-context";
@@ -82,18 +87,18 @@ export default function Home() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Dialog state carries its own `open` flag so the dialog stays mounted
+  // while it animates out — unmounting it on close skips the transition.
   const [newItem, setNewItem] = React.useState<{
     mode: "file" | "folder";
     parentPrefix: string;
-  } | null>(null);
-  const [renameTarget, setRenameTarget] = React.useState<{
-    key: string;
-    isFolder: boolean;
-  } | null>(null);
+    open: boolean;
+  }>({ mode: "file", parentPrefix: "", open: false });
   const [deleteTarget, setDeleteTarget] = React.useState<{
     key: string;
     isFolder: boolean;
-  } | null>(null);
+    open: boolean;
+  }>({ key: "", isFolder: false, open: false });
   const [addSourceOpen, setAddSourceOpen] = React.useState(false);
 
   const refresh = () => setRefreshKey((k) => k + 1);
@@ -158,18 +163,20 @@ export default function Home() {
     setRefreshKey((k) => k + 1);
   }, []);
 
+  const openNewItem = (mode: "file" | "folder", parentPrefix: string) =>
+    setNewItem({ mode, parentPrefix, open: true });
+
   const tree = (
     <KnowledgeSidebar
       selectedKey={activeKey}
       refreshKey={refreshKey}
       onSelectFile={(key) => openTab(key)}
       onOpenInNewTab={(key) => openTab(key, false)}
-      onNewFile={(parentPrefix) => setNewItem({ mode: "file", parentPrefix })}
-      onNewFolder={(parentPrefix) =>
-        setNewItem({ mode: "folder", parentPrefix })
+      onNewFile={(parentPrefix) => openNewItem("file", parentPrefix)}
+      onNewFolder={(parentPrefix) => openNewItem("folder", parentPrefix)}
+      onDelete={(key, isFolder) =>
+        setDeleteTarget({ key, isFolder, open: true })
       }
-      onRename={(key, isFolder) => setRenameTarget({ key, isFolder })}
-      onDelete={(key, isFolder) => setDeleteTarget({ key, isFolder })}
       onMoved={handleRenamed}
       onAddSource={() => setAddSourceOpen(true)}
       onUploadFiles={handleUploadFiles}
@@ -188,45 +195,45 @@ export default function Home() {
       </Button>
       <Button
         variant="outline"
-        size="icon-sm"
-        onClick={() => setAddSourceOpen(true)}
-        className="sm:hidden"
-        aria-label="Add source"
-      >
-        <Plus className="h-3.5 w-3.5" />
-      </Button>
-      <Button
-        variant="outline"
         size="sm"
-        onClick={() => setNewItem({ mode: "folder", parentPrefix: "" })}
+        onClick={() => openNewItem("folder", "")}
         className="hidden sm:inline-flex"
       >
         <FolderPlus className="mr-1 h-3.5 w-3.5" /> New folder
       </Button>
       <Button
-        variant="outline"
-        size="icon-sm"
-        onClick={() => setNewItem({ mode: "folder", parentPrefix: "" })}
-        className="sm:hidden"
-        aria-label="New folder"
-      >
-        <FolderPlus className="h-3.5 w-3.5" />
-      </Button>
-      <Button
         size="sm"
-        onClick={() => setNewItem({ mode: "file", parentPrefix: "" })}
+        onClick={() => openNewItem("file", "")}
         className="hidden sm:inline-flex"
       >
         <FilePlus className="mr-1 h-3.5 w-3.5" /> New file
       </Button>
-      <Button
-        size="icon-sm"
-        onClick={() => setNewItem({ mode: "file", parentPrefix: "" })}
-        className="sm:hidden"
-        aria-label="New file"
-      >
-        <FilePlus className="h-3.5 w-3.5" />
-      </Button>
+      {/* Narrow screens get one menu instead of three icon buttons. */}
+      <DropdownMenu>
+        <DropdownMenuTrigger
+          render={
+            <Button
+              variant="outline"
+              size="icon-sm"
+              className="sm:hidden"
+              aria-label="Knowledge actions"
+            />
+          }
+        >
+          <Plus className="h-3.5 w-3.5" />
+        </DropdownMenuTrigger>
+        <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => openNewItem("file", "")}>
+            <FilePlus className="mr-2 h-3.5 w-3.5" /> New file
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => openNewItem("folder", "")}>
+            <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder
+          </DropdownMenuItem>
+          <DropdownMenuItem onClick={() => setAddSourceOpen(true)}>
+            <Plus className="mr-2 h-3.5 w-3.5" /> Add source
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </>
   );
 
@@ -258,45 +265,25 @@ export default function Home() {
           </div>
         </div>
 
-        {newItem && (
-          <NewItemDialog
-            open={!!newItem}
-            mode={newItem.mode}
-            parentPrefix={newItem.parentPrefix}
-            onOpenChange={(o) => !o && setNewItem(null)}
-            onCreated={refresh}
-          />
-        )}
+        <NewItemDialog
+          open={newItem.open}
+          mode={newItem.mode}
+          parentPrefix={newItem.parentPrefix}
+          onOpenChange={(open) => setNewItem((prev) => ({ ...prev, open }))}
+          onCreated={refresh}
+        />
 
-        {renameTarget && (
-          <RenameDialog
-            open={!!renameTarget}
-            currentKey={renameTarget.key}
-            isFolder={renameTarget.isFolder}
-            onOpenChange={(o) => !o && setRenameTarget(null)}
-            onRenamed={(newKey) => {
-              handleRenamed(
-                renameTarget.key,
-                newKey,
-                renameTarget.isFolder
-              );
-              setRenameTarget(null);
-            }}
-          />
-        )}
-
-        {deleteTarget && (
-          <DeleteItemDialog
-            open={!!deleteTarget}
-            itemKey={deleteTarget.key}
-            isFolder={deleteTarget.isFolder}
-            onOpenChange={(o) => !o && setDeleteTarget(null)}
-            onDeleted={() => {
-              handleDeleted(deleteTarget.key, deleteTarget.isFolder);
-              setDeleteTarget(null);
-            }}
-          />
-        )}
+        <DeleteItemDialog
+          open={deleteTarget.open}
+          itemKey={deleteTarget.key}
+          isFolder={deleteTarget.isFolder}
+          onOpenChange={(open) =>
+            setDeleteTarget((prev) => ({ ...prev, open }))
+          }
+          onDeleted={() =>
+            handleDeleted(deleteTarget.key, deleteTarget.isFolder)
+          }
+        />
 
       </BrainStatusGate>
 
