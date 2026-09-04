@@ -64,6 +64,7 @@ export function KnowledgeSidebar({
   onNewFolder,
   onRename,
   onDelete,
+  onUploadFiles,
 }: {
   selectedKey: string | null;
   refreshKey: number;
@@ -73,6 +74,7 @@ export function KnowledgeSidebar({
   onNewFolder: (parentPrefix: string) => void;
   onRename?: (key: string, isFolder: boolean) => void;
   onDelete?: (key: string, isFolder: boolean) => void;
+  onUploadFiles?: (parentPrefix: string, files: File[]) => void;
 }) {
   const { closeMobileNav } = useAppShell();
 
@@ -89,6 +91,7 @@ export function KnowledgeSidebar({
     mode: "editable",
     onRename,
     onDelete,
+    onUploadFiles,
   };
 
   const browseCtx: TreeContext = {
