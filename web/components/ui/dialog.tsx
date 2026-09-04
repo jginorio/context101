@@ -6,6 +6,7 @@ import { Dialog as DialogPrimitive } from "@base-ui/react/dialog"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
+import { useDrawerSwipe } from "@/hooks/use-drawer-swipe"
 
 function Dialog({ ...props }: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -31,11 +32,18 @@ function DialogOverlay({
     <DialogPrimitive.Backdrop
       data-slot="dialog-overlay"
       className={cn(
-        "fixed inset-0 isolate z-50 bg-black/10 duration-100 supports-backdrop-filter:backdrop-blur-xs data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
+        "fixed inset-0 isolate z-50 bg-black/10 transition-opacity duration-300 ease-out supports-backdrop-filter:backdrop-blur-xs data-starting-style:opacity-0 data-ending-style:opacity-0",
         className
       )}
       {...props}
     />
+  )
+}
+
+function isNarrowViewport() {
+  return (
+    typeof window !== "undefined" &&
+    window.matchMedia("(max-width: 767px)").matches
   )
 }
 
@@ -47,25 +55,59 @@ function DialogContent({
 }: DialogPrimitive.Popup.Props & {
   showCloseButton?: boolean
 }) {
+  const closeRef = React.useRef<HTMLButtonElement>(null)
+  const swipe = useDrawerSwipe(() => closeRef.current?.click())
+
   return (
     <DialogPortal>
       <DialogOverlay />
       <DialogPrimitive.Popup
         data-slot="dialog-content"
+        {...props}
+        ref={swipe.ref}
+        initialFocus={(openType) => {
+          if (
+            openType === "touch" ||
+            openType === "pen" ||
+            isNarrowViewport()
+          ) {
+            return swipe.ref.current
+          }
+          return true
+        }}
+        onPointerDown={swipe.onPointerDown}
+        onPointerMove={swipe.onPointerMove}
+        onPointerUp={swipe.onPointerUp}
+        onPointerCancel={swipe.onPointerCancel}
         className={cn(
-          "fixed z-50 grid w-full gap-4 bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 duration-100 outline-none data-open:animate-in data-open:fade-in-0 data-closed:animate-out data-closed:fade-out-0",
-          // Desktop: centered dialog. Mobile: bottom drawer.
-          "max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:max-h-[90dvh] max-md:!max-w-none max-md:translate-x-0 max-md:translate-y-0 max-md:overflow-y-auto max-md:rounded-t-2xl max-md:rounded-b-none max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:data-open:slide-in-from-bottom-8 max-md:data-closed:slide-out-to-bottom-8",
-          "md:top-1/2 md:left-1/2 md:max-w-sm md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:data-open:zoom-in-95 md:data-closed:zoom-out-95",
+          "fixed z-50 grid w-full gap-4 bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none transition-[transform,opacity] duration-300 ease-out",
+          // Desktop: centered dialog.
+          "md:top-1/2 md:left-1/2 md:max-w-sm md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:data-starting-style:scale-95 md:data-starting-style:opacity-0 md:data-ending-style:scale-95 md:data-ending-style:opacity-0",
+          // Mobile: bottom drawer. data-*-style + CSS transitions so close
+          // slides back down (tw-animate data-closed keyframes were skipped).
+          "max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:max-h-[90dvh] max-md:!max-w-none max-md:overflow-y-auto max-md:overscroll-contain max-md:rounded-t-2xl max-md:rounded-b-none max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:data-starting-style:translate-y-full max-md:data-ending-style:translate-y-full",
           className
         )}
-        {...props}
       >
         <div
+          data-drawer-handle
           aria-hidden
-          className="mx-auto hidden h-1 w-10 rounded-full bg-muted-foreground/30 max-md:block"
-        />
+          className="-mt-1 hidden h-7 w-full touch-none items-center justify-center max-md:flex"
+        >
+          <div className="h-1 w-10 rounded-full bg-muted-foreground/30" />
+        </div>
         {children}
+        <DialogPrimitive.Close
+          data-slot="dialog-swipe-close"
+          render={
+            <button
+              ref={closeRef}
+              type="button"
+              className="sr-only"
+              tabIndex={-1}
+            />
+          }
+        />
         {showCloseButton && (
           <DialogPrimitive.Close
             data-slot="dialog-close"

@@ -79,7 +79,6 @@ export function NewItemDialog({
           value={name}
           onChange={(e) => setName(e.target.value)}
           placeholder={mode === "file" ? "example.md" : "domain-knowledge"}
-          autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter") handleCreate();
           }}
