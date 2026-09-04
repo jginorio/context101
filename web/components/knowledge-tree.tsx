@@ -345,6 +345,21 @@ export function FolderNode({
   const [expanded, setExpanded] = React.useState<string[]>(initialExpanded);
   const [listings, setListings] = React.useState<Record<string, LoadState>>({});
 
+  const treeCtx = React.useMemo<TreeContext>(() => {
+    if (!ctx.onUploadFiles) return ctx;
+    return {
+      ...ctx,
+      onUploadFiles: (parentPrefix, files) => {
+        if (parentPrefix && !expanded.includes(parentPrefix)) {
+          setExpanded((prev) =>
+            prev.includes(parentPrefix) ? prev : [...prev, parentPrefix]
+          );
+        }
+        ctx.onUploadFiles?.(parentPrefix, files);
+      },
+    };
+  }, [ctx, expanded]);
+
   const setListingState = React.useCallback(
     (targetPrefix: string, state: LoadState) => {
       const next = { ...listingsRef.current, [targetPrefix]: state };
@@ -479,21 +494,6 @@ export function FolderNode({
   indexNodes(rootNode.children ?? []);
 
   const selectedValue = ctx.selectedKey ? [ctx.selectedKey] : [];
-
-  const treeCtx = React.useMemo<TreeContext>(() => {
-    if (!ctx.onUploadFiles) return ctx;
-    return {
-      ...ctx,
-      onUploadFiles: (parentPrefix, files) => {
-        if (parentPrefix && !expanded.includes(parentPrefix)) {
-          setExpanded((prev) =>
-            prev.includes(parentPrefix) ? prev : [...prev, parentPrefix]
-          );
-        }
-        ctx.onUploadFiles?.(parentPrefix, files);
-      },
-    };
-  }, [ctx, expanded]);
 
   return (
     <TreeView
