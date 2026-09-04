@@ -20,6 +20,7 @@ import {
   TreeViewNode,
   TreeViewTree,
   createTreeCollection,
+  useTreeView,
   type TreeNodeType,
 } from "@/components/ui/tree-view";
 import {
@@ -35,6 +36,8 @@ import { cn } from "@/lib/utils";
 import {
   type DragPayload,
   computeMoveTarget,
+  computeRenameTarget,
+  currentParentOf,
   itemName,
   moveItem,
 } from "@/lib/knowledge-move";
@@ -85,7 +88,6 @@ export type TreeContext = {
   // Connector-synced files are browse-only; the tree still supports opening
   // them in the viewer.
   mode?: "editable" | "browse";
-  onRename?: (key: string, isFolder: boolean) => void;
   onDelete?: (key: string, isFolder: boolean) => void;
   // OS drag-and-drop of one or more markdown files onto a folder
   // (or onto a file, which uses that file's parent folder).
@@ -125,6 +127,15 @@ function statusNode(
 
 const LoadingIcon = () => <LoaderCircle className="animate-spin" />;
 
+// Renaming is a same-parent move, so it needs the move plumbing wired up
+// (`onMoved` reconciles open tabs and refreshes the listing).
+function canRenameNode(node: KnowledgeTreeNode, ctx: TreeContext): boolean {
+  if (ctx.mode !== "editable" || !ctx.onMoved) return false;
+  if (node.kind === "status") return false;
+  // The virtual "Uploaded Files" root is not a real S3 folder.
+  return node.key !== "" && node.id !== "ROOT";
+}
+
 function dropHighlight(active: boolean) {
   return active
     ? "bg-accent text-foreground ring-1 ring-inset ring-primary/40"
@@ -140,6 +151,9 @@ function TreeNode({
   indexPath: number[];
   ctx: TreeContext;
 }) {
+  const tree = useTreeView();
+  const canRename = canRenameNode(node, ctx);
+  const startRenaming = () => tree.startRenaming(node.id);
   const destPrefix =
     node.kind === "folder"
       ? node.key
@@ -186,11 +200,12 @@ function TreeNode({
     // The virtual "Uploaded Files" root (empty prefix) is not a real S3
     // folder — skip rename/delete so we don't wipe the whole library.
     const canMutate =
-      ctx.mode === "editable" && node.key !== "" && !!(ctx.onRename || ctx.onDelete);
+      ctx.mode === "editable" && node.key !== "" && (canRename || !!ctx.onDelete);
 
     const branchItem = (
       <TreeViewBranchItem
         icon={node.headerIcon ? null : undefined}
+        expandedIcon={node.headerIcon ? null : undefined}
         className={highlighted}
         data-drop-prefix={canUpload || canReceiveMove ? node.key : undefined}
         data-tree-key={node.key}
@@ -208,9 +223,9 @@ function TreeNode({
               <ContextMenuTrigger className="contents">
                 {branchItem}
               </ContextMenuTrigger>
-              <ContextMenuContent>
-                {ctx.onRename ? (
-                  <ContextMenuItem onClick={() => ctx.onRename?.(node.key, true)}>
+              <ContextMenuContent finalFocus={false}>
+                {canRename ? (
+                  <ContextMenuItem onClick={startRenaming}>
                     <Pencil /> Rename
                   </ContextMenuItem>
                 ) : null}
@@ -276,13 +291,12 @@ function TreeNode({
   // and delete when the tree is editable). Status/loading rows don't.
   if (node.kind !== "file") return row;
 
-  const canMutate =
-    ctx.mode === "editable" && !!(ctx.onRename || ctx.onDelete);
+  const canMutate = ctx.mode === "editable" && (canRename || !!ctx.onDelete);
 
   return (
     <ContextMenu>
       <ContextMenuTrigger>{row}</ContextMenuTrigger>
-      <ContextMenuContent>
+      <ContextMenuContent finalFocus={false}>
         <ContextMenuItem onClick={() => ctx.onSelectFile(node.key)}>
           <FileText /> Open
         </ContextMenuItem>
@@ -294,8 +308,8 @@ function TreeNode({
         {canMutate ? (
           <>
             <ContextMenuSeparator />
-            {ctx.onRename ? (
-              <ContextMenuItem onClick={() => ctx.onRename?.(node.key, false)}>
+            {canRename ? (
+              <ContextMenuItem onClick={startRenaming}>
                 <Pencil /> Rename
               </ContextMenuItem>
             ) : null}
@@ -389,23 +403,28 @@ export function FolderNode({
     );
   }, []);
 
+  const nameTaken = React.useCallback(
+    async (destPrefix: string, name: string, isFolder: boolean) => {
+      await loadPrefix(destPrefix);
+      const state = listingsRef.current[destPrefix];
+      if (state?.status !== "loaded") return false;
+      return isFolder
+        ? state.data.folders.some((folder) => folder.name === name)
+        : state.data.files.some((file) => file.name === name);
+    },
+    [loadPrefix]
+  );
+
   const runMove = React.useCallback(
     async (src: DragPayload, destPrefix: string) => {
       const to = computeMoveTarget(src, destPrefix);
       if (!to || movingRef.current) return;
       movingRef.current = true;
       try {
-        await loadPrefix(destPrefix);
-        const state = listingsRef.current[destPrefix];
-        if (state?.status === "loaded") {
-          const name = itemName(src.key, src.isFolder);
-          const clash = src.isFolder
-            ? state.data.folders.some((folder) => folder.name === name)
-            : state.data.files.some((file) => file.name === name);
-          if (clash) {
-            toast.error(`${name} already exists there`);
-            return;
-          }
+        const name = itemName(src.key, src.isFolder);
+        if (await nameTaken(destPrefix, name, src.isFolder)) {
+          toast.error(`${name} already exists there`);
+          return;
         }
         await moveItem(src.key, to);
         toast.success(`Moved ${itemName(src.key, src.isFolder)}`);
@@ -417,7 +436,31 @@ export function FolderNode({
         movingRef.current = false;
       }
     },
-    [ctx, expandDest, loadPrefix]
+    [ctx, expandDest, nameTaken]
+  );
+
+  const runRename = React.useCallback(
+    async (src: DragPayload, newName: string) => {
+      const to = computeRenameTarget(src, newName);
+      if (!to || movingRef.current) return;
+      movingRef.current = true;
+      try {
+        const name = itemName(to, src.isFolder);
+        const parent = currentParentOf(src.key, src.isFolder);
+        if (await nameTaken(parent, name, src.isFolder)) {
+          toast.error(`${name} already exists here`);
+          return;
+        }
+        await moveItem(src.key, to);
+        toast.success(`Renamed to ${name}`);
+        ctx.onMoved?.(src.key, to, src.isFolder);
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : String(error));
+      } finally {
+        movingRef.current = false;
+      }
+    },
+    [ctx, nameTaken]
   );
 
   const treeCtx = React.useMemo<TreeContext>(() => {
@@ -559,6 +602,15 @@ export function FolderNode({
         const selected = selectedValue.at(-1);
         const node = selected ? nodeById.get(selected) : undefined;
         if (node?.kind === "file") ctx.onSelectFile(node.key);
+      }}
+      canRename={(node) => canRenameNode(node as KnowledgeTreeNode, treeCtx)}
+      onRenameComplete={({ value, label }) => {
+        const node = nodeById.get(value);
+        if (!node || !canRenameNode(node, treeCtx)) return;
+        void runRename(
+          { key: node.key, isFolder: node.kind === "folder" },
+          label
+        );
       }}
       selectedValue={selectedValue}
       className="[--icon-size:--spacing(3.5)] [--indentation:--spacing(3)] gap-0"

@@ -207,7 +207,7 @@ const TreeViewBranchTitle = (props: TreeViewBranchTitleProps) => {
       {(nodeState) => (
         <>
           {nodeState.renaming ? (
-            <TreeViewNodeInput />
+            <TreeViewNodeInput nodeValue={nodeState.value} />
           ) : (
             <ArkTreeView.BranchText
               className={cn(
@@ -353,7 +353,7 @@ export const TreeViewItem = (props: TreeViewItemProps) => {
             </TreeViewItemIcon>
 
             {nodeState.renaming ? (
-              <TreeViewNodeInput />
+              <TreeViewNodeInput nodeValue={nodeState.value} />
             ) : (
               <TreeViewItemTitle className={className} {...rest}>
                 {children}
@@ -419,17 +419,39 @@ export const TreeViewCheckbox = (
 };
 
 const TreeViewNodeInput = (
-  props: React.ComponentProps<typeof ArkTreeView.NodeRenameInput>
+  props: React.ComponentProps<typeof ArkTreeView.NodeRenameInput> & {
+    /** Value (id) of the node being renamed, used to seed the input. */
+    nodeValue?: string;
+  }
 ) => {
-  const { className, ...rest } = props;
+  const { className, nodeValue, ...rest } = props;
+  const api = useTreeView();
+  const ref = React.useRef<HTMLInputElement>(null);
+  const node = nodeValue ? api.collection.findNode(nodeValue) : undefined;
+
+  // This input only mounts once renaming starts, so the machine's own focus
+  // call can land before it exists — focus and select here so the name is
+  // highlighted and ready to overwrite, like renaming a file on the desktop.
+  React.useEffect(() => {
+    ref.current?.focus();
+    ref.current?.select();
+  }, []);
 
   return (
     <ArkTreeView.NodeRenameInput
+      ref={ref}
+      defaultValue={node ? api.collection.stringifyNode(node) : undefined}
+      // The row underneath expands/selects on click; typing in the input
+      // shouldn't do either.
+      onClick={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
       className={cn(
         "h-full min-w-0",
         "flex-1",
         "-my-px px-2 py-0",
-        "text-sm",
+        // Rows are `select-none`; the input needs selectable text.
+        "select-text text-sm",
         "border-primary bg-popover text-foreground",
         "rounded-md border",
         "selection:bg-primary/20 selection:text-foreground",

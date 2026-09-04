@@ -75,6 +75,22 @@ export function computeMoveTarget(
   return src.isFolder ? `${dest}${name}/` : `${dest}${name}`;
 }
 
+/**
+ * Destination key when renaming `src` in place. Returns null for no-ops
+ * and for names that can't be a single path segment.
+ */
+export function computeRenameTarget(
+  src: DragPayload,
+  newName: string
+): string | null {
+  const name = newName.trim().replace(/^\/+|\/+$/g, "");
+  if (!name || name.includes("/") || name.includes("..")) return null;
+  if (name === itemName(src.key, src.isFolder)) return null;
+
+  const parent = currentParentOf(src.key, src.isFolder);
+  return src.isFolder ? `${parent}${name}/` : `${parent}${name}`;
+}
+
 export async function moveItem(from: string, to: string): Promise<void> {
   const r = await fetch("/api/files/move", {
     method: "POST",

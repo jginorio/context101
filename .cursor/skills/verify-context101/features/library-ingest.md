@@ -26,7 +26,7 @@ Preconditions:
 
 - **Create.** `bin/files put "${RUN}e2e.md" "# Vector ingest probe\n\nUnique token: <CANARY>\nThe purple lantern moth nests in quartz libraries.\n"`. List shows `e2e.md`.
 - **Wait until indexed.** `bin/retrieve --expect-key "${RUN}e2e.md" --canary "<CANARY>" --timeout 480 "Where does the purple lantern moth nest <CANARY>"`. Proof JSON has `"ok": true` and `matched_expect` contains that key. Save as `artifacts/library-ingest/01-after-create.json`.
-- **Rename / move.** `bin/files move "${RUN}e2e.md" "${RUN}e2e-renamed.md"` (or the Knowledge context menu, or a tree drag onto another folder). List shows only the new name. A drag-move is the same S3 copy+delete as rename.
+- **Rename / move.** `bin/files move "${RUN}e2e.md" "${RUN}e2e-renamed.md"` (or the Knowledge inline rename, or a tree drag onto another folder). List shows only the new name. A drag-move is the same S3 copy+delete as rename.
 - **Wait until remapped.** `bin/retrieve --expect-key "${RUN}e2e-renamed.md" --absent-key "${RUN}e2e.md" --canary "<CANARY>" --timeout 480 "Where does the purple lantern moth nest <CANARY>"`. Save `artifacts/library-ingest/02-after-rename.json`.
 - **Delete.** `bin/files delete "${RUN}e2e-renamed.md"` (or the Delete dialog).
 - **Wait until dropped.** `bin/retrieve --absent-key "${RUN}e2e-renamed.md" --absent-canary "<CANARY>" --timeout 480 "Where does the purple lantern moth nest <CANARY>"`. Save `artifacts/library-ingest/03-after-delete.json`.

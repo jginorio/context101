@@ -310,17 +310,15 @@ export function KnowledgeViewer({
         </AlertDialogContent>
       </AlertDialog>
 
-      {improveOpen && (
-        <ImproveDialog
-          open={improveOpen}
-          fileKey={fileKey}
-          originalContent={text}
-          onOpenChange={setImproveOpen}
-          onAccepted={(newContent) => {
-            setContent(newContent);
-          }}
-        />
-      )}
+      <ImproveDialog
+        open={improveOpen}
+        fileKey={fileKey}
+        originalContent={text}
+        onOpenChange={setImproveOpen}
+        onAccepted={(newContent) => {
+          setContent(newContent);
+        }}
+      />
     </>
   );
 }
