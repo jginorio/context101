@@ -52,7 +52,7 @@ function AlertDialogContent({
         data-slot="alert-dialog-content"
         data-size={size}
         className={cn(
-          "group/alert-dialog-content fixed z-50 grid w-full gap-4 bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 outline-none transition-[transform,opacity] duration-300 ease-out",
+          "group/alert-dialog-content fixed z-50 grid w-full gap-4 bg-popover p-4 text-popover-foreground ring-1 ring-foreground/10 outline-none transition-[translate,transform,scale,opacity] duration-300 ease-out",
           "max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:max-h-[90dvh] max-md:!max-w-none max-md:overflow-y-auto max-md:overscroll-contain max-md:rounded-t-2xl max-md:rounded-b-none max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:data-starting-style:translate-y-full max-md:data-ending-style:translate-y-full",
           "md:top-1/2 md:left-1/2 md:w-full md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:data-starting-style:scale-95 md:data-starting-style:opacity-0 md:data-ending-style:scale-95 md:data-ending-style:opacity-0 data-[size=default]:md:max-w-sm data-[size=sm]:md:max-w-xs",
           className

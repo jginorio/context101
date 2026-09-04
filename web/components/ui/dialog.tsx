@@ -80,11 +80,11 @@ function DialogContent({
         onPointerUp={swipe.onPointerUp}
         onPointerCancel={swipe.onPointerCancel}
         className={cn(
-          "fixed z-50 grid w-full gap-4 bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none transition-[transform,opacity] duration-300 ease-out",
+          "fixed z-50 grid w-full gap-4 bg-popover p-4 text-sm text-popover-foreground ring-1 ring-foreground/10 outline-none transition-[translate,transform,scale,opacity] duration-300 ease-out",
           // Desktop: centered dialog.
           "md:top-1/2 md:left-1/2 md:max-w-sm md:-translate-x-1/2 md:-translate-y-1/2 md:rounded-xl md:data-starting-style:scale-95 md:data-starting-style:opacity-0 md:data-ending-style:scale-95 md:data-ending-style:opacity-0",
-          // Mobile: bottom drawer. data-*-style + CSS transitions so close
-          // slides back down (tw-animate data-closed keyframes were skipped).
+          // Mobile: bottom drawer. Tailwind v4 translate-* sets `translate`,
+          // so the transition list must include it or close snaps away.
           "max-md:inset-x-0 max-md:bottom-0 max-md:top-auto max-md:max-h-[90dvh] max-md:!max-w-none max-md:overflow-y-auto max-md:overscroll-contain max-md:rounded-t-2xl max-md:rounded-b-none max-md:pb-[max(1rem,env(safe-area-inset-bottom))] max-md:data-starting-style:translate-y-full max-md:data-ending-style:translate-y-full",
           className
         )}

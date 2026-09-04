@@ -40,14 +40,19 @@ export function useDrawerSwipe(onDismiss: () => void) {
   const apply = React.useCallback((dy: number, animate: boolean) => {
     const el = ref.current;
     if (!el) return;
-    el.style.transition = animate ? "transform 280ms ease-out" : "none";
-    el.style.transform = dy <= 0 ? "" : `translateY(${dy}px)`;
+    // Tailwind v4 translate-* uses the `translate` property, not transform.
+    el.style.transition = animate
+      ? "translate 280ms ease-out, transform 280ms ease-out"
+      : "none";
+    el.style.translate = dy <= 0 ? "" : `0 ${dy}px`;
+    el.style.transform = "";
   }, []);
 
   const clear = React.useCallback(() => {
     const el = ref.current;
     if (!el) return;
     el.style.transition = "";
+    el.style.translate = "";
     el.style.transform = "";
   }, []);
 
@@ -137,8 +142,8 @@ export function useDrawerSwipe(onDismiss: () => void) {
         return;
       }
 
-      el.style.transition = "transform 280ms ease-out";
-      el.style.transform = "translateY(100%)";
+      el.style.transition = "translate 280ms ease-out, transform 280ms ease-out";
+      el.style.translate = "0 100%";
       let finished = false;
       const finish = () => {
         if (finished) return;
