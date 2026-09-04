@@ -170,6 +170,7 @@ export default function Home() {
       }
       onRename={(key, isFolder) => setRenameTarget({ key, isFolder })}
       onDelete={(key, isFolder) => setDeleteTarget({ key, isFolder })}
+      onMoved={handleRenamed}
       onAddSource={() => setAddSourceOpen(true)}
       onUploadFiles={handleUploadFiles}
     />

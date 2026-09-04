@@ -62,6 +62,7 @@ export function KnowledgeSidebar({
   onNewFolder,
   onRename,
   onDelete,
+  onMoved,
   onAddSource,
   onUploadFiles,
 }: {
@@ -73,6 +74,7 @@ export function KnowledgeSidebar({
   onNewFolder: (parentPrefix: string) => void;
   onRename?: (key: string, isFolder: boolean) => void;
   onDelete?: (key: string, isFolder: boolean) => void;
+  onMoved?: (from: string, to: string, isFolder: boolean) => void;
   onAddSource?: () => void;
   onUploadFiles?: (parentPrefix: string, files: File[]) => void;
 }) {
@@ -93,6 +95,7 @@ export function KnowledgeSidebar({
     mode: "editable",
     onRename,
     onDelete,
+    onMoved,
     onUploadFiles,
   };
 
