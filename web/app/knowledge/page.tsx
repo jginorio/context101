@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { FilePlus, FolderPlus } from "lucide-react";
+import { FilePlus, FolderPlus, Plus } from "lucide-react";
 
 import { KnowledgeSidebar } from "@/components/knowledge-sidebar";
 import { KnowledgeTabs } from "@/components/knowledge-tabs";
@@ -9,6 +9,7 @@ import { KnowledgeViewer } from "@/components/knowledge-viewer";
 import { NewItemDialog } from "@/components/new-item-dialog";
 import { RenameDialog } from "@/components/rename-dialog";
 import { DeleteItemDialog } from "@/components/delete-item-dialog";
+import { AddSourceDialog } from "@/components/add-source-dialog";
 import { Button } from "@/components/ui/button";
 import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
@@ -93,6 +94,7 @@ export default function Home() {
     key: string;
     isFolder: boolean;
   } | null>(null);
+  const [addSourceOpen, setAddSourceOpen] = React.useState(false);
 
   const refresh = () => setRefreshKey((k) => k + 1);
 
@@ -168,12 +170,30 @@ export default function Home() {
       }
       onRename={(key, isFolder) => setRenameTarget({ key, isFolder })}
       onDelete={(key, isFolder) => setDeleteTarget({ key, isFolder })}
+      onAddSource={() => setAddSourceOpen(true)}
       onUploadFiles={handleUploadFiles}
     />
   );
 
   const toolbar = (
     <>
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => setAddSourceOpen(true)}
+        className="hidden sm:inline-flex"
+      >
+        <Plus className="mr-1 h-3.5 w-3.5" /> Add source
+      </Button>
+      <Button
+        variant="outline"
+        size="icon-sm"
+        onClick={() => setAddSourceOpen(true)}
+        className="sm:hidden"
+        aria-label="Add source"
+      >
+        <Plus className="h-3.5 w-3.5" />
+      </Button>
       <Button
         variant="outline"
         size="sm"
@@ -278,6 +298,11 @@ export default function Home() {
         )}
 
       </BrainStatusGate>
+
+      <AddSourceDialog
+        open={addSourceOpen}
+        onOpenChange={setAddSourceOpen}
+      />
     </AppShell>
   );
 }

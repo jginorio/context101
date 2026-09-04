@@ -19,12 +19,10 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
-import { AddSourceDialog } from "@/components/add-source-dialog";
 import {
   CONNECTOR_TYPES,
   SOURCE_TYPES,
   TypeIcon,
-  type ConnectorType,
 } from "@/lib/source-providers";
 import { useAppShell } from "@/components/app-shell";
 
@@ -64,6 +62,7 @@ export function KnowledgeSidebar({
   onNewFolder,
   onRename,
   onDelete,
+  onAddSource,
   onUploadFiles,
 }: {
   selectedKey: string | null;
@@ -74,11 +73,15 @@ export function KnowledgeSidebar({
   onNewFolder: (parentPrefix: string) => void;
   onRename?: (key: string, isFolder: boolean) => void;
   onDelete?: (key: string, isFolder: boolean) => void;
+  onAddSource?: () => void;
   onUploadFiles?: (parentPrefix: string, files: File[]) => void;
 }) {
   const { closeMobileNav } = useAppShell();
 
-  const [addType, setAddType] = React.useState<ConnectorType | null>(null);
+  const openAddSource = () => {
+    closeMobileNav();
+    onAddSource?.();
+  };
 
   const editableCtx: TreeContext = {
     selectedKey,
@@ -153,33 +156,7 @@ export function KnowledgeSidebar({
       {/* Sources — each connector as an expandable item (Notion gets the
           Notion-style tree). */}
       <div className="space-y-0.5">
-        <GroupHeader
-          label="Sources"
-          action={
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    className="h-5 w-5 shrink-0"
-                    aria-label="Add connected source"
-                  />
-                }
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                {CONNECTOR_TYPES.map((t) => (
-                  <DropdownMenuItem key={t} onClick={() => setAddType(t)}>
-                    <TypeIcon type={t} className="mr-2 h-3.5 w-3.5" />
-                    {SOURCE_TYPES[t].menuLabel}
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          }
-        />
+        <GroupHeader label="Sources" />
         {CONNECTOR_TYPES.map((type) =>
           type === "notion" ? (
             <NotionSource
@@ -223,13 +200,17 @@ export function KnowledgeSidebar({
           </Link>{" "}
           page.
         </p>
+        {onAddSource ? (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={openAddSource}
+            className="w-full justify-center"
+          >
+            <Plus className="mr-1 h-3.5 w-3.5" /> Add source
+          </Button>
+        ) : null}
       </div>
-
-      <AddSourceDialog
-        open={!!addType}
-        onOpenChange={(v) => !v && setAddType(null)}
-        type={addType ?? "docs"}
-      />
     </div>
   );
 }
