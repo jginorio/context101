@@ -1,6 +1,6 @@
 ---
 name: verify-context101
-description: Drive the Context101 Next.js admin (Knowledge library, wiki, brains) in a browser or via /api/files to prove user-facing behavior. Use when verifying create/rename/delete, login, wiki, or brains against a real running app.
+description: Drive the Context101 Next.js admin (Knowledge library, wiki, brains) in a browser or via /api/files to prove user-facing behavior. Use when verifying create/rename/move/delete, login, wiki, or brains against a real running app.
 ---
 
 # Verify Context101
@@ -54,7 +54,7 @@ Two harnesses, both going through the **same user-facing routes**:
 2. **`bin/files`** (HTTP) — `PUT/GET/list/move/delete` on `/api/files/*` with a session cookie.
 3. **`bin/retrieve`** (HTTP) — `POST /api/wiki/retrieve` (Bedrock Retrieve, no Claude). Use this to wait until the vector index matches S3.
 
-Prefer the browser for library rename/delete (that is the feature users touch). Use `bin/files` to prove the S3 side effect. Use `bin/retrieve` to prove auto-ingest remapped or dropped the key. `/wiki/ask` is the same retrieve plus a streamed answer — do not poll it.
+Prefer the browser for library rename/delete/drag-move (that is the feature users touch). Use `bin/files` to prove the S3 side effect. Use `bin/retrieve` to prove auto-ingest remapped or dropped the key. `/wiki/ask` is the same retrieve plus a streamed answer — do not poll it.
 
 ### Auth (always)
 
@@ -76,9 +76,10 @@ Stable handles:
 | Brains nav | link `Brains` → `/brains` |
 | New file | button `New file` |
 | New folder | button `New folder` |
+| Add source | button `Add source` → dialog `Add a source` |
 | Library tree | tree `Tree View` |
-| File row | treeitem named the filename (e.g. `verify-e2e.md`) |
-| Folder row | treeitem named the folder (not `Uploaded Files`) |
+| File row | treeitem named the filename (e.g. `verify-e2e.md`); `data-tree-key` is the S3 key |
+| Folder row | treeitem named the folder (`Uploaded Files` is the virtual root, `data-tree-key=""`) |
 | File context menu | menuitem `Open`, `Open in new tab`, `Rename`, `Delete` |
 | Folder context menu | menuitem `Rename`, `Delete` |
 | Rename dialog | dialog `Rename file` / `Rename folder` |
@@ -86,6 +87,8 @@ Stable handles:
 | Create dialog | dialog `New file` / `New folder` |
 
 Right-click is not a Chrome DevTools `click` option. Dispatch `contextmenu` on `[data-slot="tree-view-item"]` (files) or `[data-slot="tree-view-branch-control"]` (folders) via `evaluate_script`, then `click` the menuitem.
+
+Library files are draggable. Drop onto a folder row to move into that folder, or onto **Uploaded Files** / a parent folder to move out. Chrome DevTools MCP cannot drag; use a real mouse (computer-use). Do not drop namespaced verify files onto Uploaded Files (that writes the basename at library root).
 
 Isolation: every mutating run uses a unique prefix `verify/<run-id>/` (example: `verify/20260903-2100/e2e.md`). Never rename or delete existing library files. Do not drive the user's unsaved editor state.
 
@@ -122,7 +125,7 @@ Standards:
 - Exercise `/knowledge` (or the mapped UI) and `/api/files/*`. Do not call S3 from the agent as the primary proof — the app's file API is the user boundary.
 - Capture the action and the resulting state: screenshot or ARIA snapshot of the tree **before**, the dialog/menu **during**, and the tree **after**.
 - Confirm the S3 side effect with `bin/files list` / `bin/files get` after each mutation.
-- Confirm the vector-index side effect with `bin/retrieve` after create, rename, and delete (see [library-ingest](features/library-ingest.md)). A list/get pass is not enough for ingest.
+- Confirm the vector-index side effect with `bin/retrieve` after create, rename, move, and delete (see [library-ingest](features/library-ingest.md)). A list/get pass is not enough for ingest.
 - Mocks are not allowed for this skill's happy path. If S3 is unreachable, doctor fails and the run stops. If retrieve returns `this brain has no knowledge base yet`, stop.
 
 Keep proof under `artifacts/<feature>/` (gitignored). Do not commit screenshots of a real library.

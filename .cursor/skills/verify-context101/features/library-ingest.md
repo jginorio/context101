@@ -1,11 +1,11 @@
 # Library ingest
 
-Library ingest is the Bedrock knowledge-base side effect of creating, renaming, or deleting an uploaded file. S3 events start an ingestion job; the vector index then ranks the new key, drops the old key, and forgets deleted text.
+Library ingest is the Bedrock knowledge-base side effect of creating, renaming, moving, or deleting an uploaded file. S3 events start an ingestion job; the vector index then ranks the new key, drops the old key, and forgets deleted text.
 
 ## Sub-features
 
 - `ingest-after-create` retrieves a unique canary from the new S3 key after put.
-- `ingest-after-rename` retrieves the same canary from the renamed key and not the old key.
+- `ingest-after-rename` retrieves the same canary from the renamed (or drag-moved) key and not the old key.
 - `ingest-after-delete` no longer retrieves the canary or either key.
 - `ingest-ask-ui` asks the same question on `/wiki/ask` and shows the source key in Retrieved context.
 
@@ -26,7 +26,7 @@ Preconditions:
 
 - **Create.** `bin/files put "${RUN}e2e.md" "# Vector ingest probe\n\nUnique token: <CANARY>\nThe purple lantern moth nests in quartz libraries.\n"`. List shows `e2e.md`.
 - **Wait until indexed.** `bin/retrieve --expect-key "${RUN}e2e.md" --canary "<CANARY>" --timeout 480 "Where does the purple lantern moth nest <CANARY>"`. Proof JSON has `"ok": true` and `matched_expect` contains that key. Save as `artifacts/library-ingest/01-after-create.json`.
-- **Rename.** `bin/files move "${RUN}e2e.md" "${RUN}e2e-renamed.md"` (or the Knowledge context menu). List shows only the new name.
+- **Rename / move.** `bin/files move "${RUN}e2e.md" "${RUN}e2e-renamed.md"` (or the Knowledge context menu, or a tree drag onto another folder). List shows only the new name. A drag-move is the same S3 copy+delete as rename.
 - **Wait until remapped.** `bin/retrieve --expect-key "${RUN}e2e-renamed.md" --absent-key "${RUN}e2e.md" --canary "<CANARY>" --timeout 480 "Where does the purple lantern moth nest <CANARY>"`. Save `artifacts/library-ingest/02-after-rename.json`.
 - **Delete.** `bin/files delete "${RUN}e2e-renamed.md"` (or the Delete dialog).
 - **Wait until dropped.** `bin/retrieve --absent-key "${RUN}e2e-renamed.md" --absent-canary "<CANARY>" --timeout 480 "Where does the purple lantern moth nest <CANARY>"`. Save `artifacts/library-ingest/03-after-delete.json`.
