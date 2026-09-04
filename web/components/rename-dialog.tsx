@@ -81,7 +81,6 @@ export function RenameDialog({
         <Input
           value={name}
           onChange={(e) => setName(e.target.value)}
-          autoFocus
           onKeyDown={(e) => {
             if (e.key === "Enter") handleRename();
           }}

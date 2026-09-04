@@ -215,7 +215,6 @@ function SourceParamsForm({
             onChange={(e) => setLabel(e.target.value)}
             placeholder={copy.labelPlaceholder}
             disabled={submitting}
-            autoFocus
           />
         </div>
         <div>

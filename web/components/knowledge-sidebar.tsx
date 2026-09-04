@@ -79,8 +79,7 @@ export function KnowledgeSidebar({
   const { closeMobileNav } = useAppShell();
 
   const openAddSource = () => {
-    closeMobileNav();
-    onAddSource?.();
+    closeMobileNav(() => onAddSource?.());
   };
 
   const editableCtx: TreeContext = {
@@ -129,10 +128,14 @@ export function KnowledgeSidebar({
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => onNewFile("")}>
+                <DropdownMenuItem
+                  onClick={() => closeMobileNav(() => onNewFile(""))}
+                >
                   <FilePlus className="mr-2 h-3.5 w-3.5" /> New file
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => onNewFolder("")}>
+                <DropdownMenuItem
+                  onClick={() => closeMobileNav(() => onNewFolder(""))}
+                >
                   <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder
                 </DropdownMenuItem>
               </DropdownMenuContent>
@@ -193,7 +196,7 @@ export function KnowledgeSidebar({
           Manage connectors on the{" "}
           <Link
             href="/sources"
-            onClick={closeMobileNav}
+            onClick={() => closeMobileNav()}
             className="font-medium text-foreground underline-offset-2 hover:underline"
           >
             Sources

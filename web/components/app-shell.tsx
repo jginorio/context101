@@ -47,8 +47,12 @@ const NAV_ITEMS = [
 ];
 
 // Lets sidebar content (file tree, wiki nav) close the mobile sheet when the
-// user navigates or selects something. A no-op on desktop.
-const AppShellContext = React.createContext<{ closeMobileNav: () => void }>({
+// user navigates or selects something. A no-op on desktop. Pass `after` to
+// run a callback once the sheet finish its close animation (used so a
+// follow-up drawer does not fight the nav).
+const AppShellContext = React.createContext<{
+  closeMobileNav: (after?: () => void) => void;
+}>({
   closeMobileNav: () => {},
 });
 
@@ -203,7 +207,41 @@ export function AppShell({
   children: React.ReactNode;
 }) {
   const [mobileNavOpen, setMobileNavOpen] = React.useState(false);
-  const closeMobileNav = React.useCallback(() => setMobileNavOpen(false), []);
+  const afterNavCloseRef = React.useRef<(() => void) | null>(null);
+  const afterNavCloseTimer = React.useRef<number>(0);
+
+  const closeMobileNav = React.useCallback((after?: () => void) => {
+    window.clearTimeout(afterNavCloseTimer.current);
+    if (!mobileNavOpen) {
+      after?.();
+      return;
+    }
+    afterNavCloseRef.current = after ?? null;
+    setMobileNavOpen(false);
+    if (after) {
+      afterNavCloseTimer.current = window.setTimeout(() => {
+        const fn = afterNavCloseRef.current;
+        afterNavCloseRef.current = null;
+        fn?.();
+      }, 400);
+    }
+  }, [mobileNavOpen]);
+
+  const handleNavOpenChange = React.useCallback((open: boolean) => {
+    if (open) {
+      window.clearTimeout(afterNavCloseTimer.current);
+      afterNavCloseRef.current = null;
+    }
+    setMobileNavOpen(open);
+  }, []);
+
+  const handleNavOpenChangeComplete = React.useCallback((open: boolean) => {
+    if (open) return;
+    window.clearTimeout(afterNavCloseTimer.current);
+    const fn = afterNavCloseRef.current;
+    afterNavCloseRef.current = null;
+    fn?.();
+  }, []);
 
   return (
     <AppShellContext.Provider value={{ closeMobileNav }}>
@@ -215,7 +253,11 @@ export function AppShell({
         <div className="flex min-w-0 flex-1 flex-col">
           <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b border-border bg-background/80 px-3 backdrop-blur-sm sm:px-6">
             <div className="flex min-w-0 items-center gap-2">
-              <Sheet open={mobileNavOpen} onOpenChange={setMobileNavOpen}>
+              <Sheet
+                open={mobileNavOpen}
+                onOpenChange={handleNavOpenChange}
+                onOpenChangeComplete={handleNavOpenChangeComplete}
+              >
                 <SheetTrigger
                   render={
                     <Button
@@ -235,7 +277,7 @@ export function AppShell({
                   <SheetTitle className="sr-only">Navigation</SheetTitle>
                   <SidebarInner
                     contextPanel={contextPanel}
-                    onNavigate={closeMobileNav}
+                    onNavigate={() => closeMobileNav()}
                   />
                 </SheetContent>
               </Sheet>
