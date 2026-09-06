@@ -4,7 +4,7 @@ import { randomBytes } from "node:crypto";
 
 import { readAuthContext } from "@/lib/brains-server";
 import { buildAppManifest, getGithubAppConfig } from "@/utils/github-app";
-import { getPublicOrigin } from "@/utils/public-origin";
+import { getPublicOrigin, getPublicUrl } from "@/utils/public-origin";
 
 /**
  * GET /api/connectors/github-app/create
@@ -34,7 +34,7 @@ export async function GET(request: NextRequest) {
   }
   if (await getGithubAppConfig()) {
     return NextResponse.redirect(
-      new URL("/sources?githubapp=already_configured", request.url)
+      getPublicUrl(request, "/sources?githubapp=already_configured")
     );
   }
 

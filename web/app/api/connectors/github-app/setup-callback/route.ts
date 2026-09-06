@@ -13,7 +13,7 @@ import {
   getGithubInstallationForOrg,
   saveGithubInstallation,
 } from "@/utils/github-installations";
-import { getPublicOrigin } from "@/utils/public-origin";
+import { getPublicOrigin, getPublicUrl } from "@/utils/public-origin";
 
 /**
  * GET /api/connectors/github-app/setup-callback
@@ -27,7 +27,7 @@ export async function GET(request: NextRequest) {
   const params = request.nextUrl.searchParams;
   const installationIdRaw = params.get("installation_id");
   const state = params.get("state");
-  const baseRedirect = new URL("/sources", request.url);
+  const baseRedirect = getPublicUrl(request, "/sources");
 
   if (!installationIdRaw || !/^\d+$/.test(installationIdRaw)) {
     baseRedirect.searchParams.set("githubapp", "error");

@@ -7,6 +7,7 @@ import {
   getGithubAppConfig,
   saveGithubAppConfig,
 } from "@/utils/github-app";
+import { getPublicUrl } from "@/utils/public-origin";
 
 /**
  * GET /api/connectors/github-app/manifest-callback?code=…
@@ -38,7 +39,7 @@ export async function GET(request: NextRequest) {
   try {
     if (await getGithubAppConfig()) {
       return NextResponse.redirect(
-        new URL("/sources?githubapp=already_configured", request.url)
+        getPublicUrl(request, "/sources?githubapp=already_configured")
       );
     }
     const app = await convertManifestCode(code);
@@ -51,12 +52,12 @@ export async function GET(request: NextRequest) {
       html_url: app.html_url,
     });
     return NextResponse.redirect(
-      new URL(`/sources?githubapp=created`, request.url)
+      getPublicUrl(request, "/sources?githubapp=created")
     );
   } catch (err) {
     console.error("github app manifest conversion failed:", err);
     return NextResponse.redirect(
-      new URL(`/sources?githubapp=error`, request.url)
+      getPublicUrl(request, "/sources?githubapp=error")
     );
   }
 }

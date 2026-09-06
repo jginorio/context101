@@ -293,6 +293,22 @@ export function verifyGithubState(
   }
 }
 
+export const GITHUB_OAUTH_CALLBACK_PATH =
+  "/api/connectors/github-app/oauth-callback";
+
+export function githubOauthRedirectUri(origin: string): string {
+  return `${origin.replace(/\/$/, "")}${GITHUB_OAUTH_CALLBACK_PATH}`;
+}
+
+/**
+ * Documented GitHub API for "does this user token reach that installation?"
+ * GET /user/installations/:id is not an endpoint and always 404s, which the
+ * OAuth callback used to treat as permission_denied after every connect.
+ */
+export function userInstallationAccessApiPath(installationId: string): string {
+  return `/user/installations/${encodeURIComponent(installationId)}/repositories?per_page=1`;
+}
+
 export function githubOauthUrl(
   cfg: Pick<GithubAppConfig, "client_id">,
   origin: string,
@@ -300,17 +316,15 @@ export function githubOauthUrl(
 ): string {
   const url = new URL("https://github.com/login/oauth/authorize");
   url.searchParams.set("client_id", cfg.client_id);
-  url.searchParams.set(
-    "redirect_uri",
-    `${origin}/api/connectors/github-app/oauth-callback`
-  );
+  url.searchParams.set("redirect_uri", githubOauthRedirectUri(origin));
   url.searchParams.set("state", state);
   return url.toString();
 }
 
 export async function exchangeGithubOauthCode(
   cfg: Pick<GithubAppConfig, "client_id" | "client_secret">,
-  code: string
+  code: string,
+  redirectUri: string
 ): Promise<string> {
   const r = await fetch("https://github.com/login/oauth/access_token", {
     method: "POST",
@@ -323,6 +337,7 @@ export async function exchangeGithubOauthCode(
       client_id: cfg.client_id,
       client_secret: cfg.client_secret,
       code,
+      redirect_uri: redirectUri,
     }),
   });
   const body = (await r.json().catch(() => null)) as
@@ -342,7 +357,7 @@ export async function userCanAccessInstallation(
 ): Promise<boolean> {
   const r = await githubApi(
     userToken,
-    `/user/installations/${encodeURIComponent(installationId)}`
+    userInstallationAccessApiPath(installationId)
   );
   return r.ok;
 }

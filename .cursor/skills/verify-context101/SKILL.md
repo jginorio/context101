@@ -73,10 +73,15 @@ Stable handles:
 | --- | --- |
 | Knowledge nav | link `Knowledge` → `/knowledge` |
 | Wiki nav | link `Wiki` → `/wiki` |
+| Sources nav | link `Sources` → `/sources` (heading `Data sources`) |
 | Brains nav | link `Brains` → `/brains` |
 | New file | button `New file` |
 | New folder | button `New folder` |
 | Add source | button `Add source` → dialog `Add a source` |
+| GitHub provider | button `GitHub` → dialog title `Add a GitHub repository` |
+| Back to types | button `Back to source types` |
+| Connect GitHub | button `Connect GitHub` → `/api/connectors/github-app/install` (do not click in a default run) |
+| Add repository | button `Add repository` (do not submit in a default run) |
 | Library tree | tree `Tree View` |
 | File row | treeitem named the filename (e.g. `verify-e2e.md`); `data-tree-key` is the S3 key |
 | Folder row | treeitem named the folder (`Uploaded Files` is the virtual root, `data-tree-key=""`) |

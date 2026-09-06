@@ -6,10 +6,12 @@ import {
   exchangeGithubOauthCode,
   getGithubAppConfig,
   getInstallationDetails,
+  githubOauthRedirectUri,
   userCanAccessInstallation,
   verifyGithubState,
 } from "@/utils/github-app";
 import { saveGithubInstallation } from "@/utils/github-installations";
+import { getPublicOrigin, getPublicUrl } from "@/utils/public-origin";
 
 /**
  * Verifies that the current GitHub user can access the installation selected
@@ -17,7 +19,7 @@ import { saveGithubInstallation } from "@/utils/github-installations";
  * The short-lived user token is used for verification only and is not stored.
  */
 export async function GET(request: NextRequest) {
-  const redirect = new URL("/sources", request.url);
+  const redirect = getPublicUrl(request, "/sources");
   const code = request.nextUrl.searchParams.get("code");
   const stateValue = request.nextUrl.searchParams.get("state");
 
@@ -47,7 +49,11 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(redirect);
     }
 
-    const userToken = await exchangeGithubOauthCode(cfg, code);
+    const userToken = await exchangeGithubOauthCode(
+      cfg,
+      code,
+      githubOauthRedirectUri(getPublicOrigin(request))
+    );
     if (!(await userCanAccessInstallation(userToken, state.installationId))) {
       redirect.searchParams.set("githubapp", "permission_denied");
       return NextResponse.redirect(redirect);
