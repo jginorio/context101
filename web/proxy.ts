@@ -2,6 +2,8 @@ import { getSessionCookie } from "better-auth/cookies";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { getPublicUrl } from "@/utils/public-origin";
+
 /**
  * Auth gate. Redirects any unauthenticated request to /login.
  *
@@ -12,7 +14,7 @@ export async function proxy(request: NextRequest) {
   const isAuthed = !!getSessionCookie(request);
 
   if (!isAuthed) {
-    const loginUrl = new URL("/login", request.url);
+    const loginUrl = getPublicUrl(request, "/login");
     loginUrl.searchParams.set("next", request.nextUrl.pathname);
     return NextResponse.redirect(loginUrl);
   }

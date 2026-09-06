@@ -8,6 +8,7 @@ import {
   getGithubAppProfile,
   installUrl,
 } from "@/utils/github-app";
+import { getPublicUrl } from "@/utils/public-origin";
 
 /**
  * Starts an organization-scoped GitHub App installation. GitHub handles
@@ -23,7 +24,7 @@ export async function GET(request: NextRequest) {
   const cfg = await getGithubAppConfig();
   if (!cfg) {
     return NextResponse.redirect(
-      new URL("/sources?githubapp=not_configured", request.url)
+      getPublicUrl(request, "/sources?githubapp=not_configured")
     );
   }
 
