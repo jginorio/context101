@@ -93,7 +93,7 @@ Context101 is designed to be easy to try in an AWS account, not to be a hardened
 - **Trusted users only:** Better Auth now gates the web app, but per-brain RBAC is still early and not all routes have been fully moved off the legacy control plane.
 - **No per-brain RBAC yet:** brains are isolated at the AWS resource level, but fine-grained per-brain roles are still a follow-up.
 - **MCP auth is bearer-token based:** per-brain tokens are now hashed in Postgres when `DATABASE_URL` + `MCP_TOKEN_PEPPER` are configured. The MCP server still has a Secrets Manager fallback during migration.
-- **Connectors are alpha:** Google Workspace, Notion, and GitHub sync content into markdown, but the flows are intentionally simple. GitHub currently uses a pasted PAT.
+- **Connectors are alpha:** Google Workspace, Notion, and GitHub sync content into markdown. GitHub uses an organization-scoped GitHub App installation, with a PAT fallback.
 - **AWS-first deployment:** the smooth path assumes `us-east-1`, CDK bootstrap, Docker, Bedrock model access, and connector OAuth secrets if you use connectors.
 - **Runtime brains live outside CloudFormation:** delete non-default brains from `/brains` before stack teardown, or manually sweep retained resources.
 
@@ -445,14 +445,14 @@ Web admin UI → /suggestions tab (scoped to active brain)
 
 Connect a **Google Sheet, Doc, Slides deck, Notion page/database, or GitHub repo** from the **Sources** tab. A connector **belongs to one brain** — the brain that's active in the header when you click "Add new source". The connector row lives in that brain's connectors table and writes its files into that brain's docs bucket under `sources/<type>/<slug>/…`. Re-syncing happens every 6 hours.
 
-Each connection authenticates once (OAuth for Google/Notion, a Personal Access Token for GitHub) and the credential lives in its own Secrets Manager secret (per-connection, not per-brain). The OAuth `state` parameter encodes `<brain_id>:<connector_id>` so the callback lands back in the right brain's table.
+Each connection authenticates once (OAuth for Google/Notion, a GitHub App installation or PAT for GitHub). OAuth/PAT credentials live in Secrets Manager; GitHub App installations are bound to a Context101 organization in Postgres and mint short-lived tokens when needed.
 
 ### User flow
 
 1. Sign in to the web app, click **Sources** in the header.
 2. Click **Add new source** → pick a provider.
-3. Paste the URL + a friendly label. For **GitHub**, also paste a Personal Access Token (no OAuth dance — it's stored directly in Secrets Manager). For OAuth providers, click **Connect …**.
-4. **OAuth providers:** consent screen → approve (read-only scopes for Google; Notion lets you pick which specific pages the integration can see).
+3. Paste the URL + a friendly label. For **GitHub**, connect the GitHub App once, choose a granted repository, and optionally enter path filters. A Personal Access Token remains available as a fallback.
+4. **OAuth providers:** consent screen → approve (read-only scopes for Google; Notion lets you pick which specific pages the integration can see). GitHub asks which account and repositories the app may read.
 5. You land back on `/sources`. The connector shows `syncing`; the card polls every 5s and flips to `connected` once the first sync finishes.
 6. **Added by** shows the user identity that created it. **Google account** / **Notion workspace** / **GitHub user** shows which provider identity authenticated. **Sync now** and **Remove** live on each card.
 
@@ -490,8 +490,8 @@ EventBridge (6h) ──────────────▶│  connector-dis
 ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐   ┌──────────────┐         │
 │  sync-sheets │   │  sync-docs   │   │  sync-slides │   │  sync-notion │   │  sync-github │         │
 │              │   │              │   │              │   │              │   │              │         │
-│ Google OAuth │   │ Google OAuth │   │ Google OAuth │   │ Notion OAuth │   │  PAT (stored │         │
-│  (refresh)   │   │  (refresh)   │   │  (refresh)   │   │  (long-lived │   │   directly,  │         │
+│ Google OAuth │   │ Google OAuth │   │ Google OAuth │   │ Notion OAuth │   │ GitHub App / │         │
+│  (refresh)   │   │  (refresh)   │   │  (refresh)   │   │  (long-lived │   │ PAT fallback │         │
 │              │   │              │   │              │   │   access tok)│   │   no OAuth)  │         │
 │ spreadsheets │   │ documents.get│   │ presentations│   │ pages /      │   │ git/trees +  │         │
 │ + values × N │   │ → md (tables,│   │ .get → md    │   │ databases +  │   │ git/blobs    │         │
@@ -564,17 +564,20 @@ CDK references both secrets by *name* (`secretsmanager.Secret.fromSecretNameV2`)
 
 #### GitHub — via the GitHub App (recommended, tokenless)
 
-Register a **GitHub App** for your deployment once and GitHub connections become completely tokenless:
+Register one **GitHub App** for the deployment. Each Context101 organization then connects its own GitHub account or organization and chooses which repositories the app may read:
 
-1. In the add-source dialog (or directly at `/api/connectors/github-app/create`), click **Set up the GitHub App**. This uses GitHub's [app-manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest): GitHub shows a pre-filled "Create GitHub App" page (permissions: Contents + Metadata, read-only), you click **Create**, and the credentials land in the `context101-connector-github-app` secret automatically. Nothing is copy-pasted — not even during setup.
-2. Adding a GitHub source is now just: paste the repo URL (+ optional paths). If the app already has access to that repo, the connector syncs immediately with **no redirect at all**. If not, GitHub's own install screen opens once — check the repos you want (per-repo consent, like a fine-grained PAT) — and you land back on Sources with the sync running.
-3. No credential is stored per connection: the sync Lambda mints a fresh 1-hour installation token from the app's private key on every run. Revoke or audit access anytime from GitHub → Settings → Installed GitHub Apps.
+1. An instance admin temporarily sets `GITHUB_APP_MANIFEST_SETUP_ENABLED=true` in production and opens `/api/connectors/github-app/create`. This uses GitHub's [app-manifest flow](https://docs.github.com/en/apps/sharing-github-apps/registering-a-github-app-from-a-manifest) to create a public-installable app with read-only Contents + Metadata permissions. The credentials land in the `context101-connector-github-app` secret automatically. Disable the setup flag again afterward; an existing app cannot be overwritten through this route.
+2. A user clicks **Connect GitHub** in the add-source dialog. GitHub asks which personal account or organization to connect and whether to grant all or selected repositories. Context101 verifies the installer through the GitHub App user-authorization flow, then binds that installation to the active Context101 organization.
+3. The dialog lists the repositories granted to that organization. Choose one, optionally enter path filters, and start the sync. No long-lived user token is stored.
+4. The sync Lambda mints a fresh 1-hour installation token from the app's private key on every run. Revoke or audit access anytime from GitHub → Settings → Installed GitHub Apps.
 
-The `installation_id` is recorded app-wide, so every later connection to a covered repo — including extra path-scoped connections to the same repo — is instant.
+For an app created before this multi-organization flow, update its GitHub App settings once: enable **Any account** under installation availability and add `https://<your-host>/api/connectors/github-app/oauth-callback` as a callback URL. New apps created by the manifest include both settings.
+
+Installation IDs are stored per Context101 organization in `github_app_installations`, so multiple users and GitHub organizations can safely share one hosted Context101 deployment.
 
 #### GitHub — via Personal Access Token (legacy fallback)
 
-Without the GitHub App configured, the dialog asks for a PAT directly; it's stored in the per-connector secret (`context101-connector-<uuid>`) like every other token, just shaped as `{ "github_pat": "…" }` instead of `{ "refresh_token": "…" }` or `{ "access_token": "…" }`.
+The dialog always offers a PAT fallback. Use it when the GitHub App is not configured, cannot be installed by the current user, or does not have access to the required repository. It is stored in the per-connector secret (`context101-connector-<uuid>`) as `{ "github_pat": "…" }`.
 
 Generate the token at https://github.com/settings/tokens. Two flavors work:
 

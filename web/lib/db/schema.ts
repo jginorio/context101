@@ -165,6 +165,29 @@ export const connectors = pgTable(
   ]
 );
 
+export const githubAppInstallations = pgTable(
+  "github_app_installations",
+  {
+    // GitHub installation IDs are numeric, but storing them as text avoids
+    // JavaScript's integer precision limit and keeps API round-trips lossless.
+    installationId: text("installation_id").primaryKey(),
+    orgId: text("org_id").notNull(),
+    accountLogin: text("account_login").notNull(),
+    accountType: text("account_type").notNull(),
+    repositorySelection: text("repository_selection").notNull(),
+    settingsUrl: text("settings_url"),
+    createdBy: text("created_by").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("github_app_installations_org_idx").on(table.orgId),
+    index("github_app_installations_org_account_idx").on(
+      table.orgId,
+      table.accountLogin
+    ),
+  ]
+);
+
 export const mcpTokens = pgTable(
   "mcp_tokens",
   {

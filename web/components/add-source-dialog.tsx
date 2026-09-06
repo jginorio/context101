@@ -1,7 +1,12 @@
 "use client";
 
 import * as React from "react";
-import { ChevronLeft, ChevronRight, Loader2 } from "lucide-react";
+import {
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Loader2,
+} from "lucide-react";
 import { toast } from "sonner";
 
 import {
@@ -15,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Combobox } from "@/components/ui/combobox";
 import {
   CONNECTOR_TYPES,
   SOURCE_TYPES,
@@ -30,6 +36,28 @@ type Copy = {
   urlLabel: string;
   urlPlaceholder: string;
   labelPlaceholder: string;
+};
+
+type GithubInstallation = {
+  installationId: string;
+  accountLogin: string;
+  accountType: string;
+  repositorySelection: string;
+  settingsUrl: string | null;
+};
+
+type GithubRepository = {
+  fullName: string;
+  htmlUrl: string;
+  private: boolean;
+  installationId: string;
+  accountLogin: string;
+};
+
+type GithubStatus = {
+  configured: boolean;
+  installed?: boolean;
+  installations?: GithubInstallation[];
 };
 
 const COPY: Record<SourceType, Copy> = {
@@ -66,10 +94,9 @@ const COPY: Record<SourceType, Copy> = {
     labelPlaceholder: "Engineering handbook",
   },
   github: {
-    title: "Add a GitHub repo",
-    description:
-      "Paste a repo URL. We pull markdown + code files (skipping lockfiles, node_modules, builds), wrap them in fenced markdown, and re-sync every 6 hours. Optionally scope the connection to specific folders or files — and add multiple connections to the same repo, each scoped to different paths.",
-    urlLabel: "Repo URL",
+    title: "Add a GitHub repository",
+    description: "Choose a repository and optional paths to sync every 6 hours.",
+    urlLabel: "Repository URL",
     urlPlaceholder: "https://github.com/owner/repo",
     labelPlaceholder: "context101 platform repo",
   },
@@ -122,36 +149,116 @@ function SourceParamsForm({
   const [pat, setPat] = React.useState("");
   const [pathsText, setPathsText] = React.useState("");
   const [submitting, setSubmitting] = React.useState(false);
-  // null = still checking; once known, drives token vs tokenless UX.
-  const [githubAppConfigured, setGithubAppConfigured] = React.useState<
-    boolean | null
-  >(null);
+  const [usePat, setUsePat] = React.useState(false);
+  const [githubStatus, setGithubStatus] = React.useState<GithubStatus | null>(
+    null
+  );
+  const [githubRepos, setGithubRepos] = React.useState<GithubRepository[]>([]);
+  const [selectedRepo, setSelectedRepo] = React.useState("");
+  const [githubLoading, setGithubLoading] = React.useState(false);
+  const [githubError, setGithubError] = React.useState<{
+    message: string;
+    settingsUrl?: string | null;
+  } | null>(null);
 
   React.useEffect(() => {
+    let cancelled = false;
     setLabel("");
     setUrl("");
     setPat("");
     setPathsText("");
     setSubmitting(false);
+    setUsePat(false);
+    setGithubStatus(null);
+    setGithubRepos([]);
+    setSelectedRepo("");
+    setGithubError(null);
     if (type === "github") {
-      setGithubAppConfigured(null);
-      fetch("/api/connectors/github-app")
-        .then((r) => (r.ok ? r.json() : { configured: false }))
-        .then((j) => setGithubAppConfigured(!!j.configured))
-        .catch(() => setGithubAppConfigured(false));
+      setGithubLoading(true);
+      void (async () => {
+        try {
+          const statusResponse = await fetch("/api/connectors/github-app");
+          const status = (await statusResponse.json()) as GithubStatus & {
+            error?: string;
+          };
+          if (!statusResponse.ok) {
+            throw new Error(
+              status.error ?? "GitHub connection status could not be loaded"
+            );
+          }
+          if (cancelled) return;
+          setGithubStatus(status);
+
+          if (status.configured && status.installed) {
+            const reposResponse = await fetch(
+              "/api/connectors/github-app/repositories"
+            );
+            const reposBody = (await reposResponse.json()) as {
+              repositories?: GithubRepository[];
+              error?: string;
+            };
+            if (!reposResponse.ok) {
+              throw new Error(
+                reposBody.error ?? "GitHub repositories could not be loaded"
+              );
+            }
+            if (!cancelled) setGithubRepos(reposBody.repositories ?? []);
+          }
+        } catch (error) {
+          if (!cancelled) {
+            setGithubError({
+              message:
+                error instanceof Error
+                  ? error.message
+                  : "GitHub access could not be loaded",
+            });
+          }
+        } finally {
+          if (!cancelled) setGithubLoading(false);
+        }
+      })();
     }
+    return () => {
+      cancelled = true;
+    };
   }, [type]);
 
   const copy = COPY[type];
   const Icon = SOURCE_TYPES[type].icon;
   const isGithub = type === "github";
-  // The PAT field only appears when the GitHub App isn't set up.
-  const needsPat = isGithub && githubAppConfigured === false;
-  const ready =
-    !!label.trim() &&
-    !!url.trim() &&
-    (!isGithub || githubAppConfigured !== null) &&
-    (!needsPat || !!pat.trim());
+  const needsPat =
+    isGithub && (usePat || githubStatus?.configured === false);
+  const selectedGithubRepo = githubRepos.find(
+    (repo) => repo.fullName === selectedRepo
+  );
+  const needsGithubInstall =
+    isGithub &&
+    !needsPat &&
+    githubStatus?.configured === true &&
+    !githubStatus.installed;
+  const githubSettingsUrl =
+    githubError?.settingsUrl ??
+    githubStatus?.installations?.find(
+      (installation) =>
+        installation.installationId === selectedGithubRepo?.installationId
+    )?.settingsUrl ??
+    githubStatus?.installations?.find((installation) => installation.settingsUrl)
+      ?.settingsUrl ??
+    "https://github.com/settings/installations";
+  const ready = isGithub
+    ? needsPat
+      ? !!label.trim() && !!url.trim() && !!pat.trim()
+      : !!label.trim() && !!selectedGithubRepo && !githubLoading
+    : !!label.trim() && !!url.trim();
+
+  function chooseRepo(value: string) {
+    setSelectedRepo(value);
+    const repo = githubRepos.find((item) => item.fullName === value);
+    if (!repo) return;
+    setUrl(repo.htmlUrl);
+    setLabel(repo.fullName);
+    setGithubError(null);
+  }
 
   async function connect() {
     if (!ready) return;
@@ -165,6 +272,11 @@ function SourceParamsForm({
           label: label.trim(),
           resource_url: url.trim(),
           ...(needsPat ? { github_pat: pat.trim() } : {}),
+          ...(isGithub && !needsPat && selectedGithubRepo
+            ? {
+                github_installation_id: selectedGithubRepo.installationId,
+              }
+            : {}),
           ...(isGithub && pathsText.trim()
             ? {
                 paths: pathsText
@@ -175,8 +287,20 @@ function SourceParamsForm({
             : {}),
         }),
       });
-      const j = await r.json();
-      if (!r.ok) throw new Error(j.error ?? `HTTP ${r.status}`);
+      const j = (await r.json()) as {
+        error?: string;
+        oauthUrl?: string;
+        settingsUrl?: string | null;
+      };
+      if (!r.ok) {
+        const message = j.error ?? `HTTP ${r.status}`;
+        if (isGithub) {
+          setGithubError({ message, settingsUrl: j.settingsUrl });
+          setSubmitting(false);
+          return;
+        }
+        throw new Error(message);
+      }
       if (!j.oauthUrl) throw new Error("No redirect URL returned");
       // Full-page navigation. For OAuth providers this hits the consent
       // screen; for GitHub it goes straight to /sources?connected=<id>.
@@ -207,99 +331,234 @@ function SourceParamsForm({
         <DialogDescription>{copy.description}</DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-3">
-        <div>
-          <p className="mb-1 text-xs font-medium">Label</p>
-          <Input
-            value={label}
-            onChange={(e) => setLabel(e.target.value)}
-            placeholder={copy.labelPlaceholder}
-            disabled={submitting}
-          />
-        </div>
-        <div>
-          <p className="mb-1 text-xs font-medium">{copy.urlLabel}</p>
-          <Input
-            value={url}
-            onChange={(e) => setUrl(e.target.value)}
-            placeholder={copy.urlPlaceholder}
-            disabled={submitting}
-            className="font-mono text-xs"
-          />
-        </div>
-        {needsPat && (
-          <div>
-            <p className="mb-1 text-xs font-medium">Personal Access Token</p>
-            <Input
-              type="password"
-              value={pat}
-              onChange={(e) => setPat(e.target.value)}
-              placeholder="ghp_… or github_pat_…"
-              disabled={submitting}
-              className="font-mono text-xs"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Create one at{" "}
-              <a
-                href="https://github.com/settings/tokens"
-                target="_blank"
-                rel="noreferrer"
-                className="underline hover:text-foreground"
+      <div className="space-y-3 pb-2">
+        {isGithub ? (
+          <>
+            {githubLoading && (
+              <div className="flex items-center gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                Checking your GitHub access…
+              </div>
+            )}
+
+            {!needsPat &&
+              githubStatus?.configured &&
+              githubStatus.installed && (
+                <>
+                  <div>
+                    <p className="mb-1 text-xs font-medium">Repository</p>
+                    <Combobox
+                      value={selectedRepo}
+                      onValueChange={chooseRepo}
+                      items={githubRepos.map((repo) => repo.fullName)}
+                      placeholder={
+                        githubRepos.length
+                          ? "Search repositories…"
+                          : "No repositories available"
+                      }
+                      emptyText="No granted repository matches"
+                      disabled={submitting || githubLoading}
+                    />
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <span>
+                        Connected as{" "}
+                        {githubStatus.installations
+                          ?.map((installation) => installation.accountLogin)
+                          .join(", ")}
+                      </span>
+                      <a
+                        href={githubSettingsUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="inline-flex items-center gap-1 underline hover:text-foreground"
+                      >
+                        Manage repository access
+                        <ExternalLink className="h-3 w-3" />
+                      </a>
+                      <a
+                        href="/api/connectors/github-app/install"
+                        className="underline hover:text-foreground"
+                      >
+                        Connect another account
+                      </a>
+                    </div>
+                  </div>
+                  <div>
+                    <p className="mb-1 text-xs font-medium">
+                      Connection name{" "}
+                      <span className="font-normal text-muted-foreground">
+                        (editable)
+                      </span>
+                    </p>
+                    <Input
+                      value={label}
+                      onChange={(e) => setLabel(e.target.value)}
+                      placeholder={copy.labelPlaceholder}
+                      disabled={submitting}
+                    />
+                  </div>
+                </>
+              )}
+
+            {needsPat && (
+              <>
+                <div>
+                  <p className="mb-1 text-xs font-medium">Connection name</p>
+                  <Input
+                    value={label}
+                    onChange={(e) => setLabel(e.target.value)}
+                    placeholder={copy.labelPlaceholder}
+                    disabled={submitting}
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-medium">{copy.urlLabel}</p>
+                  <Input
+                    value={url}
+                    onChange={(e) => setUrl(e.target.value)}
+                    placeholder={copy.urlPlaceholder}
+                    disabled={submitting}
+                    className="font-mono text-xs"
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs font-medium">
+                    Personal access token
+                  </p>
+                  <Input
+                    type="password"
+                    value={pat}
+                    onChange={(e) => setPat(e.target.value)}
+                    placeholder="github_pat_…"
+                    disabled={submitting}
+                    className="font-mono text-xs"
+                  />
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Create a fine-grained token in{" "}
+                    <a
+                      href="https://github.com/settings/personal-access-tokens/new"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="underline hover:text-foreground"
+                    >
+                      GitHub settings
+                    </a>{" "}
+                    with read-only Contents access to this repository. The token
+                    is encrypted in AWS Secrets Manager.
+                  </p>
+                </div>
+              </>
+            )}
+
+            {githubError && (
+              <div className="rounded-md border border-destructive/30 bg-destructive/10 p-3 text-xs text-destructive">
+                <p className="font-medium">{githubError.message}</p>
+                <p className="mt-1 text-foreground/80">
+                  Grant Context101 access to the repository in GitHub, then
+                  reopen this dialog. If you cannot install the app, use a
+                  personal access token instead.
+                </p>
+                <div className="mt-2 flex flex-wrap gap-3">
+                  <a
+                    href={githubSettingsUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="underline hover:text-foreground"
+                  >
+                    Open GitHub App settings
+                  </a>
+                  {!needsPat && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setUsePat(true);
+                        setGithubError(null);
+                      }}
+                      className="underline hover:text-foreground"
+                    >
+                      Use a personal access token
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {githubStatus?.configured === false && !githubError && (
+              <p className="rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
+                This Context101 instance has no GitHub App configured, so a
+                personal access token is required. Instance admins can{" "}
+                <a
+                  href="/api/connectors/github-app/create"
+                  className="underline hover:text-foreground"
+                >
+                  configure the shared GitHub App
+                </a>
+                .
+              </p>
+            )}
+
+            {!needsPat && githubStatus?.configured && (
+              <button
+                type="button"
+                onClick={() => {
+                  setUsePat(true);
+                  setGithubError(null);
+                }}
+                className="text-xs text-muted-foreground underline hover:text-foreground"
               >
-                github.com/settings/tokens
-              </a>{" "}
-              with <code className="font-mono">repo</code> scope (private) or{" "}
-              <code className="font-mono">public_repo</code> (public only).
-              Stored encrypted in Secrets Manager.
+                Use a personal access token instead
+              </button>
+            )}
+
+            {(needsPat ||
+              (githubStatus?.configured && githubStatus.installed)) && (
+              <div>
+                <p className="mb-1 text-xs font-medium">
+                  Paths to sync{" "}
+                  <span className="font-normal text-muted-foreground">
+                    (optional)
+                  </span>
+                </p>
+                <Textarea
+                  value={pathsText}
+                  onChange={(e) => setPathsText(e.target.value)}
+                  placeholder={"docs/\nREADME.md\napps/*/docs/**"}
+                  disabled={submitting}
+                  rows={3}
+                  className="font-mono text-xs"
+                />
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Add one folder, file, or glob per line. Leave empty to sync
+                  the whole repository.
+                </p>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            <div>
+              <p className="mb-1 text-xs font-medium">Label</p>
+              <Input
+                value={label}
+                onChange={(e) => setLabel(e.target.value)}
+                placeholder={copy.labelPlaceholder}
+                disabled={submitting}
+              />
+            </div>
+            <div>
+              <p className="mb-1 text-xs font-medium">{copy.urlLabel}</p>
+              <Input
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder={copy.urlPlaceholder}
+                disabled={submitting}
+                className="font-mono text-xs"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              You only need <strong>Viewer</strong> access — sync is read-only.
             </p>
-          </div>
-        )}
-        {isGithub && githubAppConfigured === true && (
-          <p className="rounded-md border border-emerald-500/30 bg-emerald-500/10 p-2 text-xs text-emerald-700 dark:text-emerald-400">
-            Tokenless via the GitHub App — if the app doesn&apos;t have access
-            to this repo yet, GitHub will show its repo picker once.
-          </p>
-        )}
-        {isGithub && githubAppConfigured === false && (
-          <p className="text-xs text-muted-foreground">
-            Tired of tokens?{" "}
-            <a
-              href="/api/connectors/github-app/create"
-              className="underline hover:text-foreground"
-            >
-              Set up the GitHub App
-            </a>{" "}
-            once (~20s on GitHub) and future connections need no PAT —
-            you&apos;ll pick repos on GitHub&apos;s own consent screen.
-          </p>
-        )}
-        {isGithub && (
-          <div>
-            <p className="mb-1 text-xs font-medium">
-              Paths to sync{" "}
-              <span className="font-normal text-muted-foreground">
-                (optional — empty syncs the whole repo)
-              </span>
-            </p>
-            <Textarea
-              value={pathsText}
-              onChange={(e) => setPathsText(e.target.value)}
-              placeholder={"apps/plateapr.com/docs/analytics/\nREADME.md\napps/*/docs/**"}
-              disabled={submitting}
-              rows={3}
-              className="font-mono text-xs"
-            />
-            <p className="mt-1 text-xs text-muted-foreground">
-              One folder, file, or glob per line, relative to the repo root.
-              Only matching files sync. You can add more connections to the
-              same repo later, each scoped to different paths.
-            </p>
-          </div>
-        )}
-        {!isGithub && (
-          <p className="text-xs text-muted-foreground">
-            You only need <strong>Viewer</strong> access — sync is read-only.
-          </p>
+          </>
         )}
       </div>
 
@@ -311,7 +570,21 @@ function SourceParamsForm({
         >
           Cancel
         </Button>
-        <Button onClick={connect} disabled={submitting || !ready}>
+        <Button
+          onClick={
+            needsGithubInstall
+              ? () => {
+                  window.location.href =
+                    "/api/connectors/github-app/install";
+                }
+              : connect
+          }
+          disabled={
+            submitting ||
+            githubLoading ||
+            (!needsGithubInstall && !ready)
+          }
+        >
           {submitting ? (
             <>
               <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
@@ -320,10 +593,12 @@ function SourceParamsForm({
           ) : type === "notion" ? (
             "Connect Notion workspace"
           ) : type === "github" ? (
-            githubAppConfigured ? (
-              "Connect via GitHub"
+            githubLoading ? (
+              "Checking GitHub…"
+            ) : needsGithubInstall ? (
+              "Connect GitHub"
             ) : (
-              "Add repo"
+              "Add repository"
             )
           ) : (
             "Connect Google account"
