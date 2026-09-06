@@ -23,10 +23,10 @@ import {
 import { readAuthContext, resolveBrainFromRequest } from "@/lib/brains-server";
 import {
   getGithubAppConfig,
-  installUrl,
   installationCanAccessRepo,
   mintInstallationToken,
 } from "@/utils/github-app";
+import { getGithubInstallationForOrg } from "@/utils/github-installations";
 import { bucketForBrain } from "@/utils/s3";
 import { getPublicOrigin } from "@/utils/public-origin";
 
@@ -138,13 +138,33 @@ export async function POST(request: NextRequest) {
       ? body.github_pat.trim()
       : "";
   const githubApp = type === "github" && !githubPat ? await getGithubAppConfig() : null;
+  const githubInstallationId =
+    type === "github" &&
+    !githubPat &&
+    typeof body.github_installation_id === "string"
+      ? body.github_installation_id.trim()
+      : "";
   if (type === "github" && !githubPat && !githubApp) {
     return NextResponse.json(
       {
         error:
-          "github_pat is required (or set up the GitHub App under Sources → GitHub for tokenless connections)",
+          "This Context101 instance has no GitHub App. Ask an instance admin to configure it, or use a personal access token.",
       },
       { status: 400 }
+    );
+  }
+  const githubInstallation =
+    type === "github" && githubApp && githubInstallationId
+      ? await getGithubInstallationForOrg(auth.orgId, githubInstallationId)
+      : null;
+  if (type === "github" && githubApp && !githubInstallation) {
+    return NextResponse.json(
+      {
+        error:
+          "Connect GitHub and choose an account before selecting a repository, or use a personal access token.",
+        code: "GITHUB_INSTALLATION_REQUIRED",
+      },
+      { status: 403 }
     );
   }
 
@@ -177,6 +197,38 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  if (type === "github" && githubApp && githubInstallation) {
+    try {
+      const token = await mintInstallationToken(
+        githubApp,
+        githubInstallation.installationId
+      );
+      const covered = await installationCanAccessRepo(token, resourceId);
+      if (!covered) {
+        return NextResponse.json(
+          {
+            error:
+              "The Context101 GitHub App can't access this repository. Grant the app access in GitHub, then try again, or use a personal access token.",
+            code: "GITHUB_REPO_ACCESS_REQUIRED",
+            settingsUrl: githubInstallation.settingsUrl,
+          },
+          { status: 403 }
+        );
+      }
+    } catch (err) {
+      console.error("github app repo-access check failed:", err);
+      return NextResponse.json(
+        {
+          error:
+            "We couldn't verify access to this repository. Reconnect the GitHub App, check its repository permissions, or use a personal access token.",
+          code: "GITHUB_ACCESS_CHECK_FAILED",
+          settingsUrl: githubInstallation.settingsUrl,
+        },
+        { status: 502 }
+      );
+    }
+  }
+
   const createdBy = auth.userEmail ?? auth.userId;
 
   try {
@@ -192,69 +244,42 @@ export async function POST(request: NextRequest) {
     const id = inserted.id;
 
     // ── GitHub via GitHub App (tokenless) ──────────────────────────────
-    // If the installation already covers the repo, sync immediately with
-    // no redirect at all. Otherwise send the user to GitHub's install
-    // screen; the app's setup-callback resumes this connector from `state`.
-    if (type === "github" && githubApp) {
+    // The selected installation is organization-scoped and access was
+    // verified before creating the connector, so sync can start immediately.
+    if (type === "github" && githubApp && githubInstallation) {
       const baseMetadata: Record<string, unknown> = {};
       if (githubPaths.length) baseMetadata.paths = githubPaths;
 
-      let coveredNow = false;
-      if (githubApp.installation_id) {
-        try {
-          const token = await mintInstallationToken(
-            githubApp,
-            githubApp.installation_id
-          );
-          coveredNow = await installationCanAccessRepo(token, resourceId);
-        } catch (e) {
-          console.warn("github app repo-access check failed:", e);
-        }
-      }
-
-      if (coveredNow) {
-        await pgUpdateConnector(auth.orgId, brain.brain_id, id, {
-          status: "syncing",
-          metadata: {
-            ...baseMetadata,
-            auth: "github-app",
-            github_installation_id: githubApp.installation_id,
-            github_app_secret_arn: githubApp.secret_arn,
-          },
-        });
-        const fn = syncFnNameFor("github");
-        if (fn) {
-          await lambdaClient
-            .send(
-              new InvokeCommand({
-                FunctionName: fn,
-                InvocationType: "Event",
-                Payload: new TextEncoder().encode(
-                  JSON.stringify({
-                    connectorId: id,
-                    docsBucket,
-                    brainId: brain.brain_id,
-                  })
-                ),
-              })
-            )
-            .catch((e) => console.error("initial sync invoke failed:", e));
-        }
-        return NextResponse.json({
-          id,
-          oauthUrl: `/sources?brain=${encodeURIComponent(brain.brain_id)}&connected=${id}`,
-        });
-      }
-
-      // Repo not covered (or nothing installed yet) → GitHub's repo picker.
-      if (githubPaths.length) {
-        await pgUpdateConnector(auth.orgId, brain.brain_id, id, {
-          metadata: baseMetadata,
-        });
+      await pgUpdateConnector(auth.orgId, brain.brain_id, id, {
+        status: "syncing",
+        metadata: {
+          ...baseMetadata,
+          auth: "github-app",
+          github_installation_id: githubInstallation.installationId,
+          github_app_secret_arn: githubApp.secret_arn,
+        },
+      });
+      const fn = syncFnNameFor("github");
+      if (fn) {
+        await lambdaClient
+          .send(
+            new InvokeCommand({
+              FunctionName: fn,
+              InvocationType: "Event",
+              Payload: new TextEncoder().encode(
+                JSON.stringify({
+                  connectorId: id,
+                  docsBucket,
+                  brainId: brain.brain_id,
+                })
+              ),
+            })
+          )
+          .catch((e) => console.error("initial sync invoke failed:", e));
       }
       return NextResponse.json({
         id,
-        oauthUrl: installUrl(githubApp.slug, `${brain.brain_id}:${id}`),
+        oauthUrl: `/sources?brain=${encodeURIComponent(brain.brain_id)}&connected=${id}`,
       });
     }
 

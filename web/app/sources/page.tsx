@@ -134,11 +134,34 @@ function SourcesContent() {
     if (oauthError) toast.error(`OAuth: ${oauthError}`);
     if (githubApp === "created")
       toast.success(
-        "GitHub App created — add a GitHub source to pick your repos"
+        "GitHub App created. Connect GitHub to choose repositories."
       );
+    if (githubApp === "already_configured")
+      toast.info("This Context101 instance already has a GitHub App.");
     if (githubApp === "installed")
-      toast.success("GitHub App installed — repos are now connectable");
-    if (githubApp === "error") toast.error("GitHub App setup failed");
+      toast.success("GitHub connected. You can now choose a repository.");
+    if (githubApp === "not_configured")
+      toast.error(
+        "This Context101 instance has no GitHub App. Ask an instance admin to configure it, or use a personal access token."
+      );
+    if (githubApp === "not_authenticated")
+      toast.error("Sign in to Context101, then connect GitHub again.");
+    if (githubApp === "invalid_state")
+      toast.error(
+        "The GitHub connection expired or could not be verified. Start again from Data sources."
+      );
+    if (githubApp === "permission_denied")
+      toast.error(
+        "GitHub did not grant access to that installation. Give the Context101 app permission or use a personal access token."
+      );
+    if (githubApp === "start_in_context101")
+      toast.error(
+        "Start the GitHub connection from Context101 so it can be linked to your organization."
+      );
+    if (githubApp === "error")
+      toast.error(
+        "GitHub setup failed. Check the app's repository permissions and try again, or use a personal access token."
+      );
   }, [search]);
 
   // Poll while anything is syncing
@@ -375,13 +398,13 @@ function SourcesContent() {
             <AlertDialogHeader>
               <AlertDialogTitle>Remove source?</AlertDialogTitle>
               <AlertDialogDescription>
-                This revokes the saved access token, deletes all synced files
-                under{" "}
+                This deletes all synced files under{" "}
                 <code className="font-mono">
                   sources/{confirmRemove?.type}/…
                 </code>{" "}
-                in S3, and removes the connection. Bedrock will re-index on the
-                next PutObject/Delete event.
+                in S3 and removes the connection. GitHub App permissions stay
+                unchanged; a saved personal access token is deleted. Bedrock
+                will re-index after the file changes.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -393,7 +416,7 @@ function SourcesContent() {
                 }}
                 className="bg-destructive text-white hover:bg-destructive/90"
               >
-                Remove
+                Remove source
               </AlertDialogAction>
             </AlertDialogFooter>
           </AlertDialogContent>

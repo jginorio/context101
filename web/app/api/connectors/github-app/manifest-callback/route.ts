@@ -2,7 +2,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
 import { readAuthContext } from "@/lib/brains-server";
-import { convertManifestCode, saveGithubAppConfig } from "@/utils/github-app";
+import {
+  convertManifestCode,
+  getGithubAppConfig,
+  saveGithubAppConfig,
+} from "@/utils/github-app";
 
 /**
  * GET /api/connectors/github-app/manifest-callback?code=…
@@ -22,11 +26,21 @@ export async function GET(request: NextRequest) {
   }
 
   const code = request.nextUrl.searchParams.get("code");
-  if (!code) {
-    return NextResponse.json({ error: "code is required" }, { status: 400 });
+  const setupState = request.nextUrl.searchParams.get("setup_state");
+  const setupCookie = request.cookies.get("ctx_github_app_setup")?.value;
+  if (!code || !setupState || setupState !== setupCookie) {
+    return NextResponse.json(
+      { error: "GitHub App setup could not be verified. Start again." },
+      { status: 400 }
+    );
   }
 
   try {
+    if (await getGithubAppConfig()) {
+      return NextResponse.redirect(
+        new URL("/sources?githubapp=already_configured", request.url)
+      );
+    }
     const app = await convertManifestCode(code);
     await saveGithubAppConfig({
       app_id: app.id,
