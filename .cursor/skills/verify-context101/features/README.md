@@ -34,6 +34,7 @@ This directory is the maintained source for verifying user-facing behavior of th
 - [Library ingest](./library-ingest.md) — wait until Bedrock Retrieve ranks the new key after those mutations.
 - [Knowledge viewer](./knowledge-viewer.md) — open a file, preview, edit, save.
 - [Add source](./add-source.md) — open the picker (do not submit a connector in a default run).
+- [GitHub source](./github-source.md) — org-scoped GitHub App (Connect GitHub / repo picker); PAT is fallback only. Do not install or submit in a default run.
 - [Login](./login.md) — email sign-in and session cookie.
 - [Brains](./brains.md) — switch and inspect brains (do not provision or delete brains in a default run).
 - [Wiki](./wiki.md) — open the wiki index and a page; do not click Refresh now unless asked.
