@@ -30,10 +30,18 @@ function originFromEnv(raw: string | undefined): string | null {
  * Hosted Amplify SSR often reports localhost in Host / x-forwarded-host;
  * the configured URL is the only reliable public hostname in that case.
  */
-export function configuredPublicOrigin(
-  env: NodeJS.ProcessEnv = process.env
+export function configuredPublicOriginFrom(
+  appUrl?: string,
+  betterAuthUrl?: string
 ): string | null {
-  return originFromEnv(env.APP_URL) ?? originFromEnv(env.BETTER_AUTH_URL);
+  return originFromEnv(appUrl) ?? originFromEnv(betterAuthUrl);
+}
+
+export function configuredPublicOrigin(): string | null {
+  return configuredPublicOriginFrom(
+    process.env.APP_URL,
+    process.env.BETTER_AUTH_URL
+  );
 }
 
 /**

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
-  configuredPublicOrigin,
+  configuredPublicOriginFrom,
   resolvePublicOrigin,
 } from "./public-origin";
 
@@ -21,23 +21,18 @@ function headers(init: Record<string, string>): {
 
 test("configuredPublicOrigin ignores localhost APP_URL and BETTER_AUTH_URL", () => {
   assert.equal(
-    configuredPublicOrigin({
-      APP_URL: "http://localhost:3000",
-      BETTER_AUTH_URL: "http://localhost:3000",
-    }),
+    configuredPublicOriginFrom("http://localhost:3000", "http://localhost:3000"),
     null
   );
   assert.equal(
-    configuredPublicOrigin({
-      APP_URL: "https://app.example.test",
-      BETTER_AUTH_URL: "http://localhost:3000",
-    }),
+    configuredPublicOriginFrom(
+      "https://app.example.test",
+      "http://localhost:3000"
+    ),
     "https://app.example.test"
   );
   assert.equal(
-    configuredPublicOrigin({
-      BETTER_AUTH_URL: "https://app.example.test/",
-    }),
+    configuredPublicOriginFrom(undefined, "https://app.example.test/"),
     "https://app.example.test"
   );
 });
