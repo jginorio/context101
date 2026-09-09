@@ -4,7 +4,6 @@ import * as React from "react";
 import {
   ExternalLink,
   FileText,
-  LoaderCircle,
   Pencil,
   Trash2,
   TriangleAlert,
@@ -30,6 +29,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
+import { Skeleton } from "@/components/ui/skeleton";
 import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
@@ -109,6 +109,8 @@ type KnowledgeTreeNode = Omit<TreeNodeType, "children"> & {
   key: string;
   kind: "folder" | "file" | "status";
   status?: "loading" | "error" | "empty";
+  // Width class for a loading row's placeholder bar.
+  skeletonWidth?: string;
 };
 
 function statusNode(
@@ -125,7 +127,20 @@ function statusNode(
   };
 }
 
-const LoadingIcon = () => <LoaderCircle className="animate-spin" />;
+// Ragged widths so a pending folder reads as "a few files are coming"
+// rather than a uniform block.
+const SKELETON_WIDTHS = ["w-32", "w-20", "w-28"];
+
+function loadingNodes(parentPrefix: string): KnowledgeTreeNode[] {
+  return SKELETON_WIDTHS.map((width, index) => ({
+    id: `${parentPrefix || "ROOT"}::__loading${index}`,
+    key: parentPrefix,
+    kind: "status" as const,
+    name: "Loading",
+    status: "loading" as const,
+    skeletonWidth: width,
+  }));
+}
 
 // Renaming is a same-parent move, so it needs the move plumbing wired up
 // (`onMoved` reconciles open tabs and refreshes the listing).
@@ -186,6 +201,16 @@ function TreeNode({
     canDragFile ? moveDrag.props : null
   );
   const highlighted = dropHighlight(drop.active || moveDrop.active);
+
+  if (node.status === "loading") {
+    return (
+      <TreeViewNode indexPath={indexPath} node={node}>
+        <TreeViewContent className="pointer-events-none">
+          <Skeleton className={cn("h-3.5 rounded-sm", node.skeletonWidth)} />
+        </TreeViewContent>
+      </TreeViewNode>
+    );
+  }
 
   if (node.kind === "folder") {
     const label = node.headerIcon ? (
@@ -258,12 +283,7 @@ function TreeNode({
   }
 
   const disabled = node.kind === "status";
-  const icon =
-    node.status === "loading"
-      ? LoadingIcon
-      : node.status === "error"
-        ? TriangleAlert
-        : FileText;
+  const icon = node.status === "error" ? TriangleAlert : FileText;
 
   const row = (
     <TreeViewNode indexPath={indexPath} node={node}>
@@ -337,8 +357,6 @@ export function FolderNode({
   forceHeader = false,
   headerIcon,
   defaultOpen,
-  hideWhenEmpty = false,
-  prefetch = false,
 }: {
   prefix: string;
   name: string;
@@ -351,10 +369,6 @@ export function FolderNode({
   forceHeader?: boolean;
   headerIcon?: React.ReactNode;
   defaultOpen?: boolean;
-  // Hide connector roots that finished loading with no children.
-  hideWhenEmpty?: boolean;
-  // Load listing even while collapsed (needed to hide empty connector roots).
-  prefetch?: boolean;
 }) {
   const showRoot = depth > 0 || forceHeader;
   const initialExpanded = React.useMemo(
@@ -491,18 +505,18 @@ export function FolderNode({
   }, [ctx.refreshKey, initialExpanded]);
 
   React.useEffect(() => {
-    if (!showRoot || prefetch || defaultOpen) {
+    if (!showRoot || defaultOpen) {
       void loadPrefix(prefix);
     }
     for (const id of expanded) {
       void loadPrefix(id);
     }
-  }, [defaultOpen, expanded, loadPrefix, prefix, prefetch, showRoot, ctx.refreshKey]);
+  }, [defaultOpen, expanded, loadPrefix, prefix, showRoot, ctx.refreshKey]);
 
   function buildChildren(parentPrefix: string): KnowledgeTreeNode[] {
     const state = listings[parentPrefix];
     if (!state || state.status === "loading") {
-      return [statusNode(parentPrefix, "loading", "Loading...")];
+      return loadingNodes(parentPrefix);
     }
 
     if (state.status === "error") {
@@ -542,19 +556,6 @@ export function FolderNode({
   }
 
   const rootChildren = buildChildren(prefix);
-  const rootState = listings[prefix];
-  const loadedRootChildren =
-    rootState?.status === "loaded"
-      ? rootChildren.filter((child) => child.kind !== "status")
-      : rootChildren;
-
-  if (
-    hideWhenEmpty &&
-    rootState?.status === "loaded" &&
-    loadedRootChildren.length === 0
-  ) {
-    return null;
-  }
 
   const rootNode: KnowledgeTreeNode = {
     children: showRoot

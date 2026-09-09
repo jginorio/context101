@@ -10,7 +10,11 @@ import {
   Plus,
 } from "lucide-react";
 
-import { FolderNode, type TreeContext } from "@/components/knowledge-tree";
+import {
+  FolderNode,
+  fetchList,
+  type TreeContext,
+} from "@/components/knowledge-tree";
 import { NotionSource } from "@/components/notion-tree";
 import {
   DropdownMenu,
@@ -19,12 +23,15 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   CONNECTOR_TYPES,
   SOURCE_TYPES,
   TypeIcon,
 } from "@/lib/source-providers";
 import { useAppShell } from "@/components/app-shell";
+import type { Connector } from "@/utils/connectors";
+import { cn } from "@/lib/utils";
 
 // Root folders that are surfaced through their own grouped sections, so we
 // keep them out of the uploaded files tree.
@@ -53,6 +60,21 @@ function GroupHeader({
   );
 }
 
+// Placeholder rows sized like collapsed connector rows, shown until we know
+// which connectors exist — rendering the real names first would flash sources
+// the brain isn't connected to.
+function SourceRowsSkeleton() {
+  return (
+    <div aria-hidden>
+      {["w-24", "w-28", "w-20"].map((width) => (
+        <div key={width} className="my-px flex min-h-8 items-center px-3">
+          <Skeleton className={cn("h-3.5 rounded-sm", width)} />
+        </div>
+      ))}
+    </div>
+  );
+}
+
 export function KnowledgeSidebar({
   selectedKey,
   refreshKey,
@@ -77,6 +99,42 @@ export function KnowledgeSidebar({
   onUploadFiles?: (parentPrefix: string, files: File[]) => void;
 }) {
   const { closeMobileNav } = useAppShell();
+  // Both stay `null` until the first load resolves. Refreshes keep the
+  // previous values so the section doesn't collapse back to skeletons on
+  // every upload.
+  const [connectors, setConnectors] = React.useState<Connector[] | null>(null);
+  // Connector types with at least one synced file, from the folders directly
+  // under `sources/`. A connector with nothing synced yet stays hidden.
+  const [syncedTypes, setSyncedTypes] = React.useState<Set<string> | null>(
+    null
+  );
+
+  React.useEffect(() => {
+    let cancelled = false;
+    fetch("/api/connectors/list")
+      .then((r) => r.json())
+      .then((j) => !cancelled && setConnectors(j.items ?? []))
+      .catch(() => !cancelled && setConnectors([]));
+    fetchList("sources/")
+      .then(
+        (d) =>
+          !cancelled && setSyncedTypes(new Set(d.folders.map((f) => f.name)))
+      )
+      .catch(() => !cancelled && setSyncedTypes(new Set()));
+    return () => {
+      cancelled = true;
+    };
+  }, [refreshKey]);
+
+  const notionTrees = React.useMemo(
+    () =>
+      (connectors ?? []).flatMap((c) =>
+        c.type === "notion" && c.notion_tree ? [c.notion_tree] : []
+      ),
+    [connectors]
+  );
+
+  const sourcesLoading = connectors === null || syncedTypes === null;
 
   const openAddSource = () => {
     closeMobileNav(() => onAddSource?.());
@@ -160,36 +218,39 @@ export function KnowledgeSidebar({
           Notion-style tree). */}
       <div className="space-y-0.5">
         <GroupHeader label="Sources" />
-        {CONNECTOR_TYPES.map((type) =>
-          type === "notion" ? (
-            <NotionSource
-              key="notion"
-              refreshKey={refreshKey}
-              selectedKey={selectedKey}
-              onSelectFile={(key) => {
-                onSelectFile(key);
-                closeMobileNav();
-              }}
-              onOpenInNewTab={onOpenInNewTab}
-            />
-          ) : (
-            <FolderNode
-              key={type}
-              prefix={SOURCE_TYPES[type].prefix}
-              name={SOURCE_TYPES[type].menuLabel}
-              depth={0}
-              ctx={browseCtx}
-              forceHeader
-              prefetch
-              hideWhenEmpty
-              defaultOpen={false}
-              headerIcon={
-                <TypeIcon
-                  type={type}
-                  className="h-3.5 w-3.5 shrink-0 opacity-90"
+        {sourcesLoading ? (
+          <SourceRowsSkeleton />
+        ) : (
+          CONNECTOR_TYPES.filter((type) => syncedTypes?.has(type)).map(
+            (type) =>
+              type === "notion" ? (
+                <NotionSource
+                  key="notion"
+                  trees={notionTrees}
+                  selectedKey={selectedKey}
+                  onSelectFile={(key) => {
+                    onSelectFile(key);
+                    closeMobileNav();
+                  }}
+                  onOpenInNewTab={onOpenInNewTab}
                 />
-              }
-            />
+              ) : (
+                <FolderNode
+                  key={type}
+                  prefix={SOURCE_TYPES[type].prefix}
+                  name={SOURCE_TYPES[type].menuLabel}
+                  depth={0}
+                  ctx={browseCtx}
+                  forceHeader
+                  defaultOpen={false}
+                  headerIcon={
+                    <TypeIcon
+                      type={type}
+                      className="h-3.5 w-3.5 shrink-0 opacity-90"
+                    />
+                  }
+                />
+              )
           )
         )}
         <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
