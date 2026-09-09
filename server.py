@@ -217,7 +217,50 @@ def _validate_token_pg(brain_id: str, presented: str | None) -> bool | None:
         except Exception as e:  # noqa: BLE001
             print(f"[mcp] failed to update token last_used_at: {e}")
         return True
+
+    # No match. If the brain has NO active token rows at all, it was never
+    # migrated to Postgres tokens — brain provisioning historically wrote
+    # only the Secrets Manager secret. Fall back to the secret comparison
+    # (which backfills the row on success) instead of hard-rejecting;
+    # otherwise every newly created brain 401s with a perfectly valid
+    # token. Brains that DO have rows keep strict Postgres-only checks.
+    any_active = _pg_fetchone(
+        """
+        select 1 as one
+        from mcp_tokens
+        where brain_id = %s and revoked_at is null
+        limit 1
+        """,
+        (brain_id,),
+    )
+    if any_active is None:
+        return None
     return False
+
+
+def _backfill_token_row(brain: dict[str, Any], raw_token: str) -> None:
+    """Self-healing migration: after a successful Secrets Manager fallback,
+    persist the hashed token so future requests validate against Postgres.
+    Best-effort — auth already succeeded, so failures only cost another
+    fallback on the next request."""
+    hashed = _hash_token(raw_token)
+    if not hashed:
+        return
+    try:
+        _pg_execute(
+            """
+            insert into mcp_tokens
+              (org_id, brain_id, hashed_token, prefix, role, label, created_by)
+            values
+              (%s, %s, %s, %s, 'read_suggest',
+               'Brain token (backfilled from Secrets Manager)', 'mcp_migration')
+            on conflict (hashed_token) do nothing
+            """,
+            (brain["org_id"], brain["brain_id"], hashed, raw_token[:8]),
+        )
+        print(f"[mcp] backfilled mcp_tokens row for brain {brain['brain_id']}")
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp] token backfill failed (non-fatal): {e}")
 
 
 # ── MCP Server (single FastMCP, brain comes from contextvar) ──────────
@@ -600,6 +643,10 @@ async def _dispatch(scope, receive, send):
                 401,
                 {"error": "invalid or missing bearer token"},
             )(scope, receive, send)
+
+        # Valid via the Secrets Manager fallback — persist the hashed row so
+        # this brain validates against Postgres from now on.
+        _backfill_token_row(brain, presented)
 
     # Rewrite the scope's path so FastMCP's own router matches /mcp routes
     # regardless of whether the client called /mcp or /brain/<id>/mcp.
