@@ -6,7 +6,6 @@ import {
   ChevronRight,
   ExternalLink,
   FileText,
-  LoaderCircle,
 } from "lucide-react";
 
 import {
@@ -141,43 +140,19 @@ function NotionNode({
  * one Notion connector has a synced tree.
  */
 export function NotionSource({
-  refreshKey,
+  trees,
   selectedKey,
   onSelectFile,
   onOpenInNewTab,
 }: {
-  refreshKey: number;
+  trees: NotionTreeNode[];
   selectedKey: string | null;
   onSelectFile: (key: string) => void;
   onOpenInNewTab?: (key: string) => void;
 }) {
-  const [trees, setTrees] = React.useState<NotionTreeNode[] | null>(null);
   const [open, setOpen] = React.useState(true);
 
-  React.useEffect(() => {
-    let cancelled = false;
-    setTrees(null);
-    fetch("/api/connectors/list")
-      .then((r) => r.json())
-      .then((j) => {
-        if (cancelled) return;
-        const items: { type: string; notion_tree?: NotionTreeNode }[] =
-          j.items ?? [];
-        setTrees(
-          items
-            .filter((c) => c.type === "notion" && c.notion_tree)
-            .map((c) => c.notion_tree as NotionTreeNode)
-        );
-      })
-      .catch(() => !cancelled && setTrees([]));
-    return () => {
-      cancelled = true;
-    };
-  }, [refreshKey]);
-
-  // Hide entirely when there are no Notion trees (matches the other connector
-  // roots' hide-when-empty behavior).
-  if (trees && trees.length === 0) return null;
+  if (trees.length === 0) return null;
 
   return (
     <div>
@@ -195,24 +170,18 @@ export function NotionSource({
         <span className="truncate">Notion</span>
       </button>
       {open ? (
-        trees === null ? (
-          <div className="flex items-center gap-2 px-2 py-1.5 text-xs text-muted-foreground">
-            <LoaderCircle className="h-3.5 w-3.5 animate-spin" /> Loading…
-          </div>
-        ) : (
-          <div className="pl-1">
-            {trees.map((tree) => (
-              <NotionNode
-                key={tree.id}
-                node={tree}
-                depth={0}
-                selectedKey={selectedKey}
-                onSelect={onSelectFile}
-                onOpenInNewTab={onOpenInNewTab}
-              />
-            ))}
-          </div>
-        )
+        <div className="pl-1">
+          {trees.map((tree) => (
+            <NotionNode
+              key={tree.id}
+              node={tree}
+              depth={0}
+              selectedKey={selectedKey}
+              onSelect={onSelectFile}
+              onOpenInNewTab={onOpenInNewTab}
+            />
+          ))}
+        </div>
       ) : null}
     </div>
   );
