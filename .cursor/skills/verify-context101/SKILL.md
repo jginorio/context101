@@ -75,6 +75,7 @@ Stable handles:
 | Wiki nav | link `Wiki` → `/wiki` |
 | Suggestions nav | link `Suggestions` → `/suggestions` |
 | Conflicts nav | link `Conflicts` → `/conflicts` (heading `Conflicts`) |
+| App nav strip | sidebar row under Active brain; `overflow-x-auto` — scroll sideways if Conflicts is off-screen |
 | Conflicts status | sidebar buttons `Pending`, `Accepted`, `Rejected`, `All` |
 | Conflicts search | textbox placeholder `Search conflicts…` |
 | Conflicts refresh | button `Refresh` |
