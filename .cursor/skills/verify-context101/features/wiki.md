@@ -33,3 +33,4 @@ Preconditions:
 - Refresh now starts a Fargate wiki generator. It is slow and costs inference. Treat as explicit-only.
 - Code wikis are a separate list (`code/` prefix). Team wiki is the default selection.
 - `/wiki/ask` streams Claude after retrieve. Poll `bin/retrieve`, not this page.
+- Retrieve and Ask also fire-and-forget conflict evidence (`reportEvidence`). The retrieve JSON does not include a new Conflicts row; do not wait on `/conflicts` as ingest proof. See [conflicts](./conflicts.md).

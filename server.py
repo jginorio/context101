@@ -29,6 +29,10 @@ import os
 import hashlib
 import time
 import uuid
+import json
+import threading
+import urllib.error
+import urllib.request
 from contextvars import ContextVar
 from datetime import datetime, timezone
 from typing import Any
@@ -72,6 +76,9 @@ secrets_client = _session.client("secretsmanager", config=_boto_cfg)
 
 _current_brain: ContextVar[dict[str, Any] | None] = ContextVar(
     "current_brain", default=None
+)
+_current_bearer: ContextVar[str | None] = ContextVar(
+    "current_bearer", default=None
 )
 
 
@@ -322,6 +329,50 @@ def _source_key_from_retrieval(result: dict[str, Any]) -> str:
     return uri
 
 
+def _report_conflict_evidence(
+    brain: dict[str, Any],
+    query: str,
+    hits: list[dict[str, str]],
+) -> None:
+    """POST query evidence to the web app. Failures are logged, never raised."""
+    base = (os.environ.get("APP_URL") or os.environ.get("BETTER_AUTH_URL") or "").rstrip(
+        "/"
+    )
+    if not base or not hits:
+        return
+    bearer = _current_bearer.get()
+    payload = json.dumps(
+        {
+            "via": "query",
+            "query": query,
+            "hits": hits,
+        }
+    ).encode("utf-8")
+
+    def _post() -> None:
+        try:
+            req = urllib.request.Request(
+                f"{base}/api/conflicts/evidence",
+                data=payload,
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "x-brain-id": str(brain.get("brain_id") or ""),
+                    **(
+                        {"Authorization": f"Bearer {bearer}"}
+                        if bearer
+                        else {}
+                    ),
+                },
+            )
+            with urllib.request.urlopen(req, timeout=5) as resp:
+                resp.read()
+        except Exception as e:  # noqa: BLE001
+            print(f"[mcp] conflict evidence failed: {e}")
+
+    threading.Thread(target=_post, daemon=True).start()
+
+
 # ── Tools ─────────────────────────────────────────────────────────────
 
 
@@ -368,6 +419,7 @@ def search_knowledge(query: str, limit: int = 5) -> str:
     if not results:
         return f'No results for "{query}" in brain `{brain["brain_id"]}`.'
 
+    hits: list[dict[str, str]] = []
     blocks = [
         f'Found {len(results)} result(s) for "{query}" in brain `{brain["brain_id"]}`.\n'
     ]
@@ -375,9 +427,14 @@ def search_knowledge(query: str, limit: int = 5) -> str:
         content = (r.get("content") or {}).get("text", "").strip()
         score = r.get("score", 0.0)
         key = _source_key_from_retrieval(r)
+        hits.append({"key": key, "text": content})
         blocks.append(
             f"### {i}. `{key}`  ·  score {score:.3f}\n\n{content}\n"
         )
+    try:
+        _report_conflict_evidence(brain, query, hits)
+    except Exception as e:  # noqa: BLE001
+        print(f"[mcp] conflict evidence dispatch failed: {e}")
     return "\n---\n\n".join(blocks)
 
 
@@ -656,10 +713,12 @@ async def _dispatch(scope, receive, send):
     # so the tool functions can read it without threading kwargs through
     # FastMCP's tool dispatch machinery.
     token = _current_brain.set(brain)
+    bearer_token = _current_bearer.set(presented)
     try:
         await _mcp_app(new_scope, receive, send)
     finally:
         _current_brain.reset(token)
+        _current_bearer.reset(bearer_token)
 
 
 # Top-level Starlette app — single catch-all mount because we do the

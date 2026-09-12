@@ -73,6 +73,13 @@ Stable handles:
 | --- | --- |
 | Knowledge nav | link `Knowledge` → `/knowledge` |
 | Wiki nav | link `Wiki` → `/wiki` |
+| Suggestions nav | link `Suggestions` → `/suggestions` |
+| Conflicts nav | link `Conflicts` → `/conflicts` (heading `Conflicts`) |
+| App nav strip | sidebar row under Active brain; `overflow-x-auto` — scroll sideways if Conflicts is off-screen |
+| Conflicts status | sidebar buttons `Pending`, `Accepted`, `Rejected`, `All` |
+| Conflicts search | textbox placeholder `Search conflicts…` |
+| Conflicts refresh | button `Refresh` |
+| Conflict sheet | row click; title is the conflict title. Buttons `Keep left`, `Keep right`, `Merge`, `Approve`, `Reject` |
 | Sources nav | link `Sources` → `/sources` (heading `Data sources`) |
 | Brains nav | link `Brains` → `/brains` |
 | New file | button `New file` |

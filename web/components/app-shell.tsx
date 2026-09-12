@@ -14,6 +14,7 @@ import {
   Plug,
   Settings,
   Sparkles,
+  GitCompare,
   User,
 } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
   { href: "/knowledge", label: "Knowledge", icon: FolderTree },
   { href: "/wiki", label: "Wiki", icon: BookOpen },
   { href: "/suggestions", label: "Suggestions", icon: Sparkles },
+  { href: "/conflicts", label: "Conflicts", icon: GitCompare },
   { href: "/sources", label: "Sources", icon: Plug },
   { href: "/brains", label: "Brains", icon: Brain },
 ];
@@ -63,7 +65,10 @@ export function useAppShell() {
 function AppNav({ onNavigate }: { onNavigate?: () => void }) {
   const pathname = usePathname();
   return (
-    <nav className="flex items-stretch gap-1 px-2">
+    <nav
+      aria-label="App"
+      className="flex min-w-0 items-stretch gap-1 overflow-x-auto px-2 [scrollbar-width:thin]"
+    >
       {NAV_ITEMS.map((item) => {
         const active =
           pathname === item.href || pathname?.startsWith(`${item.href}/`);
@@ -76,14 +81,14 @@ function AppNav({ onNavigate }: { onNavigate?: () => void }) {
             title={item.label}
             aria-label={item.label}
             className={cn(
-              "flex flex-1 flex-col items-center gap-1 rounded-md px-1 py-1.5 text-[10px] leading-none transition-colors",
+              "flex shrink-0 flex-col items-center gap-1 rounded-md px-2 py-1.5 text-[10px] leading-none transition-colors",
               active
                 ? "app-nav-active font-medium"
                 : "text-muted-foreground hover:bg-sidebar-accent hover:text-foreground"
             )}
           >
             <Icon className="h-4 w-4 shrink-0" />
-            <span className="w-full truncate text-center">{item.label}</span>
+            <span className="whitespace-nowrap text-center">{item.label}</span>
           </Link>
         );
       })}
@@ -174,7 +179,7 @@ function SidebarInner({
       <div className="flex h-16 shrink-0 items-center border-b border-sidebar-border px-2">
         <BrainSwitcher />
       </div>
-      <div className="border-b border-sidebar-border/60 py-2">
+      <div className="min-w-0 border-b border-sidebar-border/60 py-2">
         <AppNav onNavigate={onNavigate} />
       </div>
       {contextPanel ? (
