@@ -206,18 +206,6 @@ export default function HomePage() {
         </FadeIn>
       </section>
 
-      <section className="border-t section-divider py-14">
-        <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em] text-balance">
-            Retrieve runs on Bedrock.
-          </h2>
-          <p className="mt-3.5 max-w-2xl text-base leading-7 text-muted-foreground text-pretty">
-            Amazon Bedrock Knowledge Bases, S3, and S3 Vectors. You need Bedrock
-            model access in the account you deploy to.
-          </p>
-        </FadeIn>
-      </section>
-
       <section id="caveats" className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em] text-balance">
