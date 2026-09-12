@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Forward to the Context101 self-host CLI (bin context101).
+# Prefer PATH; else npx context101-cli@0.1.2. Redirect stdout for artifacts.
+set -euo pipefail
+if command -v context101 >/dev/null 2>&1; then
+  exec context101 "$@"
+fi
+exec npx -y context101-cli@0.1.2 "$@"

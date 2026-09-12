@@ -1,15 +1,22 @@
 ---
 name: verify-context101
-description: Drive the Context101 Next.js admin (Knowledge library, wiki, brains) in a browser or via /api/files to prove user-facing behavior. Use when verifying create/rename/move/delete, login, wiki, or brains against a real running app.
+description: Drive Context101's two verification surfaces — the Next.js admin (Knowledge library, wiki, brains) and the self-host CLI (context101-cli / bin context101). Use when verifying create/rename/move/delete, login, wiki, brains, or CLI help/list/destroy --dry-run against a real app or AWS account.
 ---
 
 # Verify Context101
 
-Context101's primary surface is the **Next.js admin** in `web/` (Knowledge library, wiki, suggestions, sources, brains). The MCP server and marketing `site/` are out of scope here.
+Context101 has two verification surfaces:
 
-Agents that have never seen this repo should follow this file cold: launch or reuse `:3000`, run doctor, drive a mapped feature through the real UI or the authenticated file APIs, capture proof, then clean up scratch keys only.
+1. **Next.js admin** in `web/` (Knowledge library, wiki, suggestions, sources, brains) at `:3000`.
+2. **Self-host CLI** in `packages/cli` — npm package `context101-cli`, bin `context101` — the AWS front door for stack ops (`help` / `list` / `destroy --dry-run` in a default run).
+
+The MCP server and marketing `site/` remain out of scope here.
+
+Agents that have never seen this repo should follow this file cold. For admin features: launch or reuse `:3000`, run doctor, drive a mapped feature through the real UI or the authenticated file APIs, capture proof, then clean up scratch keys only. For CLI features: use a fresh shell session per command, doctor the `context101` bin (or `npx -y context101-cli@0.1.2`), drive help / list / destroy --dry-run, and capture stdout under `artifacts/cli/`.
 
 ## Launch
+
+### Admin (:3000)
 
 Reuse the environment instance when it is already healthy. Do **not** start a second Next.js process on `:3000`.
 
@@ -35,6 +42,23 @@ Required env for a driveable instance:
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (or a host alias pair as above)
 
 If `BETTER_AUTH_URL` is a hosted origin, browser `fetch` to `/api/auth/sign-in/email` from `http://localhost:3000` returns `INVALID_ORIGIN`. Sign in with **curl** (no Origin header) via `bin/auth-cookie`.
+
+### CLI (fresh session per command)
+
+`list`, `help`, and `destroy --dry-run` need no repo checkout. Use a new short-lived shell for each command — this is not the long-lived admin on `:3000`.
+
+Doctor: `which context101` or `npx -y context101-cli@0.1.2`. `context101 help` exits 0.
+
+Drive via `bin/cli` when present, or bare `context101`. Capture stdout under `artifacts/cli/`. Never deploy, and never destroy without `--dry-run`, in this skill's default run. See [features/cli.md](features/cli.md).
+
+```bash
+.cursor/skills/verify-context101/bin/cli help
+.cursor/skills/verify-context101/bin/cli help list
+.cursor/skills/verify-context101/bin/cli list --aws-profile <name>
+.cursor/skills/verify-context101/bin/cli destroy <StackName> --dry-run --aws-profile <name>
+```
+
+Omit `--aws-profile` when the default AWS env is already the right account. `plateapr.com` is a live-stack example, not a required profile. Unscoped `npx context101` is Context7's MCP — use `context101-cli`. Never print deploy-env secrets or AWS keys.
 
 ## Doctor
 
@@ -168,6 +192,7 @@ All executable; invoke from the repo root:
 | `bin/auth-cookie` | print `name=value` session cookie |
 | `bin/doctor` | read-only health check |
 | `bin/launch` | reuse or start `:3000` with AWS env |
+| `bin/cli` | forward to `context101` (or `npx -y context101-cli@0.1.2`) |
 | `bin/files` | authenticated list/get/put/move/delete |
 | `bin/retrieve` | Bedrock Retrieve via `/api/wiki/retrieve`; can wait on a key/canary |
 | `bin/cleanup` | remove `verify/` scratch keys; stop only our Next |
