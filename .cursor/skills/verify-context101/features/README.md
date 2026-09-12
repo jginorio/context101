@@ -4,7 +4,7 @@ This directory is the maintained source for verifying user-facing Context101 beh
 
 ## Baseline preconditions
 
-- Admin recipes need `:3000` plus `.cursor/skills/verify-context101/bin/doctor` (`doctor: healthy`). CLI recipes need the `context101` bin (or `npx context101-cli`) and an AWS profile/creds; they do not need `:3000`.
+- Admin recipes need `:3000` plus `.cursor/skills/verify-context101/bin/doctor` (`doctor: healthy`). CLI recipes need the `context101` bin (or `npx context101-cli`), an AWS profile/creds, and the `aws` CLI for `list` / `destroy --dry-run`; they do not need `:3000`.
 - Admin is healthy at `http://localhost:3000`.
 - `.cursor/skills/verify-context101/bin/doctor` prints `doctor: healthy`.
 - Session is the `CONTEXT101_USER` account; active brain is **Default**.

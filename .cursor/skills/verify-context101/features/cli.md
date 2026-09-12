@@ -22,7 +22,7 @@ Preconditions:
 
 - A fresh short-lived shell session per command (this is not the long-lived `:3000` admin).
 - `which context101` or `npx -y context101-cli@0.1.2`; `context101 help` exits 0.
-- AWS creds or `--aws-profile <name>` when `list` / `destroy --dry-run` must talk to CloudFormation. `plateapr.com` is a live-stack example, not a hard requirement.
+- AWS creds or `--aws-profile <name>` when `list` / `destroy --dry-run` must talk to CloudFormation. `plateapr.com` is a live-stack example, not a hard requirement. Those commands also need the `aws` CLI on PATH (`cloudformation list-stacks`); `help` does not.
 - Do not start `:3000`. Do not run `init --force`, `deploy`, or destroy without `--dry-run`.
 
 - **Doctor.** `command -v context101` or fall back to `npx -y context101-cli@0.1.2`. `.cursor/skills/verify-context101/bin/cli help` exits 0.
@@ -38,4 +38,5 @@ Preconditions:
 - `list` / `help` / `destroy --dry-run` need no repo checkout. `init` / `deploy` / `diff` / `synth` / destroy-for-real need a `cdk/` + `web/` checkout or clone.
 - Never print deploy-env secrets or AWS keys. `config` redacts values; still skip it unless asked.
 - `--aws-profile plateapr.com` is a Platea live-stack example, not a required profile name.
+- `list` and `destroy --dry-run` shell out to the `aws` CLI (`cloudformation list-stacks`). If `command -v aws` fails, install it; `help` still works without it.
 - Proof goes under `.cursor/skills/verify-context101/artifacts/cli/` (gitignored). `bin/cli` is a forwarder — redirect stdout yourself.

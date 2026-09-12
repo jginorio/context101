@@ -58,7 +58,7 @@ Drive via `bin/cli` when present, or bare `context101`. Capture stdout under `ar
 .cursor/skills/verify-context101/bin/cli destroy <StackName> --dry-run --aws-profile <name>
 ```
 
-Omit `--aws-profile` when the default AWS env is already the right account. `plateapr.com` is a live-stack example, not a required profile. Unscoped `npx context101` is Context7's MCP — use `context101-cli`. Never print deploy-env secrets or AWS keys.
+Omit `--aws-profile` when the default AWS env is already the right account. `plateapr.com` is a live-stack example, not a required profile. `list` / `destroy --dry-run` also need the `aws` CLI on PATH. Unscoped `npx context101` is Context7's MCP — use `context101-cli`. Never print deploy-env secrets or AWS keys.
 
 ## Doctor
 
