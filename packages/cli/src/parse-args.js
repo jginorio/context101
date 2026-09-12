@@ -24,8 +24,13 @@ deploy-env. Does not run cdk deploy. Deploy only via ./cdk/deploy.sh.
   --deploy               run ./cdk/deploy.sh after writing
                          (still asks unless combined with --yes)
 
-From a Context101 checkout: npx context101 init
-Dry-run:                    npx context101 init --dry-run
+From this checkout (after npm install):
+  npm run context101 -- init
+  npx context101 init
+Dry-run: npm run context101 -- init --dry-run
+
+npx context101 without a local install downloads Context7's MCP
+from npm (unrelated) and fails with "too many arguments".
 `.trim();
 
 export function helpText() {

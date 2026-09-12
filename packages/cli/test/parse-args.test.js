@@ -58,6 +58,17 @@ test("rejects unknown command and flag", () => {
 test("help text names init and deploy.sh, not site/", () => {
   const text = helpText();
   assert.match(text, /npx context101 init/);
+  assert.match(text, /npm run context101 -- init/);
+  assert.match(text, /Context7/);
   assert.match(text, /deploy\.sh/);
   assert.equal(text.includes("site/"), false);
+});
+
+test("workspace package is named context101 so npx does not fetch Context7", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { fileURLToPath } = await import("node:url");
+  const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
+  const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
+  assert.equal(pkg.name, "context101");
+  assert.equal(pkg.bin.context101, "./bin/context101.js");
 });
