@@ -53,6 +53,7 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
   assert.match(body, /^BETTER_AUTH_SECRET="/m);
   assert.match(body, /^MCP_TOKEN_PEPPER="/m);
   assert.match(body, /^DATABASE_URL="/m);
+  assert.equal(body.includes("CREATE_RDS="), false);
   assert.match(body, /DATABASE_DRIVER="postgres-js"/);
   assert.match(body, /APP_MODE="self_hosted"/);
   assert.match(body, /ALLOW_PUBLIC_SIGNUP="false"/);
@@ -345,13 +346,14 @@ test("interactive init asks for AWS keys when no profiles exist", async () => {
   assert.equal(text.includes("TESTACCESSKEYID12345"), false);
 });
 
-test("--yes without a database URL fails", async () => {
+test("--yes without a database URL writes CREATE_RDS", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-nodb-"));
   await makeRepoFixture(root);
   const io = memoryIo();
   const env = testEnv();
+  const envPath = path.join(root, "cdk", ".deploy-env");
 
-  const code = await main(["init", "--yes"], {
+  const code = await main(["init", "--yes", "--force"], {
     cwd: root,
     env,
     stdout: io.stdout,
@@ -360,7 +362,9 @@ test("--yes without a database URL fails", async () => {
     exec: fakeExec(),
   });
 
-  assert.equal(code, 1);
-  assert.match(io.stderrText, /Postgres URL/);
-  assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), false);
+  assert.equal(code, 0);
+  const body = await readFile(envPath, "utf8");
+  assert.match(body, /CREATE_RDS="true"/);
+  assert.equal(body.includes("DATABASE_URL="), false);
+  assert.match(io.stdoutText, /CDK will create RDS|CREATE_RDS|creates RDS/);
 });

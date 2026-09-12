@@ -14,8 +14,25 @@ import {
   parseEmbeddingCatalog,
 } from "../src/embedding-models.js";
 import { renderDeployEnv } from "../src/env-file.js";
+import { createRequire } from "node:module";
 import { main } from "../src/main.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
+
+const require = createRequire(import.meta.url);
+const { isNeonConnectionString } = require(
+  "../../../cdk/layers/pg-http/nodejs/node_modules/pg-http/index.js"
+);
+
+test("pg-http treats Neon hosts as HTTP and RDS as TCP", () => {
+  assert.equal(
+    isNeonConnectionString("postgresql://u:p@ep-x.neon.tech/db"),
+    true
+  );
+  assert.equal(
+    isNeonConnectionString("postgresql://u:p@context101.xxxx.rds.amazonaws.com/context101"),
+    false
+  );
+});
 
 test("Amplify defaults to skip unless gh login is the repo owner", () => {
   assert.equal(defaultAmplifyRepository({ ghLogin: "acme-user" }), "");

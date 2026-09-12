@@ -34,7 +34,7 @@
 #   APP_MODE, ALLOW_PUBLIC_SIGNUP, BILLING_ENABLED, APP_URL, MARKETING_URL,
 #   MCP_PUBLIC_HOST, MCP_DOMAIN_CERT_ARN, MCP_APPRUNNER,
 #   SES_REGION, SES_FROM_EMAIL, SES_REPLY_TO_EMAIL,
-#   REPOSITORY, EMBED_MODEL_ID.
+#   REPOSITORY, EMBED_MODEL_ID, CREATE_RDS.
 #
 # MCP compute (see "Migrating off App Runner" in the README):
 #   MCP_DOMAIN_CERT_ARN — issued us-east-1 ACM cert ARN for the MCP custom
@@ -244,6 +244,7 @@ add_context_if_set "SES_FROM_EMAIL"
 add_context_if_set "SES_REPLY_TO_EMAIL"
 add_context_if_set "REPOSITORY"
 add_context_if_set "EMBED_MODEL_ID"
+add_context_if_set "CREATE_RDS"
 
 if [[ "$SUBCOMMAND" == "deploy" ]]; then
   CDK_ARGS+=("--require-approval" "never")
@@ -288,6 +289,7 @@ preview_if_forwarded "APP_URL"             "APP_URL:            ${APP_URL:-}"
 preview_if_forwarded "MARKETING_URL"       "MARKETING_URL:      ${MARKETING_URL:-}"
 preview_if_forwarded "REPOSITORY"          "REPOSITORY:         ${REPOSITORY:-}"
 preview_if_forwarded "EMBED_MODEL_ID"      "EMBED_MODEL_ID:     ${EMBED_MODEL_ID:-}"
+preview_if_forwarded "CREATE_RDS"          "CREATE_RDS:         ${CREATE_RDS:-}"
 $SEED && printf "  ${DIM}seed:        ${RESET}${YELLOW}true${RESET}\n"
 printf "\n"
 

@@ -73,26 +73,47 @@ export async function promptAnswers({ defaults, io, exec, env }) {
     );
   }
 
-  const databaseUrl = await password({
-    message: "DATABASE_URL",
-    mask: true,
-    validate: (value) => (value ? true : "needed for the Postgres control plane"),
-  });
-
-  const inferredDriver = inferDriver(databaseUrl);
-  const databaseDriver = await select({
-    message: "DATABASE_DRIVER",
-    default: inferredDriver,
+  const dbMode = await select({
+    message: "Postgres control plane",
+    default: defaults.databaseUrl ? "url" : "rds",
     choices: [
-      { name: `${DRIVER_NEON} (Neon)`, value: DRIVER_NEON },
-      { name: `${DRIVER_POSTGRES} (Supabase / RDS / local)`, value: DRIVER_POSTGRES },
+      {
+        name: "Create RDS — CDK provisions Postgres (db.t3.micro, public)",
+        value: "rds",
+      },
+      {
+        name: "I have a DATABASE_URL (Neon / Supabase / existing Postgres)",
+        value: "url",
+      },
     ],
   });
 
-  const databasePrepare = await confirm({
-    message: "DATABASE_PREPARE (false for Supabase transaction pooler)",
-    default: inferPrepare(databaseUrl),
-  });
+  let databaseUrl = "";
+  let createRds = dbMode === "rds";
+  let databaseDriver = DRIVER_POSTGRES;
+  let databasePrepare = true;
+  if (dbMode === "url") {
+    databaseUrl = await password({
+      message: "DATABASE_URL",
+      mask: true,
+      validate: (value) =>
+        value ? true : "needed unless CDK creates RDS",
+    });
+    createRds = false;
+    const inferredDriver = inferDriver(databaseUrl);
+    databaseDriver = await select({
+      message: "DATABASE_DRIVER",
+      default: inferredDriver,
+      choices: [
+        { name: `${DRIVER_NEON} (Neon)`, value: DRIVER_NEON },
+        { name: `${DRIVER_POSTGRES} (Supabase / RDS / local)`, value: DRIVER_POSTGRES },
+      ],
+    });
+    databasePrepare = await confirm({
+      message: "DATABASE_PREPARE (false for Supabase transaction pooler)",
+      default: inferPrepare(databaseUrl),
+    });
+  }
 
   const envChoice = await select({
     message: "Write deploy-env to",
@@ -126,6 +147,7 @@ export async function promptAnswers({ defaults, io, exec, env }) {
     region,
     repository,
     embedModelId,
+    createRds,
     embeddingModels: catalog.models,
     databaseUrl,
     databaseDriver,

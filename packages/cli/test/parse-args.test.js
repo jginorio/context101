@@ -18,6 +18,7 @@ test("parses init flags", () => {
     "--seed",
     "--database-url",
     "postgresql://x",
+    "--create-rds",
     "--database-driver",
     "postgres-js",
     "--database-prepare",
@@ -39,6 +40,7 @@ test("parses init flags", () => {
   assert.equal(opts.yes, true);
   assert.equal(opts.seed, true);
   assert.equal(opts.databaseUrl, "postgresql://x");
+  assert.equal(opts.createRds, true);
   assert.equal(opts.databaseDriver, "postgres-js");
   assert.equal(opts.databasePrepare, false);
   assert.equal(opts.repo, "https://github.com/acme/context101");
@@ -53,6 +55,7 @@ test("help text says --aws-profile is required with --yes when several exist", (
   assert.match(helpText(), /required with --yes/);
   assert.match(helpText(), /skip Amplify/);
   assert.match(helpText(), /embed-model/);
+  assert.match(helpText(), /create-rds|creates RDS/);
 });
 
 test("rejects unknown command and flag", () => {

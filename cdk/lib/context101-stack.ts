@@ -19,7 +19,13 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import * as path from "path";
+import { execSync } from "node:child_process";
 import { BrainShared } from "./brain-shared";
+import {
+  applyControlPlaneMigrations,
+  contextWantsRds,
+  provisionRdsPostgres,
+} from "./control-plane-db";
 
 /** Hosted product zone. Self-host uses an operator domain or Amplify default. */
 function isHostedContext101Url(raw: string | undefined): boolean {
@@ -102,24 +108,82 @@ export class Context101Stack extends cdk.Stack {
       `arn:aws:bedrock:${this.region}::foundation-model/cohere.embed-*`,
     ];
 
-    // ── Postgres control plane (Neon) ─────────────────────────────────
-    //   The web app + MCP server already read the brain/connector/
-    //   suggestion registry from Postgres. The AWS worker Lambdas below
-    //   share the same source of truth via a tiny zero-dependency
-    //   Neon-over-HTTP helper packaged as a layer (see layers/pg-http).
-    //   DATABASE_URL is passed at deploy time via `-c DATABASE_URL=...`
-    //   (deploy.sh forwards it from .deploy-env).
-    const databaseUrl = this.node.tryGetContext("DATABASE_URL") as
-      | string
-      | undefined;
+    // ── Postgres control plane ────────────────────────────────────────
+    //   Bring your own URL (Neon / Supabase / existing RDS) via
+    //   `-c DATABASE_URL=...`, or pass `-c CREATE_RDS=true` and the
+    //   stack provisions a small public Postgres. Worker Lambdas use
+    //   the pg-http layer (Neon HTTP, or `pg` TCP for RDS).
+    let wikiVpcSingleton: ec2.Vpc | undefined;
+    const ensureWikiVpc = (): ec2.Vpc => {
+      if (!wikiVpcSingleton) {
+        wikiVpcSingleton = new ec2.Vpc(this, "WikiGenVpc", {
+          maxAzs: 2,
+          natGateways: 0,
+          subnetConfiguration: [
+            { name: "public", subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
+          ],
+        });
+      }
+      return wikiVpcSingleton;
+    };
+
+    const pgHttpSrc = path.resolve(__dirname, "..", "layers", "pg-http");
     const pgHttpLayer = new lambda.LayerVersion(this, "PgHttpLayer", {
-      code: lambda.Code.fromAsset(
-        path.resolve(__dirname, "..", "layers", "pg-http")
-      ),
+      code: lambda.Code.fromAsset(pgHttpSrc, {
+        bundling: {
+          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
+          environment: {
+            HOME: "/tmp",
+            npm_config_cache: "/tmp/.npm",
+            npm_config_update_notifier: "false",
+          },
+          command: [
+            "bash",
+            "-c",
+            "cp -au . /asset-output && cd /asset-output/nodejs && npm install --omit=dev --no-audit --no-fund --loglevel=error",
+          ],
+          local: {
+            tryBundle(outputDir: string): boolean {
+              try {
+                execSync(
+                  `cp -a "${pgHttpSrc}/." "${outputDir}/" && cd "${outputDir}/nodejs" && npm install --omit=dev --no-audit --no-fund --loglevel=error`,
+                  {
+                    stdio: "inherit",
+                    env: {
+                      ...process.env,
+                      npm_config_update_notifier: "false",
+                    },
+                  }
+                );
+                return true;
+              } catch {
+                return false;
+              }
+            },
+          },
+        },
+      }),
       compatibleRuntimes: [lambda.Runtime.NODEJS_20_X],
       description:
-        "Zero-dependency Neon Postgres-over-HTTP helper (pg-http) shared by control-plane Lambdas",
+        "Neon SQL-over-HTTP + pg TCP helper (pg-http) for control-plane Lambdas",
     });
+
+    const providedDatabaseUrl = (
+      this.node.tryGetContext("DATABASE_URL") as string | undefined
+    )?.trim();
+    const createRds = !providedDatabaseUrl && contextWantsRds(this);
+    let databaseUrl = providedDatabaseUrl || undefined;
+    let rdsSecretArn: string | undefined;
+    if (createRds) {
+      const rdsDb = provisionRdsPostgres(this, ensureWikiVpc(), namePrefix);
+      databaseUrl = rdsDb.databaseUrl;
+      rdsSecretArn = rdsDb.secretArn;
+      applyControlPlaneMigrations(this, {
+        databaseUrl: rdsDb.databaseUrl,
+        pgHttpLayer,
+        instance: rdsDb.instance,
+      });
+    }
     // Env injected into every worker Lambda that reaches the control plane.
     const pgLambdaEnv: Record<string, string> = databaseUrl
       ? { DATABASE_URL: databaseUrl }
@@ -342,13 +406,8 @@ export class Context101Stack extends cdk.Stack {
     // a) Minimal VPC — public subnets only, no NAT (zero idle cost).
     //    The task has short-lived outbound needs (S3 + Bedrock), so
     //    assignPublicIp is enough and saves ~$32/mo vs a NAT gateway.
-    const wikiVpc = new ec2.Vpc(this, "WikiGenVpc", {
-      maxAzs: 2,
-      natGateways: 0,
-      subnetConfiguration: [
-        { name: "public", subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
-      ],
-    });
+    //    Reused for CDK-created RDS when CREATE_RDS=true.
+    const wikiVpc = ensureWikiVpc();
 
     // b) ECS cluster (free; only tasks incur cost)
     const wikiCluster = new ecs.Cluster(this, "WikiGenCluster", {
@@ -750,12 +809,12 @@ export class Context101Stack extends cdk.Stack {
     //   token_secret_arn is resolved via cdk.Lazy because the secret
     //   itself is conditional on `-c token=<value>` being passed.
     const teamToken = this.node.tryGetContext("token") as string | undefined;
-    const databaseDriver = this.node.tryGetContext("DATABASE_DRIVER") as
-      | string
-      | undefined;
-    const databasePrepare = this.node.tryGetContext("DATABASE_PREPARE") as
-      | string
-      | undefined;
+    const databaseDriver =
+      (this.node.tryGetContext("DATABASE_DRIVER") as string | undefined) ||
+      (createRds ? "postgres-js" : undefined);
+    const databasePrepare =
+      (this.node.tryGetContext("DATABASE_PREPARE") as string | undefined) ||
+      (createRds ? "true" : undefined);
     const betterAuthSecret = this.node.tryGetContext("BETTER_AUTH_SECRET") as
       | string
       | undefined;
@@ -1601,5 +1660,12 @@ export class Context101Stack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "VectorBucketArn", { value: vectorBucketArn });
     new cdk.CfnOutput(this, "VectorIndexArn", { value: vectorIndexArn });
+    if (rdsSecretArn) {
+      new cdk.CfnOutput(this, "ControlPlaneDbSecretArn", {
+        value: rdsSecretArn,
+        description:
+          "Secrets Manager ARN for the CDK-created RDS user/password. Not the connection string.",
+      });
+    }
   }
 }

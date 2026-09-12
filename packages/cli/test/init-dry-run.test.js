@@ -61,6 +61,25 @@ test("dry-run prints the plan and writes nothing", async () => {
   assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), false);
 });
 
+test("dry-run without a database URL plans CDK RDS", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-dry-rds-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+
+  const code = await main(["init", "--dry-run"], {
+    cwd: root,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(),
+  });
+
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /CDK creates RDS/);
+  assert.equal(io.stdoutText.includes("postgresql://"), false);
+});
+
 test("dry-run lists AWS profiles when several exist", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-dry-prof-"));
   await makeRepoFixture(root);

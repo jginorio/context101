@@ -156,6 +156,27 @@ test("deploy.sh ignores a ghs_ gh token when Amplify is skipped", async () => {
   assert.equal(raw.toString("utf8").includes("githubToken="), false);
 });
 
+test("deploy.sh forwards CREATE_RDS when Amplify is skipped", async () => {
+  const dir = await setupWrapperHome();
+  await writeFile(
+    path.join(dir, ".deploy-env"),
+    [
+      'CTX_TOKEN="ctx_testtoken_xx"',
+      'CREATE_RDS="true"',
+      'DATABASE_DRIVER="postgres-js"',
+      "",
+    ].join("\n"),
+    { mode: 0o600 }
+  );
+
+  const result = runWrapper(dir, {});
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const raw = await readFile(path.join(dir, "npx-args"));
+  const joined = raw.toString("utf8");
+  assert.match(joined, /CREATE_RDS=true/);
+  assert.equal(joined.includes("DATABASE_URL="), false);
+});
+
 test("deploy.sh forwards EMBED_MODEL_ID and githubToken when watching a repo", async () => {
   const dir = await setupWrapperHome();
   await writeFile(

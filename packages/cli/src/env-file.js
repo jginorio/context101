@@ -54,11 +54,20 @@ export function renderDeployEnv(values) {
   }
 
   lines.push("");
-  lines.push(`DATABASE_URL=${quoteShell(values.DATABASE_URL)}`);
-  lines.push(`DATABASE_DRIVER=${quoteShell(values.DATABASE_DRIVER)}`);
-  lines.push(
-    `DATABASE_PREPARE=${quoteShell(values.DATABASE_PREPARE ? "true" : "false")}`
-  );
+  if (values.CREATE_RDS) {
+    lines.push("# DATABASE_URL omitted — CDK creates RDS Postgres.");
+    lines.push(`CREATE_RDS=${quoteShell("true")}`);
+    lines.push(
+      `DATABASE_DRIVER=${quoteShell(values.DATABASE_DRIVER ?? DRIVER_POSTGRES)}`
+    );
+    lines.push(`DATABASE_PREPARE=${quoteShell("true")}`);
+  } else {
+    lines.push(`DATABASE_URL=${quoteShell(values.DATABASE_URL)}`);
+    lines.push(`DATABASE_DRIVER=${quoteShell(values.DATABASE_DRIVER)}`);
+    lines.push(
+      `DATABASE_PREPARE=${quoteShell(values.DATABASE_PREPARE ? "true" : "false")}`
+    );
+  }
 
   lines.push("");
   lines.push(`BETTER_AUTH_SECRET=${quoteShell(values.BETTER_AUTH_SECRET)}`);

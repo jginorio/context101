@@ -4,6 +4,7 @@ import {
   ALLOW_PUBLIC_SIGNUP,
   APP_MODE,
   BILLING_ENABLED,
+  DRIVER_POSTGRES,
   EXAMPLE_ENV_REL,
   SMOOTH_REGION,
 } from "./defaults.js";
@@ -173,6 +174,7 @@ export async function runInit(opts, ctx) {
     embedModelId: answers.embedModelId || "",
     embeddingModels: answers.embeddingModels || [],
     hasDatabaseUrl: Boolean(answers.databaseUrl),
+    createRds: Boolean(answers.createRds),
     databaseDriver: answers.databaseDriver,
     databasePrepare: answers.databasePrepare,
     envDisplay,
@@ -199,7 +201,7 @@ export async function runInit(opts, ctx) {
     CTX_TOKEN: generateCtxToken(),
     BETTER_AUTH_SECRET: generateSecret(),
     MCP_TOKEN_PEPPER: generateSecret(),
-    DATABASE_URL: answers.databaseUrl,
+    ...(answers.createRds ? {} : { DATABASE_URL: answers.databaseUrl }),
   };
   if (answers.ghToken) secrets.CTX_GH_TOKEN = answers.ghToken;
 
@@ -219,6 +221,7 @@ export async function runInit(opts, ctx) {
     AWS_REGION: answers.region,
     DATABASE_DRIVER: answers.databaseDriver,
     DATABASE_PREPARE: answers.databasePrepare,
+    CREATE_RDS: answers.createRds ? "true" : "",
     APP_MODE,
     ALLOW_PUBLIC_SIGNUP,
     BILLING_ENABLED,
@@ -294,19 +297,23 @@ async function collectAnswers(opts, ctx) {
   });
 
   if (opts.dryRun || opts.yes) {
-    if (opts.yes && !opts.dryRun && !databaseUrl) {
-      io.err("--yes needs a Postgres URL. Pass --database-url or set DATABASE_URL.");
-      return null;
-    }
+    const createRds = !databaseUrl;
     return {
       region: SMOOTH_REGION,
       repository,
       embedModelId: opts.embedModel || "",
       embeddingModels: catalog.models,
-      databaseUrl,
-      databaseDriver: opts.databaseDriver || inferDriver(databaseUrl),
+      databaseUrl: createRds ? "" : databaseUrl,
+      createRds,
+      databaseDriver:
+        opts.databaseDriver ||
+        (createRds ? DRIVER_POSTGRES : inferDriver(databaseUrl)),
       databasePrepare:
-        opts.databasePrepare == null ? inferPrepare(databaseUrl) : opts.databasePrepare,
+        opts.databasePrepare == null
+          ? createRds
+            ? true
+            : inferPrepare(databaseUrl)
+          : opts.databasePrepare,
       awsProfile,
       awsAccessKeyId,
       awsSecretAccessKey,
@@ -320,27 +327,30 @@ async function collectAnswers(opts, ctx) {
   }
 
   if (!tty) {
-    io.err("not a TTY. Re-run with --yes (and --database-url) or --dry-run.");
+    io.err("not a TTY. Re-run with --yes or --dry-run.");
     return null;
   }
 
   const prompt = ctx.promptAnswers ?? (await import("./prompt.js")).promptAnswers;
+  const prompted = await prompt({
+    defaults: {
+      repoRoot,
+      region: SMOOTH_REGION,
+      repository,
+      suggestedRepo: remote,
+      embedModelId: opts.embedModel || "",
+      databaseUrl,
+      awsProfile,
+      awsAccessKeyId,
+      awsSecretAccessKey,
+    },
+    io,
+    exec,
+    env: awsEnv,
+  });
   return {
-    ...(await prompt({
-      defaults: {
-        repoRoot,
-        region: SMOOTH_REGION,
-        repository,
-        suggestedRepo: remote,
-        embedModelId: opts.embedModel || "",
-        awsProfile,
-        awsAccessKeyId,
-        awsSecretAccessKey,
-      },
-      io,
-      exec,
-      env: awsEnv,
-    })),
+    ...prompted,
+    createRds: prompted.createRds ?? !prompted.databaseUrl,
     ghToken: null,
   };
 }

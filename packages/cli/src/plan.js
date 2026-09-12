@@ -42,9 +42,11 @@ export function formatDryRun(plan) {
     plan.repository
       ? "     written as REPOSITORY in the env file (CDK reads it as context)"
       : "     a found-the-repo operator does not watch this checkout by default",
-    `  6. Postgres: DATABASE_URL ${plan.hasDatabaseUrl ? "provided" : "missing"}, driver ${plan.databaseDriver}, prepare ${
-      plan.databasePrepare ? "true" : "false"
-    }`,
+    plan.createRds
+      ? "  6. Postgres: CDK creates RDS (db.t3.micro, public) — no DATABASE_URL in the env file"
+      : `  6. Postgres: DATABASE_URL ${plan.hasDatabaseUrl ? "provided" : "missing"}, driver ${plan.databaseDriver}, prepare ${
+          plan.databasePrepare ? "true" : "false"
+        }`,
     `  7. Generate BETTER_AUTH_SECRET, MCP_TOKEN_PEPPER, CTX_TOKEN (not printed)`,
     `     APP_MODE=self_hosted  ALLOW_PUBLIC_SIGNUP=false  BILLING_ENABLED=false`,
     `     BETTER_AUTH_URL / APP_URL omitted — CDK uses the Amplify default domain`,
@@ -79,17 +81,26 @@ function bootstrapLabel(plan) {
 }
 
 export function nextSteps(plan) {
+  const rds = plan.createRds
+    ? "CDK will create RDS Postgres and apply the control-plane schema. Fetch the secret via ControlPlaneDbSecretArn — the password is never printed."
+    : null;
   if (plan.repository) {
     return [
       `Next: ${deployCommand(plan.seed)}`,
+      rds,
       "After Amplify is up (~4 min), open /setup on WebAppDefaultDomain (or your own domain).",
       "Leave BETTER_AUTH_URL / APP_URL unset unless you bring your own host. CDK fills the Amplify default.",
-    ].join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
   }
   return [
     `Next: ${deployCommand(plan.seed)}`,
+    rds,
     "Amplify is skipped — this deploy is the AWS stack only (no GitHub-watched web app).",
     "Run the web app from web/, or re-run init with --repo when you want Amplify.",
     "Leave BETTER_AUTH_URL / APP_URL unset unless you bring your own host.",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }

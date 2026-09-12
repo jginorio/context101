@@ -7,11 +7,12 @@ Walk a trusted-team self-host of Context101. Writes a gitignored
 deploy-env. Does not run cdk deploy. Deploy only via ./cdk/deploy.sh.
 
   --dry-run              print the plan; write nothing, deploy nothing
-  --yes, -y              accept defaults (needs --database-url or DATABASE_URL)
+  --yes, -y              accept defaults (creates RDS if no --database-url)
   --force                overwrite an existing env file
   --deploy-env <path>    default: <repo>/cdk/.deploy-env
   --home                 write ~/.context101/deploy-env instead
   --database-url <url>   Postgres URL (also reads DATABASE_URL)
+  --create-rds           CDK provisions RDS Postgres (default when no URL)
   --database-driver      ${DRIVER_NEON} | ${DRIVER_POSTGRES}
   --database-prepare     true | false
   --aws-profile <name>   also reads AWS_PROFILE; required with --yes
@@ -52,6 +53,7 @@ export function parseArgs(argv) {
     home: false,
     envFile: null,
     databaseUrl: null,
+    createRds: false,
     databaseDriver: null,
     databasePrepare: null,
     awsProfile: null,
@@ -107,6 +109,9 @@ export function parseArgs(argv) {
         break;
       case "--database-url":
         opts.databaseUrl = needValue(arg, args);
+        break;
+      case "--create-rds":
+        opts.createRds = true;
         break;
       case "--database-driver":
         opts.databaseDriver = parseDriver(needValue(arg, args));

@@ -98,6 +98,19 @@ test("writer drops hosted product URLs instead of copying them", () => {
   assert.match(body, /amplifyapp\.com/);
 });
 
+test("writer records CREATE_RDS and omits DATABASE_URL", () => {
+  const body = renderDeployEnv({
+    CTX_TOKEN: "generated-ctx-token-value",
+    BETTER_AUTH_SECRET: "generated-auth-secret-value",
+    MCP_TOKEN_PEPPER: "generated-pepper-value",
+    CREATE_RDS: "true",
+    DATABASE_DRIVER: DRIVER_POSTGRES,
+    DATABASE_PREPARE: true,
+  });
+  assert.match(body, /CREATE_RDS="true"/);
+  assert.equal(body.includes("DATABASE_URL="), false);
+});
+
 test("writer includes static AWS keys next to the region", () => {
   const body = renderDeployEnv({
     CTX_TOKEN: "generated-ctx-token-value",

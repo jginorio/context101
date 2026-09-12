@@ -24,6 +24,10 @@ CTX_TOKEN="context101-platea-2026-bearer"
 AWS_PROFILE="plateapr.com"
 
 # OPTIONAL — OpenSaaS/Postgres + Better Auth path.
+# Omit DATABASE_URL and set CREATE_RDS=true to let CDK provision
+# a small public RDS Postgres (db.t3.micro). The password stays in
+# Secrets Manager (ControlPlaneDbSecretArn) and is never printed.
+# CREATE_RDS="true"
 # DATABASE_URL should be your Postgres connection string.
 # Neon URLs auto-select DATABASE_DRIVER=neon-http. Supabase/RDS/local Postgres
 # can use DATABASE_DRIVER=postgres-js.
