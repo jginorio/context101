@@ -38,3 +38,4 @@ This directory is the maintained source for verifying user-facing behavior of th
 - [Login](./login.md) — email sign-in and session cookie.
 - [Brains](./brains.md) — switch and inspect brains (do not provision or delete brains in a default run).
 - [Wiki](./wiki.md) — open the wiki index and a page; do not click Refresh now unless asked.
+- [Conflicts](./conflicts.md) — open the Conflicts queue (do not approve a GitHub write-back in a default run).

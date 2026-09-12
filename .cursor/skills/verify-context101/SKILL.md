@@ -73,6 +73,8 @@ Stable handles:
 | --- | --- |
 | Knowledge nav | link `Knowledge` → `/knowledge` |
 | Wiki nav | link `Wiki` → `/wiki` |
+| Suggestions nav | link `Suggestions` → `/suggestions` |
+| Conflicts nav | link `Conflicts` → `/conflicts` (heading `Conflicts`) |
 | Sources nav | link `Sources` → `/sources` (heading `Data sources`) |
 | Brains nav | link `Brains` → `/brains` |
 | New file | button `New file` |
