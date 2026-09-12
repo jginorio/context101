@@ -1,4 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
+import { DEPLOY_WRAPPER } from "./defaults.js";
 
 export function createExec(baseEnv = process.env) {
   return function exec({ command, args = [], env, cwd, timeout = 15_000 }) {
@@ -29,7 +30,7 @@ export function commandExists(exec, name) {
 export function runDeployWrapper({ repoRoot, seed, env, stdio = "inherit" }) {
   const args = seed ? ["--seed"] : [];
   return new Promise((resolve, reject) => {
-    const child = spawn("./cdk/deploy.sh", args, {
+    const child = spawn(DEPLOY_WRAPPER, args, {
       cwd: repoRoot,
       env,
       stdio,

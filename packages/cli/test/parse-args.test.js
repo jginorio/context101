@@ -66,12 +66,25 @@ test("rejects unknown command and flag", () => {
   assert.throws(() => parseArgs(["init", "--billing"]), /unknown flag/);
 });
 
-test("help text names init and deploy.sh, not site/", () => {
+test("parses deploy command", () => {
+  const opts = parseArgs(["deploy", "--seed", "--home"]);
+  assert.equal(opts.command, "deploy");
+  assert.equal(opts.seed, true);
+  assert.equal(opts.home, true);
+});
+
+test("rejects init flags on deploy", () => {
+  assert.throws(() => parseArgs(["deploy", "--yes"]), /init option/);
+});
+
+test("help text names init and deploy, not site/", () => {
   const text = helpText();
   assert.match(text, /npx context101 init/);
+  assert.match(text, /npx context101 deploy/);
   assert.match(text, /npm run context101 -- init/);
+  assert.match(text, /npm run context101 -- deploy/);
   assert.match(text, /Context7/);
-  assert.match(text, /deploy\.sh/);
+  assert.equal(text.includes("deploy.sh"), false);
   assert.equal(text.includes("site/"), false);
 });
 

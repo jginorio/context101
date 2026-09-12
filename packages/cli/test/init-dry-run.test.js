@@ -44,7 +44,8 @@ test("dry-run prints the plan and writes nothing", async () => {
   assert.match(text, /cohere\.embed-english-light-v3/);
   assert.equal(text.includes("cohere.embed-multilingual-v3:0:512"), false);
   assert.match(text, /Amplify default domain/);
-  assert.match(text, /deploy\.sh --seed/);
+  assert.match(text, /npx context101 deploy --seed/);
+  assert.equal(text.includes("deploy.sh"), false);
   assert.equal(text.includes("would ask which profile"), false);
   assert.match(text, /would ask for AWS access key and secret/);
   assert.equal(text.includes("docker daemon is not running"), false);

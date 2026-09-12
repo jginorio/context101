@@ -15,8 +15,9 @@ import { normalizeRepoUrl } from "./repo.js";
 export async function promptAnswers({ defaults, io, exec, env }) {
   const { confirm, input, password, select } = await import("@inquirer/prompts");
 
-  io.write("This writes a local secrets file and prints the deploy command.");
-  io.write("It will not run cdk deploy. Press ^C to quit.");
+  io.write("This writes a local secrets file. Deploy afterwards with:");
+  io.write("  npx context101 deploy");
+  io.write("Press ^C to quit.");
   io.write("");
 
   const region = await input({
@@ -112,25 +113,6 @@ export async function promptAnswers({ defaults, io, exec, env }) {
     });
   }
 
-  const seed = await confirm({
-    message: "First deploy? Include --seed (uploads knowledge/ once)",
-    default: false,
-  });
-
-  const deploy = await confirm({
-    message: "Run ./cdk/deploy.sh after writing? (default is print the command)",
-    default: false,
-  });
-
-  const extras = await select({
-    message: "Optional last steps",
-    default: "skip",
-    choices: [
-      { name: "Skip (recommended)", value: "skip" },
-      { name: "Show connector + wiki notes only", value: "notes" },
-    ],
-  });
-
   return {
     region,
     repository,
@@ -144,17 +126,5 @@ export async function promptAnswers({ defaults, io, exec, env }) {
     awsProfile: defaults.awsProfile ?? null,
     awsAccessKeyId: defaults.awsAccessKeyId ?? null,
     awsSecretAccessKey: defaults.awsSecretAccessKey ?? null,
-    seed,
-    deploy,
-    extras,
   };
-}
-
-export function optionalNotes() {
-  return [
-    "Optional later:",
-    "  · Connector OAuth secrets (Google / Notion) — README, after the Amplify domain exists.",
-    "  · Wiki overlay is paused/beta. Use Refresh now on /wiki if you want it.",
-    "    Do not turn the EventBridge wiki schedule or AUTO_TRIGGER_CODE_WIKI back on.",
-  ].join("\n");
 }

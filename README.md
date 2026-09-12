@@ -130,13 +130,14 @@ First-run self-host walkthrough (from this checkout):
 ```bash
 npm install
 npm run context101 -- init
+npm run context101 -- deploy
 ```
 
-`npx context101 init` also works **after** `npm install`. Without a local install, `npx context101` downloads the unrelated [Context7](https://www.npmjs.com/package/context101) MCP from npm (`WARNING: Using default CLIENT_IP_ENCRYPTION_KEY` / `too many arguments`). Use the `npm run` form, or `node ./packages/cli/bin/context101.js init`.
+`npx context101 init` / `npx context101 deploy` also work **after** `npm install`. Without a local install, `npx context101` downloads the unrelated [Context7](https://www.npmjs.com/package/context101) MCP from npm (`WARNING: Using default CLIENT_IP_ENCRYPTION_KEY` / `too many arguments`). Use the `npm run` form, or `node ./packages/cli/bin/context101.js init`.
 
-Dry-run (no files, no deploy): `npm run context101 -- init --dry-run`. The command checks local tools + AWS, writes a gitignored `cdk/.deploy-env` (or `~/.context101/deploy-env`), and prints `./cdk/deploy.sh`. It never runs `cdk deploy` itself.
+Dry-run (no files, no deploy): `npm run context101 -- init --dry-run`. The command checks local tools + AWS, writes a gitignored secrets file (`cdk/.deploy-env`), and tells you to run `npx context101 deploy`. First deploy can add `--seed` to upload the example `knowledge/` files once.
 
-> 🛡️ **Use the deploy wrapper.** All the `cdk deploy` examples below go through `./cdk/deploy.sh`, which refuses to run unless both gating tokens (`CTX_TOKEN`, `CTX_GH_TOKEN`) are set in a local env file. Skipping it once already cost the team a full stack rebuild — see [Why the wrapper exists](#why-the-wrapper-exists). One-time setup if you skip the walkthrough:
+> 🛡️ **Deploy through the CLI.** Do not run `cdk deploy` yourself — it can tear down MCP / Amplify when the gating tokens are missing. `npx context101 deploy` is the supported path. One-time setup if you skip the walkthrough:
 >
 > ```bash
 > cp cdk/.deploy-env.example cdk/.deploy-env   # or ~/.context101/deploy-env
@@ -149,15 +150,13 @@ Dry-run (no files, no deploy): `npm run context101 -- init --dry-run`. The comma
 ### 1. First deploy (minimal — just KB + docs bucket)
 
 ```bash
-cd cdk
-npm install
-./deploy.sh
+npm run context101 -- deploy
 ```
 
 This provisions the baseline infra — S3 docs bucket, Bedrock Knowledge Base, S3 Vectors, the `pg-http` Lambda layer, and Lambdas. The control-plane schema lives in your Postgres database (apply it with `npm run db:migrate` from `web/`). To also seed the docs bucket with the example markdown under `knowledge/` so a brand-new stack isn't empty, pass `--seed`:
 
 ```bash
-./deploy.sh --seed
+npm run context101 -- deploy --seed
 ```
 
 The seed flag is **off by default** so subsequent deploys never clobber whatever your team has put in S3 via the web UI / connectors / approved suggestions. Once you're past first deploy, omit the flag — the bucket itself is retained and stays the source of truth. The auto-ingest Lambda kicks off a Bedrock ingestion job on every S3 write; wait ~1-3 min after a write before searching (watch the KB in the AWS console).

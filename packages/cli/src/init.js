@@ -29,9 +29,9 @@ import {
   readExampleToken,
   writeDeployEnv,
 } from "./env-file.js";
-import { createExec, runDeployWrapper } from "./exec.js";
+import { startDeploy } from "./deploy.js";
+import { createExec } from "./exec.js";
 import { formatDryRun, nextSteps } from "./plan.js";
-import { optionalNotes } from "./prompt.js";
 import {
   detectGitRemote,
   displayEnvPath,
@@ -55,7 +55,7 @@ export async function runInit(opts, ctx) {
 
   const repoRoot = findRepoRoot(ctx.cwd);
   if (!repoRoot) {
-    io.err("run this from a Context101 checkout (needs cdk/deploy.sh and web/).");
+    io.err("run this from a Context101 checkout (needs cdk/ and web/).");
     return 1;
   }
 
@@ -192,7 +192,6 @@ export async function runInit(opts, ctx) {
 
   if (opts.dryRun) {
     io.write(formatDryRun(plan));
-    if (answers.extras === "notes") io.write(`\n${optionalNotes()}`);
     io.write("");
     return 0;
   }
@@ -255,21 +254,9 @@ export async function runInit(opts, ctx) {
   }
   io.write("");
   io.write(nextSteps(plan));
-  if (answers.extras === "notes") {
-    io.write("");
-    io.write(optionalNotes());
-  }
   io.write("");
 
   if (!answers.deploy) return 0;
-
-  if (!checks.docker?.daemon) {
-    io.err(
-      "not deploying: Docker daemon is not running. Start it, then run ./cdk/deploy.sh."
-    );
-    if (checks.docker?.hint) io.write(checks.docker.hint);
-    return 1;
-  }
 
   if (answers.repository && !githubReadyForAmplify(checks, answers)) {
     io.err(
@@ -278,13 +265,15 @@ export async function runInit(opts, ctx) {
     return 1;
   }
 
-  io.write("Running ./cdk/deploy.sh …");
-  const code = await (ctx.runDeploy ?? runDeployWrapper)({
+  return startDeploy({
+    io,
+    ctx,
     repoRoot,
     seed: answers.seed,
     env: awsEnv,
+    dockerDaemon: Boolean(checks.docker?.daemon),
+    dockerHint: checks.docker?.hint,
   });
-  return code;
 }
 
 async function collectAnswers(opts, ctx) {
@@ -338,7 +327,6 @@ async function collectAnswers(opts, ctx) {
       envFile: opts.envFile,
       seed: opts.seed,
       deploy: Boolean(opts.deploy && opts.yes && !opts.dryRun),
-      extras: "skip",
       ghToken: null,
     };
   }
@@ -370,6 +358,8 @@ async function collectAnswers(opts, ctx) {
     createRds: prompted.createRds ?? !prompted.databaseUrl,
     home: opts.home,
     envFile: opts.envFile,
+    seed: opts.seed,
+    deploy: Boolean(opts.deploy && !opts.dryRun),
     ghToken: null,
   };
 }

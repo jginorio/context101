@@ -1,10 +1,16 @@
 import { DRIVER_NEON, DRIVER_POSTGRES } from "./defaults.js";
 
 const FLAG_HELP = `
-Usage: context101 init [options]
+Usage: context101 <command> [options]
 
-Walk a trusted-team self-host of Context101. Writes a gitignored
-deploy-env. Does not run cdk deploy. Deploy only via ./cdk/deploy.sh.
+  init      write a local secrets file (default if you omit the command)
+  deploy    deploy the AWS stack
+
+init walks a trusted-team self-host and writes a gitignored secrets
+file. It does not deploy unless you pass --deploy. When you are ready:
+
+  npm run context101 -- deploy
+  npx context101 deploy
 
   --dry-run              print the plan; write nothing, deploy nothing
   --yes, -y              accept defaults (creates RDS if no --database-url)
@@ -25,18 +31,41 @@ deploy-env. Does not run cdk deploy. Deploy only via ./cdk/deploy.sh.
   --embed-model <id>     optional CDK default embedding model
                          (brains still pick any Titan/Cohere model in the app)
   --skip-bedrock-access  do not request Bedrock model access during init
-  --seed                 print (or run) ./cdk/deploy.sh --seed
-  --deploy               run ./cdk/deploy.sh after writing
-                         (still asks unless combined with --yes)
+  --seed                 first deploy uploads knowledge/ once
+  --deploy               deploy after writing (combine with --yes)
+
+deploy:
+  --seed                 upload knowledge/ once (first deploy only)
+  --deploy-env <path>
+  --home
+  --dry-run              print the command; deploy nothing
 
 From this checkout (after npm install):
   npm run context101 -- init
+  npm run context101 -- deploy
   npx context101 init
-Dry-run: npm run context101 -- init --dry-run
+  npx context101 deploy
 
 npx context101 without a local install downloads Context7's MCP
 from npm (unrelated) and fails with "too many arguments".
 `.trim();
+
+const INIT_ONLY = new Set([
+  "--yes",
+  "-y",
+  "--force",
+  "--deploy",
+  "--database-url",
+  "--create-rds",
+  "--database-driver",
+  "--database-prepare",
+  "--aws-profile",
+  "--aws-access-key-id",
+  "--aws-secret-access-key",
+  "--repo",
+  "--embed-model",
+  "--skip-bedrock-access",
+]);
 
 export function helpText() {
   return FLAG_HELP;
@@ -71,6 +100,9 @@ export function parseArgs(argv) {
   const first = args[0];
   if (first === "init") {
     args.shift();
+  } else if (first === "deploy") {
+    opts.command = "deploy";
+    args.shift();
   } else if (first === "help" || first === "--help" || first === "-h") {
     opts.help = true;
     return opts;
@@ -82,6 +114,11 @@ export function parseArgs(argv) {
 
   while (args.length) {
     const arg = args.shift();
+    if (opts.command === "deploy" && INIT_ONLY.has(arg)) {
+      const err = new Error(`${arg} is an init option`);
+      err.code = "USAGE";
+      throw err;
+    }
     switch (arg) {
       case "--help":
       case "-h":

@@ -1,4 +1,5 @@
 import { helpText, parseArgs } from "./parse-args.js";
+import { runDeploy } from "./deploy.js";
 import { runInit } from "./init.js";
 import { writers } from "./style.js";
 
@@ -19,6 +20,10 @@ export async function main(argv, ctx) {
   if (opts.help) {
     io.write(helpText());
     return 0;
+  }
+
+  if (opts.command === "deploy") {
+    return runDeploy(opts, ctx);
   }
 
   return runInit(opts, ctx);

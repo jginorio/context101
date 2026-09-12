@@ -91,7 +91,8 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
   }
   assert.equal(text.includes("ghp_test_token_must_never_appear"), false);
   assert.match(text, /wrote tmp-deploy-env/);
-  assert.match(text, /\.\/cdk\/deploy\.sh/);
+  assert.match(text, /npx context101 deploy/);
+  assert.equal(text.includes("deploy.sh"), false);
   assert.match(text, /Amplify is skipped/);
   assert.equal(text.includes("site/"), false);
   assert.equal(deployed, false);
@@ -381,6 +382,9 @@ test("interactive init writes cdk/.deploy-env without asking where", async () =>
   );
   assert.equal(src.includes("Write deploy-env to"), false);
   assert.equal(src.includes("~/.context101/deploy-env"), false);
+  assert.equal(src.includes("deploy.sh"), false);
+  assert.equal(src.includes("Optional last steps"), false);
+  assert.match(io.stdoutText, /npx context101 deploy/);
 });
 
 test("interactive --deploy-env still honors the flag", async () => {

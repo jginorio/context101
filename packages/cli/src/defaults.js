@@ -11,6 +11,7 @@ export const EXAMPLE_ENV_REL = "cdk/.deploy-env.example";
 export const REPO_ENV_REL = "cdk/.deploy-env";
 export const HOME_ENV_REL = ".context101/deploy-env";
 export const DEPLOY_WRAPPER = "./cdk/deploy.sh";
+export const DEPLOY_CLI = "npx context101 deploy";
 
 export const SECRET_KEYS = [
   "CTX_TOKEN",

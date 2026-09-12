@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { main } from "../src/main.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
 
-test("--yes --deploy calls ./cdk/deploy.sh only", async () => {
+test("--yes --deploy deploys through the CLI runner", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-"));
   await makeRepoFixture(root);
   const io = memoryIo();
@@ -42,8 +42,61 @@ test("--yes --deploy calls ./cdk/deploy.sh only", async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].repoRoot, root);
   assert.equal(calls[0].seed, true);
-  assert.match(io.stdoutText, /Running \.\/cdk\/deploy\.sh/);
+  assert.match(io.stdoutText, /Deploying the stack/);
   assert.equal(io.stdoutText.includes("cdk deploy"), false);
+  assert.equal(io.stdoutText.includes("deploy.sh"), false);
+});
+
+test("context101 deploy runs the stack deploy", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-cmd-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(["deploy", "--seed"], {
+    cwd: root,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(),
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].repoRoot, root);
+  assert.equal(calls[0].seed, true);
+  assert.match(io.stdoutText, /Deploying the stack/);
+  assert.equal(io.stdoutText.includes("deploy.sh"), false);
+});
+
+test("context101 deploy --dry-run does not deploy", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-dry-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(["deploy", "--dry-run"], {
+    cwd: root,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(),
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.equal(calls.length, 0);
+  assert.match(io.stdoutText, /npx context101 deploy/);
+  assert.equal(io.stdoutText.includes("deploy.sh"), false);
 });
 
 test("--yes --deploy refuses a ghs_ gh token when Amplify watches a repo", async () => {
