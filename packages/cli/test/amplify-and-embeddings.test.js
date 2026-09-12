@@ -52,6 +52,39 @@ test("Amplify defaults to skip unless gh login is the repo owner", () => {
   );
 });
 
+test("embedding catalog includes new Titan/Cohere ids and drops SKU variants", () => {
+  const models = parseEmbeddingCatalog({
+    modelSummaries: [
+      {
+        modelId: "cohere.embed-v4",
+        providerName: "Cohere",
+        modelName: "Embed v4",
+        modelLifecycle: { status: "ACTIVE" },
+      },
+      {
+        modelId: "amazon.titan-embed-text-v3:0",
+        providerName: "Amazon",
+        modelName: "Titan Text Embeddings V3",
+        modelLifecycle: { status: "ACTIVE" },
+      },
+      {
+        modelId: "cohere.embed-v4:0:512",
+        providerName: "Cohere",
+        modelLifecycle: { status: "ACTIVE" },
+      },
+    ],
+  });
+  assert.deepEqual(
+    models.map((m) => m.id),
+    ["amazon.titan-embed-text-v3:0", "cohere.embed-v4"]
+  );
+  assert.equal(models.find((m) => m.id === "cohere.embed-v4").label, "Embed v4");
+  const union = allEmbeddingModels(models);
+  assert.equal(union.some((m) => m.id === "cohere.embed-v4"), true);
+  assert.equal(union.some((m) => m.id === "amazon.titan-embed-text-v2:0"), true);
+  assert.equal(union.some((m) => m.id === "cohere.embed-v4:0:512"), false);
+});
+
 test("embedding catalog keeps Titan/Cohere base ids and drops SKU variants", () => {
   const models = parseEmbeddingCatalog({
     modelSummaries: [

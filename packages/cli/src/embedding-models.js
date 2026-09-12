@@ -74,13 +74,21 @@ export function allEmbeddingModels(listed = []) {
   );
 }
 
-export function catalogEntry(modelId) {
+export function catalogEntry(modelId, extras = {}) {
   const meta = KNOWN_EMBEDDING_DIMENSIONS[modelId];
+  if (meta) {
+    return {
+      id: modelId,
+      provider: meta.provider,
+      label: meta.label,
+      dimensions: meta.defaultDimension,
+    };
+  }
   return {
     id: modelId,
-    provider: meta.provider,
-    label: meta.label,
-    dimensions: meta.defaultDimension,
+    provider: extras.provider || providerFromId(modelId),
+    label: extras.label || modelId,
+    dimensions: extras.dimensions ?? null,
   };
 }
 
@@ -94,6 +102,17 @@ function providerFromName(name) {
   return null;
 }
 
+function providerFromId(id) {
+  if (String(id).startsWith("amazon.")) return "aws";
+  if (String(id).startsWith("cohere.")) return "cohere";
+  return null;
+}
+
+/** SKU variants (…:0:512) are not valid Knowledge Base embeddingModelArn values. */
+export function isEmbeddingSkuVariant(modelId) {
+  return (String(modelId).match(/:/g) || []).length >= 2;
+}
+
 export function parseEmbeddingCatalog(payload) {
   const summaries = payload?.modelSummaries;
   if (!Array.isArray(summaries)) return [];
@@ -105,10 +124,11 @@ export function parseEmbeddingCatalog(payload) {
     if (row.modelLifecycle?.status && row.modelLifecycle.status !== "ACTIVE") {
       continue;
     }
-    if (!KNOWN_EMBEDDING_DIMENSIONS[id]) continue;
-    if (!providerFromName(row.providerName)) continue;
+    if (isEmbeddingSkuVariant(id)) continue;
+    const provider = providerFromName(row.providerName) || providerFromId(id);
+    if (provider !== "aws" && provider !== "cohere") continue;
     seen.add(id);
-    models.push(catalogEntry(id));
+    models.push(catalogEntry(id, { provider, label: row.modelName }));
   }
   models.sort((a, b) =>
     a.provider === b.provider

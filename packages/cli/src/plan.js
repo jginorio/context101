@@ -10,7 +10,7 @@ export function deployCommand(seed) {
 
 export function formatDryRun(plan) {
   const access = plan.requestBedrockAccess
-    ? "request access for all (users pick later in the app)"
+    ? "request access for all Titan/Cohere embeddings (including new ids Bedrock lists; users pick later in the app)"
     : "skip requesting access";
   const embedDefault = plan.embedModelId
     ? `${plan.embedModelId} (--embed-model)`

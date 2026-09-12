@@ -37,7 +37,8 @@ test("dry-run prints the plan and writes nothing", async () => {
   assert.match(text, /Would write: cdk\/\.deploy-env/);
   assert.match(text, /Would not deploy/);
   assert.match(text, /Amplify: skipped/);
-  assert.match(text, /request access for all/);
+  assert.match(text, /request access for all Titan\/Cohere embeddings/);
+  assert.match(text, /including new ids/);
   assert.match(text, /amazon\.titan-embed-text-v2:0/);
   assert.match(text, /amazon\.titan-embed-text-v1/);
   assert.match(text, /cohere\.embed-english-v3/);
@@ -62,6 +63,52 @@ test("dry-run prints the plan and writes nothing", async () => {
 
   const { existsSync } = await import("node:fs");
   assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), false);
+});
+
+test("dry-run includes newly listed Titan/Cohere embedding ids", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-dry-new-embed-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+  const inner = fakeExec();
+
+  const code = await main(["init", "--dry-run"], {
+    cwd: root,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: (spec) => {
+      if (spec.command === "aws" && spec.args?.[1] === "list-foundation-models") {
+        return {
+          ok: true,
+          code: 0,
+          stdout: JSON.stringify({
+            modelSummaries: [
+              {
+                modelId: "cohere.embed-v4",
+                providerName: "Cohere",
+                modelName: "Embed v4",
+                modelLifecycle: { status: "ACTIVE" },
+              },
+              {
+                modelId: "cohere.embed-v4:0:512",
+                providerName: "Cohere",
+                modelLifecycle: { status: "ACTIVE" },
+              },
+            ],
+          }),
+          stderr: "",
+          error: null,
+        };
+      }
+      return inner(spec);
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /cohere\.embed-v4/);
+  assert.equal(io.stdoutText.includes("cohere.embed-v4:0:512"), false);
+  assert.match(io.stdoutText, /amazon\.titan-embed-text-v2:0/);
 });
 
 test("dry-run without a database URL plans CDK RDS", async () => {

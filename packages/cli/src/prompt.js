@@ -1,14 +1,8 @@
 import {
-  CLAUDE_IMPROVE_MODEL,
   DRIVER_NEON,
   DRIVER_POSTGRES,
   SMOOTH_REGION,
-  TITAN_EMBED_MODEL,
 } from "./defaults.js";
-import {
-  formatEmbeddingChoice,
-  listEmbeddingModels,
-} from "./embedding-models.js";
 import { inferDriver, inferPrepare } from "./env-file.js";
 import { normalizeRepoUrl } from "./repo.js";
 
@@ -27,24 +21,6 @@ export async function promptAnswers({ defaults, io, exec, env }) {
   if (region !== SMOOTH_REGION) {
     io.warn(`${SMOOTH_REGION} is the smooth path (S3 Vectors + Bedrock).`);
   }
-
-  io.write("");
-  io.write("Bedrock embedding models (console → Model access):");
-  io.dim("  Request access for every embedding model brains can pick later.");
-  io.dim(`  CDK default remains ${TITAN_EMBED_MODEL} unless you pass --embed-model.`);
-  io.dim(`  Claude (${CLAUDE_IMPROVE_MODEL}) is optional for Improve. Wiki is paused.`);
-  const catalog = listEmbeddingModels({ exec, env, region });
-  if (catalog.warning) io.warn(catalog.warning);
-  for (const model of catalog.models) {
-    io.dim(`  · ${formatEmbeddingChoice(model)}`);
-  }
-  if (defaults.embedModelId) {
-    io.dim(`  Default brain will use ${defaults.embedModelId} (--embed-model).`);
-  }
-  const requestBedrockAccess = await confirm({
-    message: "Request access for all of these",
-    default: true,
-  });
 
   const watchByDefault = Boolean(defaults.repository);
   const amplifyMode = await select({
@@ -117,9 +93,7 @@ export async function promptAnswers({ defaults, io, exec, env }) {
     region,
     repository,
     embedModelId: defaults.embedModelId || "",
-    requestBedrockAccess,
     createRds,
-    embeddingModels: catalog.models,
     databaseUrl,
     databaseDriver,
     databasePrepare,

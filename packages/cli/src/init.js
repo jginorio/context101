@@ -355,6 +355,8 @@ async function collectAnswers(opts, ctx) {
   });
   return {
     ...prompted,
+    embeddingModels: catalog.models,
+    requestBedrockAccess: !opts.skipBedrockAccess,
     createRds: prompted.createRds ?? !prompted.databaseUrl,
     home: opts.home,
     envFile: opts.envFile,

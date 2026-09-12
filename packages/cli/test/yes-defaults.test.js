@@ -385,7 +385,10 @@ test("interactive init writes cdk/.deploy-env without asking where", async () =>
   assert.equal(src.includes("~/.context101/deploy-env"), false);
   assert.equal(src.includes("deploy.sh"), false);
   assert.equal(src.includes("Optional last steps"), false);
+  assert.equal(src.includes("Request access for all of these"), false);
+  assert.equal(src.includes("Embedding models"), false);
   assert.match(io.stdoutText, /npx context101 deploy/);
+  assert.match(io.stdoutText, /Bedrock embedding access:/);
 });
 
 test("interactive --deploy-env still honors the flag", async () => {
