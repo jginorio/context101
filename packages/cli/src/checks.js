@@ -132,15 +132,15 @@ export function printChecks(checks, io) {
   }
   printDockerCheck(checks.docker, { ok, warn });
   if (checks.gh.ok && checks.gh.amplifyOk) {
-    ok("gh (logged in with a PAT — deploy.sh can use it for Amplify)");
+    ok("gh (logged in with a PAT — usable if you watch a repo with Amplify)");
   } else if (checks.gh.ok && checks.gh.loggedIn) {
     warn(
-      `gh token is ${checks.gh.tokenKind} — Amplify needs CTX_GH_TOKEN=ghp_… (repo webhooks)`
+      `gh token is ${checks.gh.tokenKind} — if Amplify watches a repo, set CTX_GH_TOKEN=ghp_…`
     );
   } else if (checks.gh.ok) {
-    warn("gh found but not logged in — set CTX_GH_TOKEN before deploy");
+    warn("gh found but not logged in — set CTX_GH_TOKEN only if Amplify watches a repo");
   } else {
-    dim("gh optional — set CTX_GH_TOKEN in the env file if you skip it");
+    dim("gh optional — Amplify is skipped unless you pass --repo");
   }
 }
 

@@ -1,15 +1,18 @@
 import {
   CLAUDE_IMPROVE_MODEL,
-  DEFAULT_AMPLIFY_REPO,
   DRIVER_NEON,
   DRIVER_POSTGRES,
   SMOOTH_REGION,
   TITAN_EMBED_MODEL,
 } from "./defaults.js";
+import {
+  formatEmbeddingChoice,
+  listEmbeddingModels,
+} from "./embedding-models.js";
 import { inferDriver, inferPrepare } from "./env-file.js";
-import { defaultEnvPath } from "./repo.js";
+import { defaultEnvPath, normalizeRepoUrl } from "./repo.js";
 
-export async function promptAnswers({ defaults, io }) {
+export async function promptAnswers({ defaults, io, exec, env }) {
   const { confirm, input, password, select } = await import("@inquirer/prompts");
 
   io.write("This writes a gitignored deploy-env and prints the deploy command.");
@@ -25,15 +28,50 @@ export async function promptAnswers({ defaults, io }) {
   }
 
   io.write("");
-  io.write("Bedrock model access (console → Model access):");
-  io.dim(`  required  ${TITAN_EMBED_MODEL}`);
-  io.dim(`  optional  ${CLAUDE_IMPROVE_MODEL}  — Improve + wiki. Wiki is paused; skip unless you want it.`);
-  await confirm({ message: "Continue", default: true });
-
-  const repository = await input({
-    message: "GitHub repo Amplify should watch",
-    default: defaults.repository || DEFAULT_AMPLIFY_REPO,
+  io.write("Bedrock embedding model (console → Model access):");
+  io.dim(`  Skip keeps ${TITAN_EMBED_MODEL} (CDK default; you can change it later in the app).`);
+  io.dim(`  Claude (${CLAUDE_IMPROVE_MODEL}) is optional for Improve. Wiki is paused.`);
+  const catalog = listEmbeddingModels({ exec, env, region });
+  if (catalog.warning) io.warn(catalog.warning);
+  const embedModelId = await select({
+    message: "Embedding model",
+    default: defaults.embedModelId || "",
+    choices: [
+      {
+        name: `Skip — ${TITAN_EMBED_MODEL} (default)`,
+        value: "",
+      },
+      ...catalog.models.map((model) => ({
+        name: formatEmbeddingChoice(model),
+        value: model.id,
+      })),
+    ],
   });
+
+  const watchByDefault = Boolean(defaults.repository);
+  const amplifyMode = await select({
+    message: "Amplify frontend",
+    default: watchByDefault ? "watch" : "skip",
+    choices: [
+      {
+        name: "Skip — deploy the stack only (no GitHub-watched web app)",
+        value: "skip",
+      },
+      { name: "Watch a GitHub repo", value: "watch" },
+    ],
+  });
+
+  let repository = "";
+  if (amplifyMode === "watch") {
+    repository = normalizeRepoUrl(
+      await input({
+        message: "GitHub repo Amplify should watch",
+        default: defaults.repository || defaults.suggestedRepo || "",
+        validate: (value) =>
+          value ? true : "needed if Amplify should watch a repo",
+      })
+    );
+  }
 
   const databaseUrl = await password({
     message: "DATABASE_URL",
@@ -87,6 +125,8 @@ export async function promptAnswers({ defaults, io }) {
   return {
     region,
     repository,
+    embedModelId,
+    embeddingModels: catalog.models,
     databaseUrl,
     databaseDriver,
     databasePrepare,

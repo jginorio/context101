@@ -66,6 +66,34 @@ export function fakeExec(overrides = {}) {
     if (command === "aws" && args[0] === "configure" && args[1] === "list-profiles") {
       return ok("");
     }
+    if (command === "aws" && args[0] === "bedrock") {
+      return ok(
+        JSON.stringify({
+          modelSummaries: [
+            {
+              modelId: "amazon.titan-embed-text-v2:0",
+              providerName: "Amazon",
+              modelLifecycle: { status: "ACTIVE" },
+            },
+            {
+              modelId: "amazon.titan-embed-text-v1",
+              providerName: "Amazon",
+              modelLifecycle: { status: "ACTIVE" },
+            },
+            {
+              modelId: "cohere.embed-english-v3",
+              providerName: "Cohere",
+              modelLifecycle: { status: "ACTIVE" },
+            },
+            {
+              modelId: "cohere.embed-multilingual-v3:0:512",
+              providerName: "Cohere",
+              modelLifecycle: { status: "ACTIVE" },
+            },
+          ],
+        })
+      );
+    }
     if (command === "sh" && args[1] === "command -v docker") {
       return ok("/usr/bin/docker");
     }
@@ -77,6 +105,9 @@ export function fakeExec(overrides = {}) {
     }
     if (command === "gh" && args[0] === "auth") {
       return ok("ghp_test_token_must_never_appear");
+    }
+    if (command === "gh" && args[0] === "api") {
+      return ok("acme-user");
     }
     if (command === "git") {
       return ok("https://github.com/acme/context101.git");

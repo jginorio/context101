@@ -14,7 +14,7 @@
 # deploy / diff without the tokens present.
 #
 # Usage:
-#   ./deploy.sh                          # deploy with the two required flags
+#   ./deploy.sh                          # deploy with CTX_TOKEN (Amplify PAT only if REPOSITORY is set)
 #   ./deploy.sh --seed                   # also pass -c seed=true (first deploy)
 #   ./deploy.sh diff                     # cdk diff with the same context
 #   ./deploy.sh synth                    # cdk synth with the same context
@@ -34,7 +34,7 @@
 #   APP_MODE, ALLOW_PUBLIC_SIGNUP, BILLING_ENABLED, APP_URL, MARKETING_URL,
 #   MCP_PUBLIC_HOST, MCP_DOMAIN_CERT_ARN, MCP_APPRUNNER,
 #   SES_REGION, SES_FROM_EMAIL, SES_REPLY_TO_EMAIL,
-#   REPOSITORY.
+#   REPOSITORY, EMBED_MODEL_ID.
 #
 # MCP compute (see "Migrating off App Runner" in the README):
 #   MCP_DOMAIN_CERT_ARN — issued us-east-1 ACM cert ARN for the MCP custom
@@ -120,23 +120,29 @@ needs_guard() {
   esac
 }
 
-if needs_guard && [[ -n "$GH_TOKEN" ]] && ! github_token_works_for_amplify "$GH_TOKEN"; then
+REPO="${REPOSITORY:-}"
+AMPLIFY=false
+if [[ -n "$REPO" ]]; then
+  AMPLIFY=true
+fi
+
+if needs_guard && $AMPLIFY && ! github_token_works_for_amplify "$GH_TOKEN"; then
   err "GitHub token is not a personal access token (need ghp_ or github_pat_)."
   err "Amplify CreateApp calls list-repository-webhooks; ghs_ / gho_ tokens 403 and roll the stack back."
   err "Set CTX_GH_TOKEN to a classic PAT with repo scope (webhook + contents)."
   exit 1
 fi
 
-if needs_guard && [[ -z "$TOKEN" || -z "$GH_TOKEN" ]]; then
-  err "Missing one or both required tokens for 'cdk $SUBCOMMAND':"
-  [[ -z "$TOKEN" ]]    && printf "    · ${BOLD}CTX_TOKEN${RESET}    (the MCP bearer — gates the App Runner service)\n" >&2
-  [[ -z "$GH_TOKEN" ]] && printf "    · ${BOLD}CTX_GH_TOKEN${RESET} (the GitHub PAT — gates Amplify Hosting + wiki-gen)\n" >&2
+if needs_guard && [[ -z "$TOKEN" ]]; then
+  err "Missing CTX_TOKEN for 'cdk $SUBCOMMAND':"
+  printf "    · ${BOLD}CTX_TOKEN${RESET}    (the MCP bearer — gates the App Runner service)\n" >&2
   cat >&2 <<EOF
 
-  ${BOLD}Why this matters:${RESET} the stack's MCP service and Amplify branches
-  are gated on CDK context flags. Running cdk deploy without them
-  deletes those resources (including the App Runner MCP service and
-  the wiki-gen Fargate task).
+  ${BOLD}Why this matters:${RESET} the stack's MCP service is gated on a CDK
+  context flag. Running cdk deploy without CTX_TOKEN deletes it.
+
+  Amplify Hosting is optional. Set REPOSITORY and a GitHub PAT
+  (CTX_GH_TOKEN=ghp_…) only when you want the wrapper to watch a repo.
 
   ${BOLD}Set them up:${RESET}
 
@@ -144,8 +150,8 @@ if needs_guard && [[ -z "$TOKEN" || -z "$GH_TOKEN" ]]; then
     cat > ~/.context101/deploy-env <<'ENV'
     # Required
     CTX_TOKEN="context101-platea-2026-bearer"
-    # GitHub classic PAT (ghp_) with repo scope. \`gh auth token\` is
-    # only used when it returns a PAT — ghs_ / gho_ tokens are rejected.
+    # Optional — only if Amplify should watch a GitHub repo
+    # REPOSITORY="https://github.com/<you>/context101"
     # CTX_GH_TOKEN="ghp_..."
 
     # Optional
@@ -169,7 +175,9 @@ fi
 CDK_ARGS=("$SUBCOMMAND")
 $SEED && CDK_ARGS+=("-c" "seed=true")
 CDK_ARGS+=("-c" "token=$TOKEN")
-CDK_ARGS+=("-c" "githubToken=$GH_TOKEN")
+if $AMPLIFY; then
+  CDK_ARGS+=("-c" "githubToken=$GH_TOKEN")
+fi
 
 # When an env file was loaded, only forward keys declared in that file.
 # Ambient hosted vars (BETTER_AUTH_URL, APP_URL, MCP_PUBLIC_HOST, …)
@@ -235,6 +243,7 @@ add_context_if_set "SES_REGION"
 add_context_if_set "SES_FROM_EMAIL"
 add_context_if_set "SES_REPLY_TO_EMAIL"
 add_context_if_set "REPOSITORY"
+add_context_if_set "EMBED_MODEL_ID"
 
 if [[ "$SUBCOMMAND" == "deploy" ]]; then
   CDK_ARGS+=("--require-approval" "never")
@@ -250,7 +259,11 @@ printf "\n${BOLD}cdk %s${RESET}\n" "$SUBCOMMAND"
 [[ -n "$LOADED_FROM" ]] && printf "  ${DIM}env file:    %s${RESET}\n" "$LOADED_FROM"
 [[ -n "${AWS_PROFILE:-}" ]] && printf "  ${DIM}AWS_PROFILE: %s${RESET}\n" "$AWS_PROFILE"
 printf "  ${DIM}token:       %s${RESET}\n" "$(mask "$TOKEN")"
-printf "  ${DIM}githubToken: %s${RESET}\n" "$(mask "$GH_TOKEN")"
+if $AMPLIFY; then
+  printf "  ${DIM}githubToken: %s${RESET}\n" "$(mask "$GH_TOKEN")"
+else
+  printf "  ${DIM}githubToken: (skipped — no REPOSITORY)${RESET}\n"
+fi
 
 preview_if_forwarded() {
   local key="$1"
@@ -274,6 +287,7 @@ preview_if_forwarded "BILLING_ENABLED"     "BILLING_ENABLED:    ${BILLING_ENABLE
 preview_if_forwarded "APP_URL"             "APP_URL:            ${APP_URL:-}"
 preview_if_forwarded "MARKETING_URL"       "MARKETING_URL:      ${MARKETING_URL:-}"
 preview_if_forwarded "REPOSITORY"          "REPOSITORY:         ${REPOSITORY:-}"
+preview_if_forwarded "EMBED_MODEL_ID"      "EMBED_MODEL_ID:     ${EMBED_MODEL_ID:-}"
 $SEED && printf "  ${DIM}seed:        ${RESET}${YELLOW}true${RESET}\n"
 printf "\n"
 

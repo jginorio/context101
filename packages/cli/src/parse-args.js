@@ -19,7 +19,10 @@ deploy-env. Does not run cdk deploy. Deploy only via ./cdk/deploy.sh.
   --aws-access-key-id    used when no profile exists (also AWS_ACCESS_KEY_ID)
   --aws-secret-access-key
                          used when no profile exists (also AWS_SECRET_ACCESS_KEY)
-  --repo <url>           GitHub repo Amplify should watch
+  --repo <url>           watch this GitHub repo with Amplify
+                         (default: skip Amplify, unless gh login is jginorio)
+  --embed-model <id>     Bedrock embedding model (Amazon Titan or Cohere)
+                         (default: amazon.titan-embed-text-v2:0; skip in the prompt)
   --seed                 print (or run) ./cdk/deploy.sh --seed
   --deploy               run ./cdk/deploy.sh after writing
                          (still asks unless combined with --yes)
@@ -55,6 +58,7 @@ export function parseArgs(argv) {
     awsAccessKeyId: null,
     awsSecretAccessKey: null,
     repo: null,
+    embedModel: null,
   };
 
   const args = [...argv];
@@ -121,6 +125,9 @@ export function parseArgs(argv) {
         break;
       case "--repo":
         opts.repo = needValue(arg, args);
+        break;
+      case "--embed-model":
+        opts.embedModel = needValue(arg, args);
         break;
       default: {
         const err = new Error(`unknown flag: ${arg}`);

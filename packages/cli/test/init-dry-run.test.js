@@ -36,13 +36,18 @@ test("dry-run prints the plan and writes nothing", async () => {
   assert.match(text, /dry-run/);
   assert.match(text, /Would write: cdk\/\.deploy-env/);
   assert.match(text, /Would not deploy/);
-  assert.match(text, /\/setup/);
+  assert.match(text, /Amplify: skipped/);
+  assert.match(text, /amazon\.titan-embed-text-v2:0/);
+  assert.match(text, /available: .*amazon\.titan-embed-text-v1/);
+  assert.match(text, /cohere\.embed-english-v3/);
+  assert.equal(text.includes("cohere.embed-multilingual-v3:0:512"), false);
   assert.match(text, /Amplify default domain/);
   assert.match(text, /deploy\.sh --seed/);
   assert.equal(text.includes("would ask which profile"), false);
   assert.match(text, /would ask for AWS access key and secret/);
   assert.equal(text.includes("docker daemon is not running"), false);
-  assert.match(text, /https:\/\/github.com\/acme\/context101/);
+  assert.equal(text.includes("https://github.com/acme/context101"), false);
+  assert.equal(text.includes("https://github.com/jginorio/context101"), false);
   assert.match(text, new RegExp(DRIVER_NEON));
   assert.equal(text.includes(secretUrl), false);
   assert.equal(text.includes("dry-run-secret-db"), false);
@@ -89,21 +94,14 @@ test("dry-run strips credentials from the git remote", async () => {
   const io = memoryIo();
   const leak = "super-secret-git-remote-token";
 
-  const code = await main(["init", "--dry-run"], {
+  const dirty = `https://x-access-token:${leak}@github.com/acme/context101.git`;
+  const code = await main(["init", "--dry-run", "--repo", dirty], {
     cwd: root,
     env: testEnv(),
     stdout: io.stdout,
     stderr: io.stderr,
     stdin: io.stdin,
-    exec: fakeExec({
-      [`git -C ${root} remote get-url origin`]: {
-        ok: true,
-        code: 0,
-        stdout: `https://x-access-token:${leak}@github.com/acme/context101.git`,
-        stderr: "",
-        error: null,
-      },
-    }),
+    exec: fakeExec(),
   });
 
   assert.equal(code, 0);

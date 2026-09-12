@@ -46,7 +46,7 @@ test("--yes --deploy calls ./cdk/deploy.sh only", async () => {
   assert.equal(io.stdoutText.includes("cdk deploy"), false);
 });
 
-test("--yes --deploy refuses a ghs_ gh token", async () => {
+test("--yes --deploy refuses a ghs_ gh token when Amplify watches a repo", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-ghs-"));
   await makeRepoFixture(root);
   const io = memoryIo();
@@ -57,6 +57,8 @@ test("--yes --deploy refuses a ghs_ gh token", async () => {
       "init",
       "--yes",
       "--deploy",
+      "--repo",
+      "https://github.com/acme/context101",
       "--database-url",
       "postgresql://localhost/db",
       "--force",

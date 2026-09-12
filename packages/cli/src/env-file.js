@@ -35,7 +35,7 @@ export function renderDeployEnv(values) {
     lines.push(`CTX_GH_TOKEN=${quoteShell(values.CTX_GH_TOKEN)}`);
   } else {
     lines.push(
-      "# CTX_GH_TOKEN omitted — ./cdk/deploy.sh uses `gh auth token` only when it is a PAT."
+      "# CTX_GH_TOKEN omitted — only needed if REPOSITORY is set (Amplify watches a repo)."
     );
   }
 
@@ -91,6 +91,10 @@ export function renderDeployEnv(values) {
   if (values.REPOSITORY) {
     lines.push("");
     lines.push(`REPOSITORY=${quoteShell(values.REPOSITORY)}`);
+  }
+
+  if (values.EMBED_MODEL_ID) {
+    lines.push(`EMBED_MODEL_ID=${quoteShell(values.EMBED_MODEL_ID)}`);
   }
 
   lines.push("");

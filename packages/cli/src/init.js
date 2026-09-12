@@ -1,20 +1,23 @@
 import { existsSync } from "node:fs";
-import { readFile } from "node:fs/promises";
 import path from "node:path";
 import {
   ALLOW_PUBLIC_SIGNUP,
   APP_MODE,
   BILLING_ENABLED,
-  DEFAULT_AMPLIFY_REPO,
   EXAMPLE_ENV_REL,
   SMOOTH_REGION,
 } from "./defaults.js";
+import { defaultAmplifyRepository, detectGithubLogin } from "./amplify-repo.js";
 import {
   classifyGithubToken,
   githubTokenWorksForAmplify,
   printChecks,
   runChecks,
 } from "./checks.js";
+import {
+  isKnownEmbeddingModel,
+  listEmbeddingModels,
+} from "./embedding-models.js";
 import {
   inferDriver,
   inferPrepare,
@@ -28,7 +31,7 @@ import {
   detectGitRemote,
   displayEnvPath,
   findRepoRoot,
-  readHardcodedRepo,
+  normalizeRepoUrl,
   resolveEnvPath,
 } from "./repo.js";
 import { generateCtxToken, generateSecret } from "./secrets.js";
@@ -135,6 +138,7 @@ export async function runInit(opts, ctx) {
       exec,
       io,
       env,
+      awsEnv,
       tty,
       awsProfile,
       awsAccessKeyId,
@@ -166,6 +170,8 @@ export async function runInit(opts, ctx) {
     hasAwsKeys: Boolean(awsAccessKeyId && awsSecretAccessKey),
     bootstrapped: checks.bootstrap.ok,
     repository: answers.repository,
+    embedModelId: answers.embedModelId || "",
+    embeddingModels: answers.embeddingModels || [],
     hasDatabaseUrl: Boolean(answers.databaseUrl),
     databaseDriver: answers.databaseDriver,
     databasePrepare: answers.databasePrepare,
@@ -216,13 +222,14 @@ export async function runInit(opts, ctx) {
     APP_MODE,
     ALLOW_PUBLIC_SIGNUP,
     BILLING_ENABLED,
-    REPOSITORY: answers.repository || DEFAULT_AMPLIFY_REPO,
+    REPOSITORY: answers.repository || "",
+    EMBED_MODEL_ID: answers.embedModelId || "",
   };
 
   await writeDeployEnv(envPath, values);
 
   io.ok(`wrote ${envDisplay} (chmod 600)`);
-  if (!githubReadyForAmplify(checks, answers)) {
+  if (answers.repository && !githubReadyForAmplify(checks, answers)) {
     io.warn(
       "no Amplify-capable GitHub PAT yet — set CTX_GH_TOKEN to a ghp_ or github_pat_ token before deploy"
     );
@@ -245,7 +252,7 @@ export async function runInit(opts, ctx) {
     return 1;
   }
 
-  if (!githubReadyForAmplify(checks, answers)) {
+  if (answers.repository && !githubReadyForAmplify(checks, answers)) {
     io.err(
       "not deploying: Amplify needs a GitHub PAT (ghp_ / github_pat_). Installation and gh OAuth tokens cannot create repo webhooks and will roll the stack back."
     );
@@ -262,14 +269,29 @@ export async function runInit(opts, ctx) {
 }
 
 async function collectAnswers(opts, ctx) {
-  const { repoRoot, exec, io, env, tty } = ctx;
-  const stackRepo = await readStackRepo(repoRoot);
+  const { repoRoot, exec, io, env, awsEnv, tty } = ctx;
   const remote = detectGitRemote(exec, repoRoot);
-  const repository = opts.repo || remote || stackRepo || DEFAULT_AMPLIFY_REPO;
+  const ghLogin = detectGithubLogin(exec);
+  const repository = defaultAmplifyRepository({
+    repo: opts.repo ? normalizeRepoUrl(opts.repo) : "",
+    ghLogin,
+  });
   const databaseUrl = opts.databaseUrl || env.DATABASE_URL || "";
   const awsProfile = ctx.awsProfile ?? null;
   const awsAccessKeyId = ctx.awsAccessKeyId ?? null;
   const awsSecretAccessKey = ctx.awsSecretAccessKey ?? null;
+  if (opts.embedModel && !isKnownEmbeddingModel(opts.embedModel)) {
+    const error = new Error(
+      `--embed-model must be a Bedrock Titan or Cohere embedding id (got ${opts.embedModel})`
+    );
+    error.code = "USAGE";
+    throw error;
+  }
+  const catalog = listEmbeddingModels({
+    exec,
+    env: awsEnv,
+    region: SMOOTH_REGION,
+  });
 
   if (opts.dryRun || opts.yes) {
     if (opts.yes && !opts.dryRun && !databaseUrl) {
@@ -279,6 +301,8 @@ async function collectAnswers(opts, ctx) {
     return {
       region: SMOOTH_REGION,
       repository,
+      embedModelId: opts.embedModel || "",
+      embeddingModels: catalog.models,
       databaseUrl,
       databaseDriver: opts.databaseDriver || inferDriver(databaseUrl),
       databasePrepare:
@@ -307,26 +331,18 @@ async function collectAnswers(opts, ctx) {
         repoRoot,
         region: SMOOTH_REGION,
         repository,
+        suggestedRepo: remote,
+        embedModelId: opts.embedModel || "",
         awsProfile,
         awsAccessKeyId,
         awsSecretAccessKey,
       },
       io,
+      exec,
+      env: awsEnv,
     })),
     ghToken: null,
   };
-}
-
-async function readStackRepo(repoRoot) {
-  try {
-    const source = await readFile(
-      path.join(repoRoot, "cdk", "lib", "context101-stack.ts"),
-      "utf8"
-    );
-    return readHardcodedRepo(source);
-  } catch {
-    return DEFAULT_AMPLIFY_REPO;
-  }
 }
 
 function withAwsAuth(env, { profile, accessKeyId, secretAccessKey } = {}) {

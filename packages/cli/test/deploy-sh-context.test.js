@@ -34,13 +34,14 @@ function runWrapper(dir, extraEnv) {
   });
 }
 
-test("deploy.sh rejects ghs_ before calling cdk", async () => {
+test("deploy.sh rejects ghs_ before calling cdk when Amplify watches a repo", async () => {
   const dir = await setupWrapperHome();
   await writeFile(
     path.join(dir, ".deploy-env"),
     [
       'CTX_TOKEN="ctx_testtoken_xx"',
       'CTX_GH_TOKEN="ghs_not_a_pat_token"',
+      'REPOSITORY="https://github.com/acme/context101"',
       "",
     ].join("\n"),
     { mode: 0o600 }
@@ -118,6 +119,64 @@ test("deploy.sh refuses a hosted product URL written in the env file", async () 
     npxWrote = false;
   }
   assert.equal(npxWrote, false);
+});
+
+test("deploy.sh deploys without CTX_GH_TOKEN when Amplify is skipped", async () => {
+  const dir = await setupWrapperHome();
+  await writeFile(
+    path.join(dir, ".deploy-env"),
+    ['CTX_TOKEN="ctx_testtoken_xx"', 'APP_MODE="self_hosted"', ""].join("\n"),
+    { mode: 0o600 }
+  );
+
+  const result = runWrapper(dir, {});
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const raw = await readFile(path.join(dir, "npx-args"));
+  const joined = raw.toString("utf8");
+  assert.match(joined, /token=ctx_testtoken_xx/);
+  assert.equal(joined.includes("githubToken="), false);
+  assert.match(result.stdout, /skipped — no REPOSITORY/);
+});
+
+test("deploy.sh ignores a ghs_ gh token when Amplify is skipped", async () => {
+  const dir = await setupWrapperHome();
+  await writeFile(
+    path.join(dir, ".deploy-env"),
+    [
+      'CTX_TOKEN="ctx_testtoken_xx"',
+      'CTX_GH_TOKEN="ghs_not_a_pat_token"',
+      "",
+    ].join("\n"),
+    { mode: 0o600 }
+  );
+
+  const result = runWrapper(dir, {});
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const raw = await readFile(path.join(dir, "npx-args"));
+  assert.equal(raw.toString("utf8").includes("githubToken="), false);
+});
+
+test("deploy.sh forwards EMBED_MODEL_ID and githubToken when watching a repo", async () => {
+  const dir = await setupWrapperHome();
+  await writeFile(
+    path.join(dir, ".deploy-env"),
+    [
+      'CTX_TOKEN="ctx_testtoken_xx"',
+      'CTX_GH_TOKEN="ghp_testtoken_xx"',
+      'REPOSITORY="https://github.com/acme/context101"',
+      'EMBED_MODEL_ID="amazon.titan-embed-text-v1"',
+      "",
+    ].join("\n"),
+    { mode: 0o600 }
+  );
+
+  const result = runWrapper(dir, {});
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const raw = await readFile(path.join(dir, "npx-args"));
+  const joined = raw.toString("utf8");
+  assert.match(joined, /githubToken=ghp_testtoken_xx/);
+  assert.match(joined, /REPOSITORY=https:\/\/github.com\/acme\/context101/);
+  assert.match(joined, /EMBED_MODEL_ID=amazon.titan-embed-text-v1/);
 });
 
 test("deploy.sh never forwards an ambient hosted product URL", async () => {

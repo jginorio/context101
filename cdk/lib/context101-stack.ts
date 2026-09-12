@@ -46,6 +46,29 @@ function ownPublicUrl(raw: string | undefined): string | undefined {
   return value;
 }
 
+const DEFAULT_EMBED_MODEL_ID = "amazon.titan-embed-text-v2:0";
+
+/** Default dimensions — keep in sync with web/lib/embedding-models.ts */
+const EMBED_MODEL_META: Record<
+  string,
+  { dimensions: number; configurable: boolean }
+> = {
+  "amazon.titan-embed-text-v2:0": { dimensions: 1024, configurable: true },
+  "amazon.titan-embed-text-v1": { dimensions: 1536, configurable: false },
+  "amazon.titan-embed-image-v1": { dimensions: 1024, configurable: false },
+  "cohere.embed-english-v3": { dimensions: 1024, configurable: false },
+  "cohere.embed-multilingual-v3": { dimensions: 1024, configurable: false },
+  "cohere.embed-english-light-v3": { dimensions: 384, configurable: false },
+  "cohere.embed-multilingual-light-v3": { dimensions: 384, configurable: false },
+};
+
+function embeddingModelMeta(modelId: string): {
+  dimensions: number;
+  configurable: boolean;
+} {
+  return EMBED_MODEL_META[modelId] ?? { dimensions: 1024, configurable: false };
+}
+
 /**
  * Context101 — shared team knowledge base.
  *
@@ -61,8 +84,12 @@ export class Context101Stack extends cdk.Stack {
     super(scope, id, props);
 
     const namePrefix = "context101";
-    const embedDim = 1024;
-    const embedModelArn = `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`;
+    const embedModelId =
+      (this.node.tryGetContext("EMBED_MODEL_ID") as string | undefined)?.trim() ||
+      DEFAULT_EMBED_MODEL_ID;
+    const embedMeta = embeddingModelMeta(embedModelId);
+    const embedDim = embedMeta.dimensions;
+    const embedModelArn = `arn:aws:bedrock:${this.region}::foundation-model/${embedModelId}`;
 
     // Embedding models a brain can be provisioned with at runtime are listed
     // dynamically from Bedrock in the web app (Amazon Titan + Cohere Embed —
@@ -215,9 +242,13 @@ export class Context101Stack extends cdk.Stack {
         type: "VECTOR",
         vectorKnowledgeBaseConfiguration: {
           embeddingModelArn: embedModelArn,
-          embeddingModelConfiguration: {
-            bedrockEmbeddingModelConfiguration: { dimensions: embedDim },
-          },
+          ...(embedMeta.configurable
+            ? {
+                embeddingModelConfiguration: {
+                  bedrockEmbeddingModelConfiguration: { dimensions: embedDim },
+                },
+              }
+            : {}),
         },
       },
       storageConfiguration: {
@@ -1103,12 +1134,23 @@ export class Context101Stack extends cdk.Stack {
     }
 
     // ── 9. Optional: Amplify Hosting for the web admin UI ─────────────
-    //      Only provisioned if -c githubToken=<pat> is passed.
+    //      Only provisioned if -c githubToken=<pat> and -c REPOSITORY= are
+    //      passed. There is no default watch target — a found-the-repo
+    //      operator deploys the stack without a GitHub-watched web app.
     const githubToken = this.node.tryGetContext("githubToken") as
       | string
       | undefined;
+    const amplifyRepository = (
+      this.node.tryGetContext("REPOSITORY") as string | undefined
+    )?.trim();
 
-    if (githubToken) {
+    if (githubToken && !amplifyRepository) {
+      throw new Error(
+        "REPOSITORY is required when githubToken is set. Omit both to skip Amplify."
+      );
+    }
+
+    if (githubToken && amplifyRepository) {
       // a) Service role for the Amplify app. Auth is Better Auth + Postgres
       //    now, so there's no Amplify Gen 2 backend (Cognito) to provision —
       //    this role exists only so Amplify Hosting can deliver SSR compute
@@ -1136,9 +1178,7 @@ export class Context101Stack extends cdk.Stack {
       const webApp = new amplify.CfnApp(this, "WebApp", {
         name: `${namePrefix}-web`,
         description: "Context101 knowledge admin UI",
-        repository:
-          (this.node.tryGetContext("REPOSITORY") as string | undefined) ||
-          "https://github.com/jginorio/context101",
+        repository: amplifyRepository,
         accessToken: githubToken,
         iamServiceRole: amplifyServiceRole.roleArn,
         platform: "WEB_COMPUTE", // Next.js SSR

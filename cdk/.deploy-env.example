@@ -10,13 +10,15 @@
 # becomes the shared bearer token your MCP clients send.
 CTX_TOKEN="context101-platea-2026-bearer"
 
-# OPTIONAL — gates the Amplify web app + wiki-gen stack.
-# If you have `gh` installed and authenticated, deploy.sh falls back to
-# `gh auth token` so you can leave this commented out.
+# OPTIONAL — only if Amplify should watch a GitHub repo. Omit both to
+# deploy the AWS stack without a GitHub-watched web app.
+# REPOSITORY="https://github.com/<you>/context101"
 # CTX_GH_TOKEN="ghp_..."
 
-# OPTIONAL — Amplify repo URL if your fork isn't the stack default.
-# REPOSITORY="https://github.com/<you>/context101"
+# OPTIONAL — Bedrock embedding model for the default brain.
+# Skip / omit to keep amazon.titan-embed-text-v2:0. Pick any Amazon
+# Titan or Cohere embedding model enabled in Model access.
+# EMBED_MODEL_ID="amazon.titan-embed-text-v2:0"
 
 # OPTIONAL — passed through to the cdk subprocess.
 AWS_PROFILE="plateapr.com"

@@ -1,8 +1,6 @@
 import {
   CLAUDE_IMPROVE_MODEL,
-  DEFAULT_AMPLIFY_REPO,
   DEPLOY_WRAPPER,
-  SMOOTH_REGION,
   TITAN_EMBED_MODEL,
 } from "./defaults.js";
 
@@ -11,6 +9,11 @@ export function deployCommand(seed) {
 }
 
 export function formatDryRun(plan) {
+  const embed =
+    plan.embedModelId || `${TITAN_EMBED_MODEL} (default — skip / pick later in the app)`;
+  const available = plan.embeddingModels?.length
+    ? `     available: ${plan.embeddingModels.map((m) => m.id).join(", ")}`
+    : null;
   const lines = [
     "Plan (dry-run — nothing will be written, nothing will be deployed)",
     "",
@@ -30,13 +33,15 @@ export function formatDryRun(plan) {
           ? "     using AWS access keys (written to deploy-env)"
           : "     would ask for AWS access key and secret",
     `  3. CDK bootstrap: ${bootstrapLabel(plan)}`,
-    `  4. Bedrock model access`,
-    `     required: ${TITAN_EMBED_MODEL}`,
-    `     Claude (${CLAUDE_IMPROVE_MODEL}) for Improve / wiki — wiki is optional`,
-    `  5. Amplify repo: ${plan.repository}`,
-    plan.repository !== DEFAULT_AMPLIFY_REPO
+    `  4. Bedrock embedding model: ${embed}`,
+    available,
+    `     Claude (${CLAUDE_IMPROVE_MODEL}) for Improve — wiki is paused; skip`,
+    plan.repository
+      ? `  5. Amplify: watch ${plan.repository}`
+      : "  5. Amplify: skipped (stack only — no GitHub-watched web app)",
+    plan.repository
       ? "     written as REPOSITORY in the env file (CDK reads it as context)"
-      : "     matches the stack default",
+      : "     a found-the-repo operator does not watch this checkout by default",
     `  6. Postgres: DATABASE_URL ${plan.hasDatabaseUrl ? "provided" : "missing"}, driver ${plan.databaseDriver}, prepare ${
       plan.databasePrepare ? "true" : "false"
     }`,
@@ -49,8 +54,12 @@ export function formatDryRun(plan) {
       ? "     file already exists — dry-run would refuse without --force"
       : "     file does not exist yet",
     `  9. Next command: ${deployCommand(plan.seed)}`,
-    "     never raw cdk deploy — the wrapper needs CTX_TOKEN + CTX_GH_TOKEN",
-    " 10. After web is up: /setup on the Amplify domain (first admin)",
+    plan.repository
+      ? "     never raw cdk deploy — the wrapper needs CTX_TOKEN + CTX_GH_TOKEN"
+      : "     never raw cdk deploy — the wrapper needs CTX_TOKEN (Amplify PAT only if you watch a repo)",
+    plan.repository
+      ? " 10. After web is up: /setup on the Amplify domain (first admin)"
+      : " 10. Amplify skipped — run web/ locally, or re-run with --repo to watch a GitHub repo",
     " 11. Optional connectors / wiki overlay: skipped",
     "",
     `Would write: ${plan.envDisplay}`,
@@ -70,9 +79,17 @@ function bootstrapLabel(plan) {
 }
 
 export function nextSteps(plan) {
+  if (plan.repository) {
+    return [
+      `Next: ${deployCommand(plan.seed)}`,
+      "After Amplify is up (~4 min), open /setup on WebAppDefaultDomain (or your own domain).",
+      "Leave BETTER_AUTH_URL / APP_URL unset unless you bring your own host. CDK fills the Amplify default.",
+    ].join("\n");
+  }
   return [
     `Next: ${deployCommand(plan.seed)}`,
-    "After Amplify is up (~4 min), open /setup on WebAppDefaultDomain (or your own domain).",
-    "Leave BETTER_AUTH_URL / APP_URL unset unless you bring your own host. CDK fills the Amplify default.",
+    "Amplify is skipped — this deploy is the AWS stack only (no GitHub-watched web app).",
+    "Run the web app from web/, or re-run init with --repo when you want Amplify.",
+    "Leave BETTER_AUTH_URL / APP_URL unset unless you bring your own host.",
   ].join("\n");
 }

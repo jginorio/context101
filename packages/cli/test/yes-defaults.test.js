@@ -58,6 +58,8 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
   assert.match(body, /ALLOW_PUBLIC_SIGNUP="false"/);
   assert.match(body, /BILLING_ENABLED="false"/);
   assert.match(body, /AWS_PROFILE="dev"/);
+  assert.equal(body.includes("REPOSITORY="), false);
+  assert.equal(body.includes("EMBED_MODEL_ID="), false);
   assert.equal(body.includes("example-do-not-copy"), false);
   assert.equal(body.includes("site/"), false);
 
@@ -89,7 +91,7 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
   assert.equal(text.includes("ghp_test_token_must_never_appear"), false);
   assert.match(text, /wrote tmp-deploy-env/);
   assert.match(text, /\.\/cdk\/deploy\.sh/);
-  assert.match(text, /\/setup/);
+  assert.match(text, /Amplify is skipped/);
   assert.equal(text.includes("site/"), false);
   assert.equal(deployed, false);
 });
