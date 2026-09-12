@@ -58,7 +58,7 @@ test("isContext101Deployment keeps root stacks and drops nested, deleted, and un
 
 test("formatDeployments prints an empty next-step and a table", () => {
   assert.match(formatDeployments([], { region: "xx-test-1" }), /No Context101 deployments/);
-  assert.match(formatDeployments([], { region: "xx-test-1" }), /npx context101 deploy/);
+  assert.match(formatDeployments([], { region: "xx-test-1" }), /context101 deploy/);
   const table = formatDeployments([LIVE], { region: "xx-test-1" });
   assert.match(table, /Context101Stack/);
   assert.match(table, /CREATE_COMPLETE/);
@@ -86,7 +86,7 @@ test("context101 list prints no deployments when the account is empty", async ()
 
   assert.equal(code, 0);
   assert.match(io.stdoutText, /No Context101 deployments/);
-  assert.match(io.stdoutText, /npx context101 deploy/);
+  assert.match(io.stdoutText, /context101 deploy/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
 });
 
@@ -130,13 +130,32 @@ test("context101 list prints Context101 stacks and ignores nested and toolkit", 
   assert.equal(io.stdoutText.includes("DELETE_COMPLETE"), false);
 });
 
-test("context101 destroy --dry-run does not call the wrapper", async () => {
+test("context101 destroy without a name refuses", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-rm-noname-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+
+  const code = await main(["destroy", "--dry-run"], {
+    cwd: root,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec({ listStacks: listStacksPayload([LIVE]) }),
+  });
+
+  assert.equal(code, 1);
+  assert.match(io.stderrText, /needs a stack name/);
+  assert.equal(io.stdoutText.includes("Would destroy"), false);
+});
+
+test("context101 destroy --dry-run does not call cdk", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-rm-dry-"));
   await makeRepoFixture(root);
   const io = memoryIo();
   const calls = [];
 
-  const code = await main(["destroy", "--dry-run"], {
+  const code = await main(["destroy", "Context101Stack", "--dry-run"], {
     cwd: root,
     env: testEnv(),
     stdout: io.stdout,
@@ -152,28 +171,32 @@ test("context101 destroy --dry-run does not call the wrapper", async () => {
   assert.equal(code, 0);
   assert.equal(calls.length, 0);
   assert.match(io.stdoutText, /Would destroy Context101Stack/);
-  assert.match(io.stdoutText, /npx context101 destroy --yes/);
+  assert.match(io.stdoutText, /context101 destroy Context101Stack --yes/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
-  assert.equal(io.stdoutText.includes("cdk destroy"), false);
 });
 
-test("context101 destroy --dry-run on an empty account does not invent a stack", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "ctx101-rm-empty-"));
+test("context101 destroy refuses a name that is not listed", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-rm-unk-"));
   await makeRepoFixture(root);
   const io = memoryIo();
+  const calls = [];
 
-  const code = await main(["destroy", "--dry-run"], {
+  const code = await main(["destroy", "OtherStack", "--yes"], {
     cwd: root,
     env: testEnv(),
     stdout: io.stdout,
     stderr: io.stderr,
     stdin: io.stdin,
-    exec: fakeExec(),
+    exec: fakeExec({ listStacks: listStacksPayload([LIVE]) }),
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
   });
 
-  assert.equal(code, 0);
-  assert.match(io.stdoutText, /No Context101 deployments/);
-  assert.equal(io.stdoutText.includes("Would destroy"), false);
+  assert.equal(code, 1);
+  assert.equal(calls.length, 0);
+  assert.match(io.stderrText, /unknown stack OtherStack/);
 });
 
 test("context101 destroy without --yes on a non-TTY refuses", async () => {
@@ -182,7 +205,7 @@ test("context101 destroy without --yes on a non-TTY refuses", async () => {
   const io = memoryIo();
   const calls = [];
 
-  const code = await main(["remove"], {
+  const code = await main(["remove", "Context101Stack"], {
     cwd: root,
     env: testEnv(),
     stdout: io.stdout,
@@ -201,13 +224,13 @@ test("context101 destroy without --yes on a non-TTY refuses", async () => {
   assert.match(io.stderrText, /--yes/);
 });
 
-test("context101 destroy --yes calls the wrapper with destroy --force", async () => {
+test("context101 destroy --yes calls cdk destroy with the listed name", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-rm-yes-"));
   await makeRepoFixture(root);
   const io = memoryIo();
   const calls = [];
 
-  const code = await main(["destroy", "--yes"], {
+  const code = await main(["destroy", "Context101Stack", "--yes"], {
     cwd: root,
     env: testEnv(),
     stdout: io.stdout,
@@ -224,7 +247,7 @@ test("context101 destroy --yes calls the wrapper with destroy --force", async ()
   assert.equal(calls.length, 1);
   assert.equal(calls[0].repoRoot, root);
   assert.equal(calls[0].action, "destroy");
-  assert.deepEqual(calls[0].extraArgs, ["--force"]);
+  assert.equal(calls[0].stackName, "Context101Stack");
   assert.match(io.stdoutText, /Destroying Context101Stack/);
   assert.match(`${io.stdoutText}\n${io.stderrText}`, /not in CloudFormation/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
@@ -238,7 +261,7 @@ test("context101 destroy confirms on a TTY and cancels when declined", async () 
   io.stdin.isTTY = true;
   const calls = [];
 
-  const code = await main(["rm"], {
+  const code = await main(["rm", "Context101Stack"], {
     cwd: root,
     env: testEnv(),
     stdout: io.stdout,

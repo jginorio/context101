@@ -10,10 +10,10 @@ export const BILLING_ENABLED = "false";
 export const EXAMPLE_ENV_REL = "cdk/.deploy-env.example";
 export const REPO_ENV_REL = "cdk/.deploy-env";
 export const HOME_ENV_REL = ".context101/deploy-env";
-export const DEPLOY_WRAPPER = "./cdk/deploy.sh";
-export const DEPLOY_CLI = "npx context101 deploy";
-export const LIST_CLI = "npx context101 list";
-export const DESTROY_CLI = "npx context101 destroy";
+export const DEPLOY_CLI = "context101 deploy";
+export const LIST_CLI = "context101 list";
+export const DESTROY_CLI = "context101 destroy";
+export const NPX_CLI = "npx context101-cli";
 export const STACK_NAME = "Context101Stack";
 
 export const SECRET_KEYS = [

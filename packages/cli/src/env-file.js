@@ -25,8 +25,8 @@ export function quoteShell(value) {
 
 export function renderDeployEnv(values) {
   const lines = [
-    "# Written by `npx context101 init`. Gitignored. chmod 600.",
-    "# Deploy with `npx context101 deploy` — never raw `cdk deploy`.",
+    "# Written by `context101 init`. Gitignored. chmod 600.",
+    "# Deploy with `context101 deploy` — never raw `cdk deploy`.",
     "",
     `CTX_TOKEN=${quoteShell(values.CTX_TOKEN)}`,
   ];

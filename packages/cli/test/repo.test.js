@@ -11,7 +11,7 @@ import {
 } from "../src/repo.js";
 import { makeRepoFixture } from "./helpers.js";
 
-test("findRepoRoot wants cdk/deploy.sh and web/, not site/", async () => {
+test("findRepoRoot wants cdk/ + web/, not site/", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-root-"));
   await makeRepoFixture(root);
   assert.equal(findRepoRoot(path.join(root, "web")), root);
