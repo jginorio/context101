@@ -359,6 +359,10 @@ test("interactive init writes cdk/.deploy-env without asking where", async () =>
       stderr: io.stderr,
       stdin: io.stdin,
       exec: fakeExec(),
+      promptAwsKeys: async () => ({
+        accessKeyId: "TESTACCESSKEYID12345",
+        secretAccessKey: "test-secret-access-key-must-never-appear",
+      }),
       promptAnswers: async ({ defaults }) => ({
         region: defaults.region,
         repository: defaults.repository,
@@ -366,9 +370,6 @@ test("interactive init writes cdk/.deploy-env without asking where", async () =>
         databaseDriver: "postgres-js",
         databasePrepare: true,
         awsProfile: defaults.awsProfile,
-        seed: false,
-        deploy: false,
-        extras: "skip",
       }),
     }
   );
@@ -411,6 +412,10 @@ test("interactive --deploy-env still honors the flag", async () => {
       stderr: io.stderr,
       stdin: io.stdin,
       exec: fakeExec(),
+      promptAwsKeys: async () => ({
+        accessKeyId: "TESTACCESSKEYID12345",
+        secretAccessKey: "test-secret-access-key-must-never-appear",
+      }),
       promptAnswers: async ({ defaults }) => ({
         region: defaults.region,
         repository: defaults.repository,
@@ -418,9 +423,6 @@ test("interactive --deploy-env still honors the flag", async () => {
         databaseDriver: "postgres-js",
         databasePrepare: true,
         awsProfile: defaults.awsProfile,
-        seed: false,
-        deploy: false,
-        extras: "skip",
       }),
     }
   );
