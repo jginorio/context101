@@ -1,13 +1,12 @@
 import Link from "next/link";
 import {
   ArrowRight,
-  BookOpen,
+  ListChecks,
   Search,
 } from "lucide-react";
 import { BrainGlobe } from "@/components/brain-globe";
 import { FadeIn } from "@context101/ui/fade-in";
 import { IntegrationsBeam } from "@context101/ui/integrations-beam";
-import { ProviderMarquee } from "@/components/provider-logos";
 import { GithubLogo, SOURCES } from "@context101/ui/stack-logos";
 import { Button } from "@/components/ui/button";
 import { Marquee } from "@/components/ui/marquee";
@@ -16,9 +15,9 @@ const REPO_URL = "https://github.com/jginorio/context101";
 const WAITLIST_URL = "https://tally.so/r/eqzrzO";
 
 const limits = [
-  "Generated wiki pages are useful at PoC scale. Large corpora still need better batching, caching, and source selection.",
-  "Connectors sync into Context101 markdown today. Source-level writeback is still manual.",
-  "Hosted access is invite-controlled while billing, SSO, and email verification mature.",
+  "Self-host in your AWS account. Hosted is waitlist-only — not public, no billing.",
+  "Connectors sync into markdown today. Source-level writeback is still manual.",
+  "Better Auth signs people in. Every org member is an admin. No per-brain RBAC yet.",
 ];
 
 export default function HomePage() {
@@ -36,7 +35,7 @@ export default function HomePage() {
         </Link>
         <Button asChild size="sm">
           <a href={WAITLIST_URL} target="_blank" rel="noreferrer">
-            Get started
+            Waitlist
           </a>
         </Button>
       </nav>
@@ -46,27 +45,27 @@ export default function HomePage() {
 
         <FadeIn className="mx-auto flex max-w-3xl flex-col items-center">
           <h1 className="text-[clamp(52px,13vw,82px)] leading-[0.95] font-bold tracking-[-0.06em]">
-            One brain.
+            Your context.
             <br />
-            <span className="text-primary">Every AI tool.</span>
+            <span className="text-primary">Every agent.</span>
           </h1>
 
           <p className="mt-6 max-w-sm text-base leading-7 text-balance text-muted-foreground sm:max-w-xl sm:text-lg sm:leading-8">
-            One approved knowledge base that feeds Cursor, Claude, Devin, and
-            your own agents. Open source.
+            A thin wrapper around Amazon Bedrock Knowledge Bases. Self-host it
+            in your account. Hosted later — not yet.
           </p>
 
           <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Button asChild size="lg">
-              <a href={WAITLIST_URL} target="_blank" rel="noreferrer">
-                Join the waitlist
-                <ArrowRight className="size-4" />
+              <a href={REPO_URL}>
+                <GithubLogo className="size-4" />
+                Self-host it
               </a>
             </Button>
             <Button asChild variant="outline" size="lg">
-              <a href={REPO_URL}>
-                <GithubLogo className="size-4" />
-                View source
+              <a href={WAITLIST_URL} target="_blank" rel="noreferrer">
+                Join the waitlist
+                <ArrowRight className="size-4" />
               </a>
             </Button>
           </div>
@@ -98,9 +97,10 @@ export default function HomePage() {
 
       <section className="border-t section-divider py-14 sv2">
         <FadeIn className="cr2">
-          <h2 className="sv2-h">Connect your sources. Read from one place.</h2>
+          <h2 className="sv2-h">Sources in. Agents retrieve.</h2>
           <p className="sv2-p">
-            Connect team docs once. Every AI tool reads the same source.
+            Docs land in a Bedrock Knowledge Base. Every agent reads the same
+            raw source.
           </p>
           <div className="cr2-grid">
             <div className="cr2-beam">
@@ -112,20 +112,18 @@ export default function HomePage() {
                 <div>
                   <h3>Connect your sources</h3>
                   <p>
-                    Bring your team&apos;s knowledge in from Google Docs, Notion,
-                    GitHub, or markdown. Add a source once and Context101 keeps
-                    it together in one brain.
+                    Bring docs in from Google Docs, Notion, GitHub, or markdown.
+                    They live in a brain — S3 plus a Bedrock KB.
                   </p>
                 </div>
               </li>
               <li className="sv2-step">
                 <span className="sv2-num">02</span>
                 <div>
-                  <h3>Read from one place</h3>
+                  <h3>Retrieve through MCP</h3>
                   <p>
-                    Cursor, Claude, Devin, or your own agents read from that
-                    same brain through MCP. One source of truth, not scattered
-                    docs.
+                    Cursor, Claude, Devin, or your own agents hit per-brain MCP.
+                    Same KB. Raw retrieve.
                   </p>
                 </div>
               </li>
@@ -136,28 +134,38 @@ export default function HomePage() {
 
       <section className="border-t section-divider py-14 sv2 tm">
         <FadeIn>
-          <h2 className="sv2-h">Built for teams, with real access control.</h2>
+          <h2 className="sv2-h">Isolated brains on your AWS.</h2>
           <p className="sv2-p">
-            Organizations, roles, and isolated brains — on a self-hostable
-            Better Auth + Postgres control plane.
+            Each brain is its own bucket, Bedrock KB, vector index, and MCP
+            token. The admin UI manages brains, sources, and the review queue.
+            Better Auth exists; per-brain roles do not.
           </p>
           <ol className="sv2-steps">
             <li className="sv2-step">
               <div>
-                <h3>Invite &amp; onboard</h3>
-                <p>Join from an email invite — no separate signup.</p>
+                <h3>Isolated brains</h3>
+                <p>
+                  Own S3 bucket, own Bedrock KB, own vector index, own MCP
+                  bearer token.
+                </p>
               </div>
             </li>
             <li className="sv2-step">
               <div>
-                <h3>Roles &amp; access</h3>
-                <p>Owners set roles. Remove a member, sessions revoke instantly.</p>
+                <h3>Admin UI</h3>
+                <p>
+                  Create brains, connect sources, review suggestions. That&apos;s
+                  the app.
+                </p>
               </div>
             </li>
             <li className="sv2-step">
               <div>
-                <h3>Multiple workspaces</h3>
-                <p>Switch orgs at sign-in, or spin up a new one anytime.</p>
+                <h3>Auth, stated plainly</h3>
+                <p>
+                  Better Auth + Postgres. Signed-in teammates are admins.
+                  Per-brain RBAC is not shipped.
+                </p>
               </div>
             </li>
           </ol>
@@ -167,52 +175,34 @@ export default function HomePage() {
       <section className="border-t section-divider py-14">
         <FadeIn>
           <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em] text-balance">
-            Every source, reconciled into one corpus.
+            Raw retrieve. Human review.
           </h2>
           <p className="mt-3.5 max-w-2xl text-base leading-7 text-muted-foreground text-pretty">
-            Context101 reconciles your connected docs into a single brain — one
-            place your tools read from, instead of scattered files.
+            Agents search the source docs through Bedrock. Suggestions wait for
+            a person.
           </p>
         </FadeIn>
         <FadeIn className="corpus-modes" delayMs={80}>
-          <div className="corpus-mode">
-            <div className="corpus-mode-head">
-              <BookOpen aria-hidden size={20} />
-              <h3>Read it</h3>
-            </div>
-            <p>
-              Readable wiki pages — topic pages, citations, and architecture
-              notes, generated from the raw docs.
-            </p>
-          </div>
           <div className="corpus-mode">
             <div className="corpus-mode-head">
               <Search aria-hidden size={20} />
               <h3>Search it</h3>
             </div>
             <p>
-              Always-on retrieval over the source material, served to any AI
-              tool through MCP.
+              Bedrock retrieve over the raw docs. MCP serves those chunks to any
+              agent.
             </p>
           </div>
-        </FadeIn>
-      </section>
-
-      <section className="border-t section-divider py-14">
-        <FadeIn>
-          <h2 className="text-[clamp(30px,4vw,48px)] leading-[1.05] font-bold tracking-[-0.045em] text-balance">
-            Bring the model you trust.
-          </h2>
-          <p className="mt-3.5 max-w-2xl text-base leading-7 text-muted-foreground text-pretty">
-            Bedrock works out of the box. Anthropic, OpenAI, Gemini, and Grok
-            keys can be configured per brain and stored in AWS Secrets Manager.
-          </p>
-        </FadeIn>
-        <FadeIn
-          className="mt-7 overflow-hidden surface-card surface-card--flat py-5"
-          delayMs={60}
-        >
-          <ProviderMarquee />
+          <div className="corpus-mode">
+            <div className="corpus-mode-head">
+              <ListChecks aria-hidden size={20} />
+              <h3>Review it</h3>
+            </div>
+            <p>
+              Agents can suggest a change. A human approves it in the queue
+              before it lands in the KB.
+            </p>
+          </div>
         </FadeIn>
       </section>
 
@@ -222,7 +212,7 @@ export default function HomePage() {
             Alpha, stated plainly.
           </h2>
           <p className="mt-3.5 max-w-2xl text-base leading-7 text-muted-foreground text-pretty">
-            Useful for trusted teams now. Still honest about the rough edges.
+            Useful for trusted teams who can run AWS. Not a hosted SaaS.
           </p>
         </FadeIn>
 
@@ -236,7 +226,7 @@ export default function HomePage() {
       </section>
 
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t section-divider py-6 text-[13px] text-muted-foreground">
-        <span>Context101 alpha. Open-source first.</span>
+        <span>Context101 alpha. Self-host first.</span>
         <div className="flex items-center gap-3">
           <Link
             href="/terms-of-use"

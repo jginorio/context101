@@ -7,7 +7,7 @@ import { ImageResponse } from "next/og";
 // fallback, the Twitter card) for every page. 1200x630 is the standard size.
 // Fonts are loaded from local woff files so the card pixel-matches the site:
 // Space Grotesk for the headline, Inter for body — same as the live pages.
-export const alt = "Context101 — One brain. Every AI tool.";
+export const alt = "Context101 — Your context. Every agent.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -71,9 +71,9 @@ export default async function OpengraphImage() {
             letterSpacing: "-0.06em",
           }}
         >
-          <div style={{ display: "flex" }}>One brain.</div>
+          <div style={{ display: "flex" }}>Your context.</div>
           <div style={{ display: "flex", color: "#b855c9" }}>
-            Every AI tool.
+            Every agent.
           </div>
         </div>
 
@@ -87,7 +87,7 @@ export default async function OpengraphImage() {
             color: "#a89eb4",
           }}
         >
-          One MCP knowledge base for Cursor, Claude, Devin, and your own agents.
+          Thin wrapper around Amazon Bedrock Knowledge Bases. Self-host now.
         </div>
 
         <div

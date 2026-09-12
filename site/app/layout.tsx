@@ -5,9 +5,9 @@ import { SiteBackground } from "@/components/site-background";
 import "./globals.css";
 
 const SITE_URL = "https://context101.dev";
-const TITLE = "Context101 — One brain. Every AI tool.";
+const TITLE = "Context101 — Your context. Every agent.";
 const DESCRIPTION =
-  "Context101 is an MCP knowledge base that gives Cursor, Claude, Devin, and your own agents one shared, approved source of truth. Use the hosted app, or self-host the open source.";
+  "A thin open-source wrapper around Amazon Bedrock Knowledge Bases. Self-host it in your AWS account. Agents retrieve the same docs through MCP. Hosted later — not yet.";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),
@@ -19,14 +19,16 @@ export const metadata: Metadata = {
   applicationName: "Context101",
   keywords: [
     "Context101",
+    "Amazon Bedrock",
+    "Knowledge Bases",
     "MCP",
-    "knowledge base",
-    "AI agents",
+    "self-host",
+    "AWS",
+    "S3 Vectors",
     "Cursor",
     "Claude",
-    "Devin",
-    "shared context",
     "open source",
+    "alpha",
   ],
   alternates: { canonical: "/" },
   openGraph: {

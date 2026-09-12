@@ -367,8 +367,7 @@ a {
   }
 }
 
-/* "One corpus" — the two ways you use the reconciled brain. One panel split
-   into two cells sharing a hairline: one corpus, read or searched. */
+/* Two-up feature split — retrieve vs review, sharing a hairline. */
 .corpus-modes {
   margin-top: 2.25rem;
   display: grid;
