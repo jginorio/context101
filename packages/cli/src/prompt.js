@@ -10,12 +10,12 @@ import {
   listEmbeddingModels,
 } from "./embedding-models.js";
 import { inferDriver, inferPrepare } from "./env-file.js";
-import { defaultEnvPath, normalizeRepoUrl } from "./repo.js";
+import { normalizeRepoUrl } from "./repo.js";
 
 export async function promptAnswers({ defaults, io, exec, env }) {
   const { confirm, input, password, select } = await import("@inquirer/prompts");
 
-  io.write("This writes a gitignored deploy-env and prints the deploy command.");
+  io.write("This writes a local secrets file and prints the deploy command.");
   io.write("It will not run cdk deploy. Press ^C to quit.");
   io.write("");
 
@@ -112,15 +112,6 @@ export async function promptAnswers({ defaults, io, exec, env }) {
     });
   }
 
-  const envChoice = await select({
-    message: "Write deploy-env to",
-    default: "repo",
-    choices: [
-      { name: "cdk/.deploy-env (this repo)", value: "repo" },
-      { name: "~/.context101/deploy-env (this user)", value: "home" },
-    ],
-  });
-
   const seed = await confirm({
     message: "First deploy? Include --seed (uploads knowledge/ once)",
     default: false,
@@ -153,8 +144,6 @@ export async function promptAnswers({ defaults, io, exec, env }) {
     awsProfile: defaults.awsProfile ?? null,
     awsAccessKeyId: defaults.awsAccessKeyId ?? null,
     awsSecretAccessKey: defaults.awsSecretAccessKey ?? null,
-    home: envChoice === "home",
-    envFile: envChoice === "home" ? defaultEnvPath(defaults.repoRoot, { home: true }) : null,
     seed,
     deploy,
     extras,

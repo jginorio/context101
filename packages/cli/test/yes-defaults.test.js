@@ -235,8 +235,6 @@ test("interactive init asks which AWS profile and writes it", async () => {
         awsProfile: defaults.awsProfile,
         awsAccessKeyId: defaults.awsAccessKeyId,
         awsSecretAccessKey: defaults.awsSecretAccessKey,
-        home: false,
-        envFile: null,
         seed: false,
         deploy: false,
         extras: "skip",
@@ -326,8 +324,6 @@ test("interactive init asks for AWS keys when no profiles exist", async () => {
         awsProfile: defaults.awsProfile,
         awsAccessKeyId: defaults.awsAccessKeyId,
         awsSecretAccessKey: defaults.awsSecretAccessKey,
-        home: false,
-        envFile: null,
         seed: false,
         deploy: false,
         extras: "skip",
@@ -344,6 +340,90 @@ test("interactive init asks for AWS keys when no profiles exist", async () => {
   const text = `${io.stdoutText}\n${io.stderrText}`;
   assert.equal(text.includes(secret), false);
   assert.equal(text.includes("TESTACCESSKEYID12345"), false);
+});
+
+test("interactive init writes cdk/.deploy-env without asking where", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-no-envq-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+  io.stdout.isTTY = true;
+  io.stdin.isTTY = true;
+
+  const code = await main(
+    ["init", "--database-url", "postgresql://localhost/db", "--force"],
+    {
+      cwd: root,
+      env: testEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      exec: fakeExec(),
+      promptAnswers: async ({ defaults }) => ({
+        region: defaults.region,
+        repository: defaults.repository,
+        databaseUrl: "postgresql://localhost/db",
+        databaseDriver: "postgres-js",
+        databasePrepare: true,
+        awsProfile: defaults.awsProfile,
+        seed: false,
+        deploy: false,
+        extras: "skip",
+      }),
+    }
+  );
+
+  assert.equal(code, 0);
+  assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), true);
+  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  const src = await readFile(
+    new URL("../src/prompt.js", import.meta.url),
+    "utf8"
+  );
+  assert.equal(src.includes("Write deploy-env to"), false);
+  assert.equal(src.includes("~/.context101/deploy-env"), false);
+});
+
+test("interactive --deploy-env still honors the flag", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-envflag-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+  io.stdout.isTTY = true;
+  io.stdin.isTTY = true;
+  const envPath = path.join(root, "custom-secrets");
+
+  const code = await main(
+    [
+      "init",
+      "--database-url",
+      "postgresql://localhost/db",
+      "--force",
+      "--deploy-env",
+      envPath,
+    ],
+    {
+      cwd: root,
+      env: testEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      exec: fakeExec(),
+      promptAnswers: async ({ defaults }) => ({
+        region: defaults.region,
+        repository: defaults.repository,
+        databaseUrl: "postgresql://localhost/db",
+        databaseDriver: "postgres-js",
+        databasePrepare: true,
+        awsProfile: defaults.awsProfile,
+        seed: false,
+        deploy: false,
+        extras: "skip",
+      }),
+    }
+  );
+
+  assert.equal(code, 0);
+  assert.equal(existsSync(envPath), true);
+  assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), false);
 });
 
 test("--yes without a database URL writes CREATE_RDS", async () => {

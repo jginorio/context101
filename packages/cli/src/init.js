@@ -368,6 +368,8 @@ async function collectAnswers(opts, ctx) {
   return {
     ...prompted,
     createRds: prompted.createRds ?? !prompted.databaseUrl,
+    home: opts.home,
+    envFile: opts.envFile,
     ghToken: null,
   };
 }
