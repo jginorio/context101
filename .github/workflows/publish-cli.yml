@@ -69,7 +69,7 @@ jobs:
           NAME="${{ steps.pkg.outputs.name }}"
           TAG="v${VERSION}"
 
-          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null; then
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
             echo "Git tag ${TAG} already exists — skipping publish and release."
             echo "skip=true" >> "${GITHUB_OUTPUT}"
             exit 0
