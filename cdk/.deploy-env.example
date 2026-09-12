@@ -29,7 +29,10 @@ AWS_PROFILE="plateapr.com"
 # DATABASE_DRIVER="neon-http"
 # DATABASE_PREPARE="true"
 # BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
-# BETTER_AUTH_URL="https://main.<amplify-app-id>.amplifyapp.com"
+# Leave BETTER_AUTH_URL / APP_URL unset so CDK binds Better Auth to
+# Amplify's default domain (https://main.<app-id>.amplifyapp.com).
+# Set them only if you bring your own host. Never the hosted product.
+# BETTER_AUTH_URL="https://kb.example.com"
 # MCP_TOKEN_PEPPER="$(openssl rand -base64 32)"
 #
 # Deployment mode:
@@ -38,9 +41,8 @@ AWS_PROFILE="plateapr.com"
 # APP_MODE="self_hosted"
 # ALLOW_PUBLIC_SIGNUP="false"
 # BILLING_ENABLED="false"
-# APP_URL="https://main.<amplify-app-id>.amplifyapp.com"
-# MARKETING_URL="https://context101.dev"
-# MCP_PUBLIC_HOST="https://mcp.context101.dev"
+# APP_URL="https://kb.example.com"
+# MCP_PUBLIC_HOST="https://mcp.example.com"
 #
 # Transactional email (hosted paid default: AWS SES).
 # SES_FROM_EMAIL must be a verified SES identity.

@@ -7,6 +7,7 @@ import {
   DRIVER_NEON,
   DRIVER_POSTGRES,
 } from "./defaults.js";
+import { ownPublicUrl } from "./hosted-url.js";
 
 export function inferDriver(url) {
   if (!url) return DRIVER_POSTGRES;
@@ -56,13 +57,19 @@ export function renderDeployEnv(values) {
   lines.push("");
   lines.push(`BETTER_AUTH_SECRET=${quoteShell(values.BETTER_AUTH_SECRET)}`);
   lines.push(
-    "# BETTER_AUTH_URL and APP_URL — set these after the first Amplify domain exists."
+    "# BETTER_AUTH_URL / APP_URL: omit to use Amplify's default domain"
   );
-  if (values.BETTER_AUTH_URL) {
-    lines.push(`BETTER_AUTH_URL=${quoteShell(values.BETTER_AUTH_URL)}`);
+  lines.push(
+    "# (https://main.<app-id>.amplifyapp.com), or set a domain you own."
+  );
+  lines.push("# Never the hosted Context101 product.");
+  const betterAuthUrl = ownPublicUrl(values.BETTER_AUTH_URL);
+  const appUrl = ownPublicUrl(values.APP_URL);
+  if (betterAuthUrl) {
+    lines.push(`BETTER_AUTH_URL=${quoteShell(betterAuthUrl)}`);
   }
-  if (values.APP_URL) {
-    lines.push(`APP_URL=${quoteShell(values.APP_URL)}`);
+  if (appUrl) {
+    lines.push(`APP_URL=${quoteShell(appUrl)}`);
   }
   lines.push(`MCP_TOKEN_PEPPER=${quoteShell(values.MCP_TOKEN_PEPPER)}`);
 

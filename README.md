@@ -215,19 +215,19 @@ DATABASE_URL="postgresql://..."
 DATABASE_DRIVER="neon-http"        # or postgres-js
 DATABASE_PREPARE="true"            # false for Supabase transaction pooler
 BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
-BETTER_AUTH_URL="https://<your-web-domain>"
+# Omit BETTER_AUTH_URL / APP_URL to use Amplify's default
+# https://main.<app-id>.amplifyapp.com — or set a domain you own.
+# Never the hosted Context101 product.
 APP_MODE="self_hosted"             # or hosted
 ALLOW_PUBLIC_SIGNUP="false"
 BILLING_ENABLED="false"
-APP_URL="https://<your-web-domain>"
-MARKETING_URL="https://context101.dev"
 MCP_TOKEN_PEPPER="$(openssl rand -base64 32)"
 SES_REGION="us-east-1"
 SES_FROM_EMAIL="Context101 <no-reply@your-domain.com>"
 SES_REPLY_TO_EMAIL="support@your-domain.com" # optional
 ```
 
-For self-hosted deployments, visit `/setup` after the web app is live. It creates the first Better Auth user and organization. For hosted deployments, keep `ALLOW_PUBLIC_SIGNUP=false` until billing/onboarding gates exist, then invite or provision users intentionally.
+For self-hosted deployments, visit `/setup` on `WebAppDefaultDomain` (or your own host) after the web app is live. It creates the first Better Auth user and organization. For hosted deployments, keep `ALLOW_PUBLIC_SIGNUP=false` until billing/onboarding gates exist, then invite or provision users intentionally.
 
 ### 4. (Optional) Set up data-source connectors
 

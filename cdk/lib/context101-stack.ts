@@ -21,6 +21,31 @@ import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import * as path from "path";
 import { BrainShared } from "./brain-shared";
 
+/** Hosted product zone. Self-host uses an operator domain or Amplify default. */
+function isHostedContext101Url(raw: string | undefined): boolean {
+  if (!raw) return false;
+  try {
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
+      ? raw
+      : `https://${raw}`;
+    const host = new URL(withScheme).hostname.toLowerCase();
+    return host === "context101.dev" || host.endsWith(".context101.dev");
+  } catch {
+    const host = raw
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+      .split("/")[0]
+      .split(":")[0]
+      .toLowerCase();
+    return host === "context101.dev" || host.endsWith(".context101.dev");
+  }
+}
+
+function ownPublicUrl(raw: string | undefined): string | undefined {
+  const value = raw?.trim();
+  if (!value || isHostedContext101Url(value)) return undefined;
+  return value;
+}
+
 /**
  * Context101 — shared team knowledge base.
  *
@@ -703,9 +728,9 @@ export class Context101Stack extends cdk.Stack {
     const betterAuthSecret = this.node.tryGetContext("BETTER_AUTH_SECRET") as
       | string
       | undefined;
-    const betterAuthUrl = this.node.tryGetContext("BETTER_AUTH_URL") as
-      | string
-      | undefined;
+    const betterAuthUrl = ownPublicUrl(
+      this.node.tryGetContext("BETTER_AUTH_URL") as string | undefined
+    );
     const mcpTokenPepper = this.node.tryGetContext("MCP_TOKEN_PEPPER") as
       | string
       | undefined;
@@ -716,13 +741,15 @@ export class Context101Stack extends cdk.Stack {
     const billingEnabled = this.node.tryGetContext("BILLING_ENABLED") as
       | string
       | undefined;
-    const appUrl = this.node.tryGetContext("APP_URL") as string | undefined;
-    const marketingUrl = this.node.tryGetContext("MARKETING_URL") as
-      | string
-      | undefined;
-    const mcpPublicHost = this.node.tryGetContext("MCP_PUBLIC_HOST") as
-      | string
-      | undefined;
+    const appUrl = ownPublicUrl(
+      this.node.tryGetContext("APP_URL") as string | undefined
+    );
+    const marketingUrl = ownPublicUrl(
+      this.node.tryGetContext("MARKETING_URL") as string | undefined
+    );
+    const mcpPublicHost = ownPublicUrl(
+      this.node.tryGetContext("MCP_PUBLIC_HOST") as string | undefined
+    );
     const sesRegion = this.node.tryGetContext("SES_REGION") as
       | string
       | undefined;
@@ -1167,14 +1194,36 @@ export class Context101Stack extends cdk.Stack {
       });
 
       // c) Branch — tracks main and auto-builds on push
+      const amplifyDefaultUrl = cdk.Fn.join("", [
+        "https://main.",
+        webApp.attrDefaultDomain,
+      ]);
+      const selfHostWebUrl = betterAuthUrl || appUrl;
       const mainBranch = new amplify.CfnBranch(this, "WebAppMain", {
         appId: webApp.attrAppId,
         branchName: "main",
         stage: "PRODUCTION",
         enableAutoBuild: true,
         framework: "Next.js - SSR",
+        // Branch env can reference the app default domain without a cycle.
+        // First-time self-host leaves BETTER_AUTH_URL / APP_URL unset so
+        // Better Auth binds to Amplify's domain, not the hosted product.
+        ...(selfHostWebUrl
+          ? {}
+          : {
+              environmentVariables: [
+                { name: "BETTER_AUTH_URL", value: amplifyDefaultUrl },
+                { name: "APP_URL", value: amplifyDefaultUrl },
+              ],
+            }),
       });
       mainBranch.addDependency(webApp);
+      if (!appUrl) {
+        ingestFn.addEnvironment(
+          "CONFLICT_EVIDENCE_URL",
+          cdk.Fn.join("", [amplifyDefaultUrl, "/api/conflicts/evidence"])
+        );
+      }
 
       // d) SSR Compute role — the IAM role the Amplify Hosting compute
       //    Lambda assumes at runtime. Granting it S3 perms on the docs
@@ -1488,7 +1537,8 @@ export class Context101Stack extends cdk.Stack {
           "https://main.",
           webApp.attrDefaultDomain,
         ]),
-        description: "The web admin URL once the first build finishes.",
+        description:
+          "Self-host web URL (Amplify default). Use this for /setup unless you brought your own domain.",
       });
       new cdk.CfnOutput(this, "WebSsrComputeRoleArn", {
         value: ssrComputeRole.roleArn,

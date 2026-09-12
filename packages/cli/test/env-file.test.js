@@ -58,6 +58,9 @@ test("writer uses generated secrets and never the example token", async () => {
   assert.equal(body.includes("example-do-not-copy"), false);
   assert.equal(body.includes("site/"), false);
   assert.match(body, /never raw `cdk deploy`/);
+  assert.match(body, /amplifyapp\.com/);
+  assert.equal(body.includes("BETTER_AUTH_URL="), false);
+  assert.equal(body.includes("APP_URL="), false);
 
   const snapshot = renderDeployEnv({
     ...values,
@@ -75,4 +78,22 @@ test("writer uses generated secrets and never the example token", async () => {
     ]),
     false
   );
+});
+
+test("writer drops hosted product URLs instead of copying them", () => {
+  const hosted = `https://app.${["context", "101"].join("")}.dev`;
+  const body = renderDeployEnv({
+    CTX_TOKEN: "generated-ctx-token-value",
+    BETTER_AUTH_SECRET: "generated-auth-secret-value",
+    MCP_TOKEN_PEPPER: "generated-pepper-value",
+    DATABASE_URL: "postgresql://localhost/db",
+    DATABASE_DRIVER: "postgres-js",
+    DATABASE_PREPARE: true,
+    BETTER_AUTH_URL: hosted,
+    APP_URL: hosted,
+  });
+  assert.equal(body.includes(hosted), false);
+  assert.equal(body.includes("BETTER_AUTH_URL="), false);
+  assert.equal(body.includes("APP_URL="), false);
+  assert.match(body, /amplifyapp\.com/);
 });

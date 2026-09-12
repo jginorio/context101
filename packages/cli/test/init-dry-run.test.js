@@ -37,6 +37,7 @@ test("dry-run prints the plan and writes nothing", async () => {
   assert.match(text, /Would write: cdk\/\.deploy-env/);
   assert.match(text, /Would not deploy/);
   assert.match(text, /\/setup/);
+  assert.match(text, /Amplify default domain/);
   assert.match(text, /deploy\.sh --seed/);
   assert.match(text, /https:\/\/github.com\/acme\/context101/);
   assert.match(text, new RegExp(DRIVER_NEON));

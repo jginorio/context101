@@ -92,3 +92,56 @@ test("deploy.sh does not forward ambient BETTER_AUTH_URL", async () => {
   assert.equal(result.stdout.includes("https://hosted.example.test"), false);
   assert.equal(result.stdout.includes("file-secret"), false);
 });
+
+test("deploy.sh refuses a hosted product URL written in the env file", async () => {
+  const dir = await setupWrapperHome();
+  const hosted = `https://app.${["context", "101"].join("")}.dev`;
+  await writeFile(
+    path.join(dir, ".deploy-env"),
+    [
+      'CTX_TOKEN="ctx_testtoken_xx"',
+      'CTX_GH_TOKEN="ghp_testtoken_xx"',
+      `BETTER_AUTH_URL="${hosted}"`,
+      "",
+    ].join("\n"),
+    { mode: 0o600 }
+  );
+
+  const result = runWrapper(dir, {});
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /hosted Context101 product|Amplify default/i);
+  let npxWrote = false;
+  try {
+    await readFile(path.join(dir, "npx-args"));
+    npxWrote = true;
+  } catch {
+    npxWrote = false;
+  }
+  assert.equal(npxWrote, false);
+});
+
+test("deploy.sh never forwards an ambient hosted product URL", async () => {
+  const dir = await setupWrapperHome();
+  const hosted = `https://app.${["context", "101"].join("")}.dev`;
+  await writeFile(
+    path.join(dir, ".deploy-env"),
+    [
+      'CTX_TOKEN="ctx_testtoken_xx"',
+      'CTX_GH_TOKEN="ghp_testtoken_xx"',
+      'APP_MODE="self_hosted"',
+      "",
+    ].join("\n"),
+    { mode: 0o600 }
+  );
+
+  const result = runWrapper(dir, {
+    BETTER_AUTH_URL: hosted,
+    APP_URL: hosted,
+  });
+  assert.equal(result.status, 0, result.stderr || result.stdout);
+  const raw = await readFile(path.join(dir, "npx-args"));
+  const joined = raw.toString("utf8");
+  assert.equal(joined.includes("BETTER_AUTH_URL"), false);
+  assert.equal(joined.includes("APP_URL"), false);
+  assert.equal(joined.includes(hosted), false);
+});

@@ -181,6 +181,15 @@ env_file_declares() {
   grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=" "$f"
 }
 
+# Hosted product zone — self-host uses an operator domain or Amplify default.
+is_hosted_context101_url() {
+  local raw="${1:-}"
+  [[ -z "$raw" ]] && return 1
+  local host
+  host=$(printf '%s' "$raw" | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##' | cut -d/ -f1 | cut -d: -f1 | tr '[:upper:]' '[:lower:]')
+  [[ "$host" == "context101.dev" || "$host" == *.context101.dev ]]
+}
+
 LOADED_FROM_PATH=""
 if [[ "$LOADED_FROM" == ".deploy-env" ]]; then
   LOADED_FROM_PATH=".deploy-env"
@@ -194,6 +203,14 @@ add_context_if_set() {
     return 0
   fi
   local value="${!key:-}"
+  if is_hosted_context101_url "$value"; then
+    if [[ -n "$LOADED_FROM_PATH" ]] && env_file_declares "$key" "$LOADED_FROM_PATH"; then
+      err "$key in $LOADED_FROM is the hosted Context101 product, not a self-host URL."
+      err "Omit it so CDK uses the Amplify default domain, or set a domain you own."
+      exit 1
+    fi
+    return 0
+  fi
   if [[ -n "$value" ]]; then
     CDK_ARGS+=("-c" "$key=$value")
   fi
