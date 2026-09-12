@@ -10,6 +10,7 @@ export const BILLING_ENABLED = "false";
 export const EXAMPLE_ENV_REL = "cdk/.deploy-env.example";
 export const REPO_ENV_REL = "cdk/.deploy-env";
 export const HOME_ENV_REL = ".context101/deploy-env";
+export const HOME_SRC_REL = ".context101/src";
 export const DEPLOY_CLI = "context101 deploy";
 export const LIST_CLI = "context101 list";
 export const DESTROY_CLI = "context101 destroy";

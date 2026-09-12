@@ -39,23 +39,22 @@ export function findDeployEnvPath({
   home = false,
   cwd,
   exists = existsSync,
+  homeDir,
 } = {}) {
+  const resolvedHome = homeDir ?? homedir();
   if (envFile) {
     return path.isAbsolute(envFile)
       ? envFile
       : path.resolve(cwd ?? repoRoot ?? process.cwd(), envFile);
   }
-  if (home) {
-    const homePath = path.join(homedir(), HOME_ENV_REL);
-    return exists(homePath) ? homePath : homePath;
-  }
+  const homePath = path.join(resolvedHome, HOME_ENV_REL);
+  if (home) return homePath;
   if (repoRoot) {
     const repoPath = path.join(repoRoot, ...REPO_ENV_REL.split("/"));
     if (exists(repoPath)) return repoPath;
   }
-  const homePath = path.join(homedir(), HOME_ENV_REL);
   if (exists(homePath)) return homePath;
-  return repoRoot ? path.join(repoRoot, ...REPO_ENV_REL.split("/")) : null;
+  return repoRoot ? path.join(repoRoot, ...REPO_ENV_REL.split("/")) : homePath;
 }
 
 export function readDeployEnvFile(filePath, { readFile = readFileSync, exists = existsSync } = {}) {

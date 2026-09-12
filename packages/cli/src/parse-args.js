@@ -7,9 +7,9 @@ Usage: context101 <command> [options]
   deploy               deploy the AWS stack (loads deploy-env, invokes cdk)
   diff                 cdk diff with the same context flags
   synth                cdk synth with the same context flags
-  list, ls             list Context101 CloudFormation deployments
-  destroy, remove, rm  tear down a listed stack (name required)
-  config               show deploy-env keys (values redacted)
+  list, ls             list Context101 CloudFormation deployments (no checkout)
+  destroy, remove, rm  tear down a listed stack (name required; clones if needed)
+  config               show deploy-env keys (values redacted; no checkout)
   config set KEY=value write one key (chmod 600; value is not printed)
 
 CDK fails closed: a bare \`cdk deploy\` without \`-c token=\` throws
@@ -60,13 +60,14 @@ destroy <StackName>:
   --aws-profile <name>
   --aws-access-key-id
   --aws-secret-access-key
+  --dir <path>           clone here when no checkout (default ~/.context101/src)
   --deploy-env <path>
   --home
   --dry-run              print the plan; destroy nothing
 
 config:
   --deploy-env <path>
-  --home
+  --home                 ~/.context101/deploy-env (also the default outside a checkout)
 
 From this checkout (after npm install):
   npm run context101 -- init
@@ -102,6 +103,7 @@ const INIT_ONLY = new Set([
 const DESTROY_FROM_INIT = new Set([
   "--yes",
   "-y",
+  "--dir",
   "--aws-profile",
   "--aws-access-key-id",
   "--aws-secret-access-key",

@@ -1,3 +1,4 @@
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -199,6 +200,13 @@ export async function makeRepoFixture(root) {
     "utf8"
   );
   await writeFile(path.join(root, "web", "package.json"), '{"name":"web"}\n', "utf8");
+}
+
+export function mockCloneCheckout(dest) {
+  mkdirSync(path.join(dest, "cdk"), { recursive: true });
+  mkdirSync(path.join(dest, "web"), { recursive: true });
+  writeFileSync(path.join(dest, "cdk", "cdk.json"), "{}\n");
+  writeFileSync(path.join(dest, "web", "package.json"), '{"name":"web"}\n');
 }
 
 export async function writeTestDeployEnv(root, extra = "") {
