@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { readAuthContext, resolveBrainFromRequest } from "@/lib/brains-server";
 import { retrieveSources } from "@/lib/wiki-retrieve";
 
 /**
@@ -36,10 +36,14 @@ export async function POST(request: NextRequest) {
   const includeRaw = body?.includeRaw === true;
 
   try {
+    const auth = await readAuthContext(request);
     const sources = await retrieveSources({
       knowledgeBaseId: brain.kb_id,
       query: message,
       includeRaw,
+      ...(auth
+        ? { conflictScope: { orgId: auth.orgId, brainId: brain.brain_id } }
+        : {}),
     });
     return NextResponse.json({ sources });
   } catch (err) {

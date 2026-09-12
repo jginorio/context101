@@ -36,6 +36,7 @@ export async function retrieveSources(opts: {
   query: string;
   includeRaw?: boolean;
   numberOfResults?: number;
+  conflictScope?: { orgId: string; brainId: string };
 }): Promise<RetrievedSource[]> {
   const ret = await agentRuntime.send(
     new RetrieveCommand({
@@ -55,10 +56,22 @@ export async function retrieveSources(opts: {
       },
     })
   );
-  return (ret.retrievalResults ?? []).map((r, i) => ({
+  const hits = (ret.retrievalResults ?? []).map((r, i) => ({
     n: i + 1,
     key: keyFromUri(r.location?.s3Location?.uri),
     score: r.score ?? null,
     text: (r.content?.text ?? "").trim(),
   }));
+  if (opts.conflictScope) {
+    void import("@/lib/conflicts")
+      .then(({ reportEvidence }) =>
+        reportEvidence(opts.conflictScope!, {
+          via: "query",
+          query: opts.query,
+          hits: hits.map((h) => ({ key: h.key, text: h.text })),
+        })
+      )
+      .catch((err) => console.error("conflict detect (query):", err));
+  }
+  return hits;
 }

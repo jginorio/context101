@@ -770,6 +770,16 @@ export class Context101Stack extends cdk.Stack {
         : []),
     ];
 
+    if (appUrl) {
+      ingestFn.addEnvironment(
+        "CONFLICT_EVIDENCE_URL",
+        `${appUrl.replace(/\/$/, "")}/api/conflicts/evidence`
+      );
+    }
+    if (mcpTokenPepper) {
+      ingestFn.addEnvironment("CONFLICT_EVIDENCE_SECRET", mcpTokenPepper);
+    }
+
     const brainShared = new BrainShared(this, "BrainShared", {
       namePrefix,
       embedModelArn,
