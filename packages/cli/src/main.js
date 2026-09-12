@@ -3,7 +3,7 @@ import { runConfig } from "./config.js";
 import { runDeploy } from "./deploy.js";
 import { runInit } from "./init.js";
 import { runDestroy, runList } from "./stacks.js";
-import { writers } from "./style.js";
+import { banner, writers } from "./style.js";
 
 export async function main(argv, ctx) {
   const io = writers(ctx);
@@ -22,6 +22,7 @@ export async function main(argv, ctx) {
   if (opts.help || opts.command === "help") {
     const topic =
       opts.helpTopic ?? (opts.command !== "help" ? opts.command : null);
+    banner(ctx);
     io.write(helpText(topic));
     return 0;
   }
