@@ -25,6 +25,13 @@ test("normalizes ssh remotes", () => {
   );
 });
 
+test("strips credentials from https remotes", () => {
+  assert.equal(
+    normalizeRepoUrl("https://user:pass@github.com/acme/context101.git"),
+    "https://github.com/acme/context101"
+  );
+});
+
 test("reads the hardcoded Amplify repo from the stack source", () => {
   assert.equal(
     readHardcodedRepo('repository: "https://github.com/jginorio/context101",'),

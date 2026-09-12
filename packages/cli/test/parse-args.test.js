@@ -24,7 +24,7 @@ test("parses init flags", () => {
     "false",
     "--repo",
     "https://github.com/acme/context101",
-    "--env-file",
+    "--deploy-env",
     "/tmp/deploy-env",
   ]);
   assert.equal(opts.dryRun, true);

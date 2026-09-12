@@ -31,11 +31,20 @@ export function resolveEnvPath(repoRoot, opts) {
 
 export function normalizeRepoUrl(raw) {
   if (!raw) return "";
-  let url = raw.trim();
-  const ssh = url.match(/^git@github\.com:(.+?)(?:\.git)?$/);
+  const trimmed = raw.trim();
+  const ssh = trimmed.match(/^git@github\.com:(.+?)(?:\.git)?$/);
   if (ssh) return `https://github.com/${ssh[1]}`;
-  url = url.replace(/\.git$/, "");
-  return url;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      parsed.username = "";
+      parsed.password = "";
+      return parsed.toString().replace(/\.git\/?$/, "").replace(/\/$/, "");
+    }
+  } catch {
+    // not a URL
+  }
+  return trimmed.replace(/\.git$/, "");
 }
 
 export function detectGitRemote(exec, repoRoot) {

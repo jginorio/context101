@@ -24,7 +24,7 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
       "--yes",
       "--database-url",
       secretUrl,
-      "--env-file",
+      "--deploy-env",
       envPath,
       "--aws-profile",
       "dev",

@@ -9,7 +9,7 @@ deploy-env. Does not run cdk deploy. Deploy only via ./cdk/deploy.sh.
   --dry-run              print the plan; write nothing, deploy nothing
   --yes, -y              accept defaults (needs --database-url or DATABASE_URL)
   --force                overwrite an existing env file
-  --env-file <path>      default: <repo>/cdk/.deploy-env
+  --deploy-env <path>    default: <repo>/cdk/.deploy-env
   --home                 write ~/.context101/deploy-env instead
   --database-url <url>   Postgres URL (also reads DATABASE_URL)
   --database-driver      ${DRIVER_NEON} | ${DRIVER_POSTGRES}
@@ -87,7 +87,7 @@ export function parseArgs(argv) {
       case "--home":
         opts.home = true;
         break;
-      case "--env-file":
+      case "--deploy-env":
         opts.envFile = needValue(arg, args);
         break;
       case "--database-url":

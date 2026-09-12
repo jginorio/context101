@@ -21,7 +21,7 @@ test("--yes --deploy calls ./cdk/deploy.sh only", async () => {
       "--database-url",
       "postgresql://localhost/db",
       "--force",
-      "--env-file",
+      "--deploy-env",
       path.join(root, "cdk", ".deploy-env"),
     ],
     {

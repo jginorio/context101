@@ -50,3 +50,33 @@ test("dry-run prints the plan and writes nothing", async () => {
   const { existsSync } = await import("node:fs");
   assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), false);
 });
+
+test("dry-run strips credentials from the git remote", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cred-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+  const leak = "super-secret-git-remote-token";
+
+  const code = await main(["init", "--dry-run"], {
+    cwd: root,
+    env: { ...process.env, NO_COLOR: "1" },
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec({
+      [`git -C ${root} remote get-url origin`]: {
+        ok: true,
+        code: 0,
+        stdout: `https://x-access-token:${leak}@github.com/acme/context101.git`,
+        stderr: "",
+        error: null,
+      },
+    }),
+  });
+
+  assert.equal(code, 0);
+  const text = `${io.stdoutText}\n${io.stderrText}`;
+  assert.equal(text.includes(leak), false);
+  assert.equal(text.includes("x-access-token"), false);
+  assert.match(text, /https:\/\/github.com\/acme\/context101/);
+});
