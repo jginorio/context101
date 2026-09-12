@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { main } from "../src/main.js";
 import { helpText, parseArgs } from "../src/parse-args.js";
+import { memoryIo, testEnv } from "./helpers.js";
 
 test("defaults to init with no args", () => {
   const opts = parseArgs([]);
@@ -53,12 +55,13 @@ test("parses init flags", () => {
   assert.equal(opts.awsSecretAccessKey, "test-secret-access-key-must-never-appear");
 });
 
-test("help text says --aws-profile is required with --yes when several exist", () => {
-  assert.match(helpText(), /required with --yes/);
-  assert.match(helpText(), /skip Amplify/);
-  assert.match(helpText(), /embed-model/);
-  assert.match(helpText(), /skip-bedrock-access/);
-  assert.match(helpText(), /create-rds|creates RDS/);
+test("help init names the flags that --yes needs", () => {
+  const text = helpText("init");
+  assert.match(text, /required --aws-profile|required with --yes/);
+  assert.match(text, /skip Amplify|skipped unless gh login/);
+  assert.match(text, /embed-model/);
+  assert.match(text, /skip-bedrock-access/);
+  assert.match(text, /create-rds/);
 });
 
 test("rejects unknown command and flag", () => {
@@ -104,18 +107,81 @@ test("rejects init-only flags on list and seed on destroy", () => {
   assert.throws(() => parseArgs(["destroy", "--seed"]), /deploy option/);
 });
 
-test("help text names the CLI, not site/", () => {
+test("help text lists commands, not site/", () => {
   const text = helpText();
-  assert.match(text, /npx context101-cli init/);
-  assert.match(text, /npx context101-cli deploy/);
-  assert.match(text, /context101 destroy Context101Stack/);
-  assert.match(text, /context101 config/);
-  assert.match(text, /npm run context101 -- init/);
-  assert.match(text, /npm run context101 -- deploy/);
+  assert.match(text, /context101-cli/);
   assert.match(text, /Context7/);
-  assert.match(text, /fails closed/);
   assert.equal(text.includes("deploy.sh"), false);
   assert.equal(text.includes("site/"), false);
+});
+
+test("parses help and help <command>", () => {
+  assert.equal(parseArgs(["help"]).command, "help");
+  assert.equal(parseArgs(["--help"]).command, "help");
+  assert.equal(parseArgs(["-h"]).command, "help");
+  assert.equal(parseArgs(["help", "list"]).helpTopic, "list");
+  assert.equal(parseArgs(["help", "ls"]).helpTopic, "list");
+  assert.equal(parseArgs(["help", "config", "set"]).helpTopic, "config set");
+  assert.equal(parseArgs(["destroy", "--help"]).command, "destroy");
+  assert.equal(parseArgs(["destroy", "--help"]).help, true);
+});
+
+test("context101 help lists every command and exits 0", async () => {
+  const io = memoryIo();
+  const code = await main(["help"], {
+    cwd: "/tmp",
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+  });
+  assert.equal(code, 0);
+  for (const name of [
+    "init",
+    "deploy",
+    "diff",
+    "synth",
+    "list",
+    "destroy",
+    "config",
+    "config set",
+    "help",
+  ]) {
+    assert.match(io.stdoutText, new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  }
+  assert.equal(io.stdoutText.includes("deploy.sh"), false);
+  assert.equal(io.stdoutText.includes("site/"), false);
+});
+
+test("context101 --help and -h match the short command list", async () => {
+  const flags = ["--help", "-h"];
+  for (const flag of flags) {
+    const io = memoryIo();
+    const code = await main([flag], {
+      cwd: "/tmp",
+      env: testEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+    });
+    assert.equal(code, 0);
+    assert.match(io.stdoutText, /Usage: context101 <command>/);
+    assert.match(io.stdoutText, /config set/);
+  }
+});
+
+test("context101 help list shows list flags", async () => {
+  const io = memoryIo();
+  const code = await main(["help", "list"], {
+    cwd: "/tmp",
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+  });
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /--aws-profile/);
+  assert.match(io.stdoutText, /no checkout/);
 });
 
 test("workspace package is context101-cli with bin context101", async () => {

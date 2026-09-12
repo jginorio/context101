@@ -1,86 +1,90 @@
 import { DRIVER_NEON, DRIVER_POSTGRES } from "./defaults.js";
 
-const FLAG_HELP = `
-Usage: context101 <command> [options]
+const COMMAND_LINES = [
+  ["init", "write deploy-env (default); TTY asks to deploy"],
+  ["deploy", "deploy the AWS stack"],
+  ["diff", "cdk diff with the same context"],
+  ["synth", "cdk synth with the same context"],
+  ["list", "list Context101 CloudFormation stacks"],
+  ["destroy", "tear down a listed stack (name required)"],
+  ["config", "show deploy-env keys (values redacted)"],
+  ["config set", "write one key (chmod 600; value is not printed)"],
+  ["help", "list commands"],
+];
 
-  init                 write a local secrets file (default); TTY asks to deploy
-  deploy               deploy the AWS stack (loads deploy-env, invokes cdk)
-  diff                 cdk diff with the same context flags
-  synth                cdk synth with the same context flags
-  list, ls             list Context101 CloudFormation deployments (no checkout)
-  destroy, remove, rm  tear down a listed stack (name required; clones if needed)
-  config               show deploy-env keys (values redacted; no checkout)
-  config set KEY=value write one key (chmod 600; value is not printed)
+const TOPIC_HELP = {
+  init: `init — write deploy-env (default); TTY asks to deploy
 
-CDK fails closed: a bare \`cdk deploy\` without \`-c token=\` throws
-instead of deleting MCP / Amplify. The CLI is the front door.
-
-  context101 init
-  context101 deploy
-  npx context101-cli init
-  npx context101-cli deploy
-
-  --dry-run              print the plan; write nothing, deploy nothing
+  --dry-run
   --yes, -y              accept defaults (creates RDS if no --database-url);
-                         does not deploy unless --deploy is also passed
+                         required --aws-profile when several exist
   --force                overwrite an existing env file
-  --dir <path>           clone into this directory when not in a checkout
+  --dir <path>           clone here when not in a checkout
   --deploy-env <path>    default: <repo>/cdk/.deploy-env
-  --home                 write ~/.context101/deploy-env instead
-  --database-url <url>   Postgres URL (also reads DATABASE_URL)
-  --create-rds           CDK provisions RDS Postgres (default when no URL)
+  --home                 ~/.context101/deploy-env
+  --database-url <url>
+  --create-rds           default when no URL
   --database-driver      ${DRIVER_NEON} | ${DRIVER_POSTGRES}
   --database-prepare     true | false
-  --aws-profile <name>   also reads AWS_PROFILE; required with --yes
-                         when more than one profile exists
-  --aws-access-key-id    used when no profile exists (also AWS_ACCESS_KEY_ID)
-  --aws-secret-access-key
-                         used when no profile exists (also AWS_SECRET_ACCESS_KEY)
-  --repo <url>           watch this GitHub repo with Amplify
-                         (default: skip Amplify, unless gh login is jginorio)
-  --embed-model <id>     optional CDK default embedding model
-                         (brains still pick any Titan/Cohere model in the app)
-  --skip-bedrock-access  do not request Bedrock model access during init
-  --seed                 first deploy uploads knowledge/ once
-  --deploy               deploy after writing without asking
-
-deploy / diff / synth:
-  --seed                 upload knowledge/ once (first deploy only)
-  --deploy-env <path>
-  --home
-  --dry-run              print the command; invoke nothing
-
-list:
   --aws-profile <name>
   --aws-access-key-id
   --aws-secret-access-key
+  --repo <url>           Amplify watch (skipped unless gh login is jginorio)
+  --embed-model <id>
+  --skip-bedrock-access
+  --seed
+  --deploy               deploy after writing without asking`,
 
-destroy <StackName>:
-  --yes, -y              skip the confirmation prompt
+  deploy: `deploy — deploy the AWS stack
+
+  --seed
+  --deploy-env <path>
+  --home
+  --dry-run`,
+
+  diff: `diff — cdk diff with the same context as deploy
+
+  --seed
+  --deploy-env <path>
+  --home
+  --dry-run`,
+
+  synth: `synth — cdk synth with the same context as deploy
+
+  --seed
+  --deploy-env <path>
+  --home
+  --dry-run`,
+
+  list: `list — list Context101 CloudFormation stacks (no checkout)
+
+  --aws-profile <name>
+  --aws-access-key-id
+  --aws-secret-access-key`,
+
+  destroy: `destroy <name> — tear down a listed stack (clones if needed)
+
+  --yes, -y
   --aws-profile <name>
   --aws-access-key-id
   --aws-secret-access-key
-  --dir <path>           clone here when no checkout (default ~/.context101/src)
+  --dir <path>
   --deploy-env <path>
   --home
-  --dry-run              print the plan; destroy nothing
+  --dry-run`,
 
-config:
+  config: `config — show deploy-env keys (values redacted)
+
   --deploy-env <path>
-  --home                 ~/.context101/deploy-env (also the default outside a checkout)
+  --home`,
 
-From this checkout (after npm install):
-  npm run context101 -- init
-  npm run context101 -- deploy
-  npx context101-cli init
-  npx context101-cli deploy
-  context101 list
-  context101 destroy Context101Stack
-  context101 config
+  "config set": `config set KEY=value — write one key (chmod 600; value is not printed)
 
-npx context101 (unscoped) downloads Context7's MCP from npm — unrelated.
-The publishable CLI is context101-cli; the bin name is context101.
-`.trim();
+  --deploy-env <path>
+  --home`,
+
+  help: `help [command] — list commands, or flags for one command`,
+};
 
 const INIT_ONLY = new Set([
   "--yes",
@@ -128,10 +132,22 @@ const COMMANDS = {
   remove: "destroy",
   rm: "destroy",
   config: "config",
+  help: "help",
 };
 
-export function helpText() {
-  return FLAG_HELP;
+export function helpText(topic) {
+  if (topic) {
+    const key = COMMANDS[topic] ?? topic;
+    return TOPIC_HELP[key] ?? helpText();
+  }
+  const nameW = Math.max(...COMMAND_LINES.map(([name]) => name.length));
+  return [
+    "Usage: context101 <command>",
+    "",
+    ...COMMAND_LINES.map(([name, desc]) => `  ${name.padEnd(nameW)}  ${desc}`),
+    "",
+    "npx context101 (unscoped) is Context7's MCP — use context101-cli.",
+  ].join("\n");
 }
 
 export function parseArgs(argv) {
@@ -160,22 +176,28 @@ export function parseArgs(argv) {
     configAction: "show",
     configKey: null,
     configValue: null,
+    helpTopic: null,
   };
 
   const args = [...argv];
   if (args.length === 0) return opts;
 
   const first = args[0];
-  if (COMMANDS[first]) {
+  if (first === "--help" || first === "-h") {
+    opts.command = "help";
+    opts.help = true;
+    args.shift();
+  } else if (COMMANDS[first]) {
     opts.command = COMMANDS[first];
     args.shift();
-  } else if (first === "help" || first === "--help" || first === "-h") {
-    opts.help = true;
-    return opts;
   } else if (!first.startsWith("-")) {
     const err = new Error(`unknown command: ${first}`);
     err.code = "USAGE";
     throw err;
+  }
+
+  if (opts.command === "help") {
+    return parseHelpArgs(opts, args);
   }
 
   if (opts.command === "config" && args[0] === "set") {
@@ -283,6 +305,33 @@ export function parseArgs(argv) {
     }
   }
 
+  return opts;
+}
+
+function parseHelpArgs(opts, args) {
+  opts.help = true;
+  if (args[0] && !args[0].startsWith("-")) {
+    const topic = args.shift();
+    if (topic === "config" && args[0] === "set") {
+      args.shift();
+      opts.helpTopic = "config set";
+    } else if (COMMANDS[topic] && topic !== "help") {
+      opts.helpTopic = COMMANDS[topic];
+    } else if (topic === "help") {
+      opts.helpTopic = "help";
+    } else {
+      const err = new Error(`unknown command: ${topic}`);
+      err.code = "USAGE";
+      throw err;
+    }
+  }
+  while (args.length) {
+    const arg = args.shift();
+    if (arg === "--help" || arg === "-h") continue;
+    const err = new Error(`unknown flag: ${arg}`);
+    err.code = "USAGE";
+    throw err;
+  }
   return opts;
 }
 
