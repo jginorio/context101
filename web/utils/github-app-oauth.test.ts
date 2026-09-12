@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import {
+  buildAppManifest,
   githubOauthRedirectUri,
   githubOauthUrl,
   userInstallationAccessApiPath,
@@ -41,4 +42,9 @@ test("installation access uses the documented repositories endpoint", () => {
     "/user/installations/123456/repositories?per_page=1"
   );
   assert.doesNotMatch(path, /\/user\/installations\/123456$/);
+});
+
+test("new GitHub Apps request contents write for conflict apply", () => {
+  const manifest = buildAppManifest("https://app.example.test");
+  assert.equal(manifest.default_permissions.contents, "write");
 });

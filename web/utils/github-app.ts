@@ -158,6 +158,85 @@ async function githubApi(
   });
 }
 
+function encodeRepoPath(path: string): string {
+  return path
+    .split("/")
+    .filter(Boolean)
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
+export async function getRepoFile(
+  token: string,
+  params: { owner: string; repo: string; path: string; ref?: string }
+): Promise<{ sha: string; content: string } | null> {
+  const encoded = encodeRepoPath(params.path);
+  const ref = params.ref ? `?ref=${encodeURIComponent(params.ref)}` : "";
+  const r = await githubApi(
+    token,
+    `/repos/${params.owner}/${params.repo}/contents/${encoded}${ref}`
+  );
+  if (r.status === 404) return null;
+  if (!r.ok) {
+    const body = await r.text().catch(() => "");
+    throw new Error(
+      `github get file failed (${r.status}): ${body.slice(0, 300)}`
+    );
+  }
+  const j = (await r.json()) as {
+    sha?: string;
+    encoding?: string;
+    content?: string;
+  };
+  if (!j.sha || !j.content) return null;
+  const content =
+    j.encoding === "base64"
+      ? Buffer.from(j.content.replace(/\n/g, ""), "base64").toString("utf8")
+      : j.content;
+  return { sha: j.sha, content };
+}
+
+export async function putRepoFile(
+  token: string,
+  params: {
+    owner: string;
+    repo: string;
+    path: string;
+    message: string;
+    content: string;
+    sha: string;
+    branch?: string;
+  }
+): Promise<{ sha: string }> {
+  const encoded = encodeRepoPath(params.path);
+  const r = await githubApi(
+    token,
+    `/repos/${params.owner}/${params.repo}/contents/${encoded}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        message: params.message,
+        content: Buffer.from(params.content, "utf8").toString("base64"),
+        sha: params.sha,
+        ...(params.branch ? { branch: params.branch } : {}),
+      }),
+    }
+  );
+  if (!r.ok) {
+    const body = await r.text().catch(() => "");
+    const err = new Error(
+      `github put file failed (${r.status}): ${body.slice(0, 300)}`
+    ) as Error & { status?: number };
+    err.status = r.status;
+    throw err;
+  }
+  const j = (await r.json()) as { content?: { sha?: string } };
+  const sha = j.content?.sha;
+  if (!sha) throw new Error("github put file returned no blob sha");
+  return { sha };
+}
+
 /** Mint a short-lived (1h) installation access token for repo reads. */
 export async function mintInstallationToken(
   cfg: Pick<GithubAppConfig, "app_id" | "private_key">,
@@ -448,7 +527,7 @@ export function buildAppManifest(origin: string, setupNonce?: string) {
     // deployment's app. It does not publish the app to GitHub Marketplace.
     public: true,
     default_permissions: {
-      contents: "read",
+      contents: "write",
       metadata: "read",
     },
     default_events: [],
