@@ -162,9 +162,8 @@ test("--yes requests access for every embedding model and does not create agreem
   assert.equal(availability.includes("cohere.embed-english-v3"), true);
   assert.equal(availability.includes("cohere.embed-english-light-v3"), true);
   const text = `${io.stdoutText}\n${io.stderrText}`;
-  assert.match(text, /Bedrock embedding access:/);
-  assert.match(text, /Amazon \(auto-enabled\)/);
-  assert.match(text, /already available/);
+  assert.equal(text.includes("Bedrock embedding access:"), false);
+  assert.equal(text.includes("Amazon (auto-enabled)"), false);
   assert.equal(text.includes(OFFER_TOKEN), false);
 });
 

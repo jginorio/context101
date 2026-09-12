@@ -3,7 +3,7 @@ import { DRIVER_NEON, DRIVER_POSTGRES } from "./defaults.js";
 const FLAG_HELP = `
 Usage: context101 <command> [options]
 
-  init                 write a local secrets file (default)
+  init                 write a local secrets file (default); TTY asks to deploy
   deploy               deploy the AWS stack (loads deploy-env, invokes cdk)
   diff                 cdk diff with the same context flags
   synth                cdk synth with the same context flags
@@ -21,7 +21,8 @@ instead of deleting MCP / Amplify. The CLI is the front door.
   npx context101-cli deploy
 
   --dry-run              print the plan; write nothing, deploy nothing
-  --yes, -y              accept defaults (creates RDS if no --database-url)
+  --yes, -y              accept defaults (creates RDS if no --database-url);
+                         does not deploy unless --deploy is also passed
   --force                overwrite an existing env file
   --dir <path>           clone into this directory when not in a checkout
   --deploy-env <path>    default: <repo>/cdk/.deploy-env
@@ -41,7 +42,7 @@ instead of deleting MCP / Amplify. The CLI is the front door.
                          (brains still pick any Titan/Cohere model in the app)
   --skip-bedrock-access  do not request Bedrock model access during init
   --seed                 first deploy uploads knowledge/ once
-  --deploy               deploy after writing (combine with --yes)
+  --deploy               deploy after writing without asking
 
 deploy / diff / synth:
   --seed                 upload knowledge/ once (first deploy only)
