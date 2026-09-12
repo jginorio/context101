@@ -14,7 +14,7 @@
 # deploy / diff without the tokens present.
 #
 # Usage:
-#   ./deploy.sh                          # deploy with the two required flags
+#   ./deploy.sh                          # deploy with CTX_TOKEN (Amplify PAT only if REPOSITORY is set)
 #   ./deploy.sh --seed                   # also pass -c seed=true (first deploy)
 #   ./deploy.sh diff                     # cdk diff with the same context
 #   ./deploy.sh synth                    # cdk synth with the same context
@@ -33,7 +33,8 @@
 #   BETTER_AUTH_SECRET, BETTER_AUTH_URL, MCP_TOKEN_PEPPER,
 #   APP_MODE, ALLOW_PUBLIC_SIGNUP, BILLING_ENABLED, APP_URL, MARKETING_URL,
 #   MCP_PUBLIC_HOST, MCP_DOMAIN_CERT_ARN, MCP_APPRUNNER,
-#   SES_REGION, SES_FROM_EMAIL, SES_REPLY_TO_EMAIL.
+#   SES_REGION, SES_FROM_EMAIL, SES_REPLY_TO_EMAIL,
+#   REPOSITORY, EMBED_MODEL_ID, CREATE_RDS.
 #
 # MCP compute (see "Migrating off App Runner" in the README):
 #   MCP_DOMAIN_CERT_ARN — issued us-east-1 ACM cert ARN for the MCP custom
@@ -94,7 +95,7 @@ elif load_env_file "$HOME/.context101/deploy-env"; then
   LOADED_FROM="~/.context101/deploy-env"
 fi
 
-# Allow env vars to take precedence over file values.
+# Allow env vars to take precedence over file values for the two tokens.
 TOKEN="${CTX_TOKEN:-}"
 GH_TOKEN="${CTX_GH_TOKEN:-}"
 
@@ -102,6 +103,14 @@ GH_TOKEN="${CTX_GH_TOKEN:-}"
 if [[ -z "$GH_TOKEN" ]] && command -v gh >/dev/null 2>&1; then
   GH_TOKEN=$(gh auth token 2>/dev/null || true)
 fi
+
+# Amplify CreateApp calls GitHub list-repository-webhooks with this
+# token. Installation tokens (ghs_) and gh OAuth tokens (gho_) return
+# 403 and CloudFormation rolls the whole stack back.
+github_token_works_for_amplify() {
+  local t="$1"
+  [[ "$t" == ghp_* || "$t" == github_pat_* ]]
+}
 
 # ── Guardrail: refuse to run for state-changing subcommands ──────────
 needs_guard() {
@@ -111,16 +120,29 @@ needs_guard() {
   esac
 }
 
-if needs_guard && [[ -z "$TOKEN" || -z "$GH_TOKEN" ]]; then
-  err "Missing one or both required tokens for 'cdk $SUBCOMMAND':"
-  [[ -z "$TOKEN" ]]    && printf "    · ${BOLD}CTX_TOKEN${RESET}    (the MCP bearer — gates the App Runner service)\n" >&2
-  [[ -z "$GH_TOKEN" ]] && printf "    · ${BOLD}CTX_GH_TOKEN${RESET} (the GitHub PAT — gates Amplify Hosting + wiki-gen)\n" >&2
+REPO="${REPOSITORY:-}"
+AMPLIFY=false
+if [[ -n "$REPO" ]]; then
+  AMPLIFY=true
+fi
+
+if needs_guard && $AMPLIFY && ! github_token_works_for_amplify "$GH_TOKEN"; then
+  err "GitHub token is not a personal access token (need ghp_ or github_pat_)."
+  err "Amplify CreateApp calls list-repository-webhooks; ghs_ / gho_ tokens 403 and roll the stack back."
+  err "Set CTX_GH_TOKEN to a classic PAT with repo scope (webhook + contents)."
+  exit 1
+fi
+
+if needs_guard && [[ -z "$TOKEN" ]]; then
+  err "Missing CTX_TOKEN for 'cdk $SUBCOMMAND':"
+  printf "    · ${BOLD}CTX_TOKEN${RESET}    (the MCP bearer — gates the App Runner service)\n" >&2
   cat >&2 <<EOF
 
-  ${BOLD}Why this matters:${RESET} the stack's MCP service and Amplify branches
-  are gated on CDK context flags. Running cdk deploy without them
-  deletes those resources (including the App Runner MCP service and
-  the wiki-gen Fargate task).
+  ${BOLD}Why this matters:${RESET} the stack's MCP service is gated on a CDK
+  context flag. Running cdk deploy without CTX_TOKEN deletes it.
+
+  Amplify Hosting is optional. Set REPOSITORY and a GitHub PAT
+  (CTX_GH_TOKEN=ghp_…) only when you want the wrapper to watch a repo.
 
   ${BOLD}Set them up:${RESET}
 
@@ -128,8 +150,8 @@ if needs_guard && [[ -z "$TOKEN" || -z "$GH_TOKEN" ]]; then
     cat > ~/.context101/deploy-env <<'ENV'
     # Required
     CTX_TOKEN="context101-platea-2026-bearer"
-    # GitHub PAT (or omit this line — the wrapper will fall back to
-    # \`gh auth token\` if you have the GitHub CLI logged in).
+    # Optional — only if Amplify should watch a GitHub repo
+    # REPOSITORY="https://github.com/<you>/context101"
     # CTX_GH_TOKEN="ghp_..."
 
     # Optional
@@ -153,11 +175,50 @@ fi
 CDK_ARGS=("$SUBCOMMAND")
 $SEED && CDK_ARGS+=("-c" "seed=true")
 CDK_ARGS+=("-c" "token=$TOKEN")
-CDK_ARGS+=("-c" "githubToken=$GH_TOKEN")
+if $AMPLIFY; then
+  CDK_ARGS+=("-c" "githubToken=$GH_TOKEN")
+fi
+
+# When an env file was loaded, only forward keys declared in that file.
+# Ambient hosted vars (BETTER_AUTH_URL, APP_URL, MCP_PUBLIC_HOST, …)
+# must not become CDK context on a self-host deploy.
+env_file_declares() {
+  local key="$1"
+  local f="$2"
+  [[ -n "$f" && -f "$f" ]] || return 1
+  grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=" "$f"
+}
+
+# Hosted product zone — self-host uses an operator domain or Amplify default.
+is_hosted_context101_url() {
+  local raw="${1:-}"
+  [[ -z "$raw" ]] && return 1
+  local host
+  host=$(printf '%s' "$raw" | sed -E 's#^[a-zA-Z][a-zA-Z0-9+.-]*://##' | cut -d/ -f1 | cut -d: -f1 | tr '[:upper:]' '[:lower:]')
+  [[ "$host" == "context101.dev" || "$host" == *.context101.dev ]]
+}
+
+LOADED_FROM_PATH=""
+if [[ "$LOADED_FROM" == ".deploy-env" ]]; then
+  LOADED_FROM_PATH=".deploy-env"
+elif [[ "$LOADED_FROM" == "~/.context101/deploy-env" ]]; then
+  LOADED_FROM_PATH="$HOME/.context101/deploy-env"
+fi
 
 add_context_if_set() {
   local key="$1"
+  if [[ -n "$LOADED_FROM_PATH" ]] && ! env_file_declares "$key" "$LOADED_FROM_PATH"; then
+    return 0
+  fi
   local value="${!key:-}"
+  if is_hosted_context101_url "$value"; then
+    if [[ -n "$LOADED_FROM_PATH" ]] && env_file_declares "$key" "$LOADED_FROM_PATH"; then
+      err "$key in $LOADED_FROM is the hosted Context101 product, not a self-host URL."
+      err "Omit it so CDK uses the Amplify default domain, or set a domain you own."
+      exit 1
+    fi
+    return 0
+  fi
   if [[ -n "$value" ]]; then
     CDK_ARGS+=("-c" "$key=$value")
   fi
@@ -181,6 +242,9 @@ add_context_if_set "MCP_APPRUNNER"
 add_context_if_set "SES_REGION"
 add_context_if_set "SES_FROM_EMAIL"
 add_context_if_set "SES_REPLY_TO_EMAIL"
+add_context_if_set "REPOSITORY"
+add_context_if_set "EMBED_MODEL_ID"
+add_context_if_set "CREATE_RDS"
 
 if [[ "$SUBCOMMAND" == "deploy" ]]; then
   CDK_ARGS+=("--require-approval" "never")
@@ -196,18 +260,36 @@ printf "\n${BOLD}cdk %s${RESET}\n" "$SUBCOMMAND"
 [[ -n "$LOADED_FROM" ]] && printf "  ${DIM}env file:    %s${RESET}\n" "$LOADED_FROM"
 [[ -n "${AWS_PROFILE:-}" ]] && printf "  ${DIM}AWS_PROFILE: %s${RESET}\n" "$AWS_PROFILE"
 printf "  ${DIM}token:       %s${RESET}\n" "$(mask "$TOKEN")"
-printf "  ${DIM}githubToken: %s${RESET}\n" "$(mask "$GH_TOKEN")"
-[[ -n "${DATABASE_URL:-}" ]]        && printf "  ${DIM}DATABASE_URL:       %s${RESET}\n" "$(mask "$DATABASE_URL")"
-[[ -n "${DATABASE_DRIVER:-}" ]]     && printf "  ${DIM}DATABASE_DRIVER:    %s${RESET}\n" "$DATABASE_DRIVER"
-[[ -n "${DATABASE_PREPARE:-}" ]]    && printf "  ${DIM}DATABASE_PREPARE:   %s${RESET}\n" "$DATABASE_PREPARE"
-[[ -n "${BETTER_AUTH_SECRET:-}" ]]  && printf "  ${DIM}BETTER_AUTH_SECRET: %s${RESET}\n" "$(mask "$BETTER_AUTH_SECRET")"
-[[ -n "${BETTER_AUTH_URL:-}" ]]     && printf "  ${DIM}BETTER_AUTH_URL:    %s${RESET}\n" "$BETTER_AUTH_URL"
-[[ -n "${MCP_TOKEN_PEPPER:-}" ]]    && printf "  ${DIM}MCP_TOKEN_PEPPER:   %s${RESET}\n" "$(mask "$MCP_TOKEN_PEPPER")"
-[[ -n "${APP_MODE:-}" ]]            && printf "  ${DIM}APP_MODE:           %s${RESET}\n" "$APP_MODE"
-[[ -n "${ALLOW_PUBLIC_SIGNUP:-}" ]] && printf "  ${DIM}ALLOW_PUBLIC_SIGNUP:%s${RESET}\n" "$ALLOW_PUBLIC_SIGNUP"
-[[ -n "${BILLING_ENABLED:-}" ]]     && printf "  ${DIM}BILLING_ENABLED:    %s${RESET}\n" "$BILLING_ENABLED"
-[[ -n "${APP_URL:-}" ]]             && printf "  ${DIM}APP_URL:            %s${RESET}\n" "$APP_URL"
-[[ -n "${MARKETING_URL:-}" ]]       && printf "  ${DIM}MARKETING_URL:      %s${RESET}\n" "$MARKETING_URL"
+if $AMPLIFY; then
+  printf "  ${DIM}githubToken: %s${RESET}\n" "$(mask "$GH_TOKEN")"
+else
+  printf "  ${DIM}githubToken: (skipped — no REPOSITORY)${RESET}\n"
+fi
+
+preview_if_forwarded() {
+  local key="$1"
+  local label="$2"
+  if [[ -n "$LOADED_FROM_PATH" ]] && ! env_file_declares "$key" "$LOADED_FROM_PATH"; then
+    return 0
+  fi
+  local raw="${!key:-}"
+  [[ -n "$raw" ]] && printf "  ${DIM}%s${RESET}\n" "$label"
+}
+
+preview_if_forwarded "DATABASE_URL"        "DATABASE_URL:       $(mask "${DATABASE_URL:-}")"
+preview_if_forwarded "DATABASE_DRIVER"     "DATABASE_DRIVER:    ${DATABASE_DRIVER:-}"
+preview_if_forwarded "DATABASE_PREPARE"    "DATABASE_PREPARE:   ${DATABASE_PREPARE:-}"
+preview_if_forwarded "BETTER_AUTH_SECRET"  "BETTER_AUTH_SECRET: $(mask "${BETTER_AUTH_SECRET:-}")"
+preview_if_forwarded "BETTER_AUTH_URL"     "BETTER_AUTH_URL:    ${BETTER_AUTH_URL:-}"
+preview_if_forwarded "MCP_TOKEN_PEPPER"    "MCP_TOKEN_PEPPER:   $(mask "${MCP_TOKEN_PEPPER:-}")"
+preview_if_forwarded "APP_MODE"            "APP_MODE:           ${APP_MODE:-}"
+preview_if_forwarded "ALLOW_PUBLIC_SIGNUP" "ALLOW_PUBLIC_SIGNUP:${ALLOW_PUBLIC_SIGNUP:-}"
+preview_if_forwarded "BILLING_ENABLED"     "BILLING_ENABLED:    ${BILLING_ENABLED:-}"
+preview_if_forwarded "APP_URL"             "APP_URL:            ${APP_URL:-}"
+preview_if_forwarded "MARKETING_URL"       "MARKETING_URL:      ${MARKETING_URL:-}"
+preview_if_forwarded "REPOSITORY"          "REPOSITORY:         ${REPOSITORY:-}"
+preview_if_forwarded "EMBED_MODEL_ID"      "EMBED_MODEL_ID:     ${EMBED_MODEL_ID:-}"
+preview_if_forwarded "CREATE_RDS"          "CREATE_RDS:         ${CREATE_RDS:-}"
 $SEED && printf "  ${DIM}seed:        ${RESET}${YELLOW}true${RESET}\n"
 printf "\n"
 

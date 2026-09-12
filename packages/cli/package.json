@@ -1,0 +1,19 @@
+{
+  "name": "context101",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Context101 self-host CLI. From this checkout use `npm run context101 -- init` or `npx context101 init` after npm install — the public npm package named context101 is Context7's MCP, not this tool.",
+  "type": "module",
+  "bin": {
+    "context101": "./bin/context101.js"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@inquirer/prompts": "^7.8.4"
+  }
+}

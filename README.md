@@ -107,7 +107,7 @@ Before your first deploy, make sure you have:
 - **AWS CLI v2** authenticated for the target account (`aws sts get-caller-identity` should work). The examples use `AWS_PROFILE=<your-profile>`; replace with your own profile/region.
 - **Node 20+** and **npm** — for the CDK app and the Next.js web build.
 - **Docker** — CDK asset bundling for the wiki-generator image uses it. `colima start` on macOS if you use Colima.
-- **GitHub CLI (`gh`)** or a manually-created Personal Access Token — Amplify Hosting needs a GitHub token with `repo` scope to watch your fork. `gh auth token` returns one if you're already logged in.
+- **GitHub CLI (`gh`)** or a manually-created Personal Access Token — Amplify Hosting needs a **classic PAT (`ghp_`)** with `repo` scope (it creates a repo webhook). `gh auth token` only works when that token is a PAT. GitHub App installation tokens (`ghs_`) and gh OAuth tokens (`gho_`) 403 and roll the stack back — put a PAT in `CTX_GH_TOKEN`.
 - **Python 3.11+** — only if you want to run the MCP server or the wiki generator locally.
 
 **AWS account setup**
@@ -116,11 +116,7 @@ Before your first deploy, make sure you have:
   ```bash
   npx cdk bootstrap aws://<ACCOUNT_ID>/us-east-1
   ```
-- **Bedrock model access** — enable the models we use in the Bedrock console → *Model access*:
-  - `amazon.titan-embed-text-v2:0` (embeddings for the KB)
-  - `us.anthropic.claude-opus-4-7` (the *Improve with AI* button and the wiki generator — requires a Marketplace subscription, done once via the "Request access" flow)
-
-  Without these, `cdk deploy` will still succeed, but writes to `/improve` and wiki regen will 403.
+- **Bedrock model access** — `context101 init` requests access for every Amazon Titan and Cohere embedding model, including new ids Bedrock lists (Amazon first-party models are auto-enabled; Cohere needs a Marketplace agreement). Users pick a model later in the app. CDK still defaults the first brain to `amazon.titan-embed-text-v2:0`. Claude (`us.anthropic.claude-opus-4-7`) is optional for Improve; wiki is paused.
 
 **GitHub**
 - Fork this repo to your own account. CDK references the repo by owner/name inside `lib/context101-stack.ts` — update the `repository` URL there if your fork lives elsewhere.
@@ -129,7 +125,20 @@ Before your first deploy, make sure you have:
 
 ## Setup
 
-> 🛡️ **Use the deploy wrapper.** All the `cdk deploy` examples below go through `./cdk/deploy.sh`, which refuses to run unless both gating tokens (`CTX_TOKEN`, `CTX_GH_TOKEN`) are set in a local env file. Skipping it once already cost the team a full stack rebuild — see [Why the wrapper exists](#why-the-wrapper-exists). One-time setup:
+First-run self-host walkthrough (from this checkout):
+
+```bash
+npm install
+npm run context101 -- init
+npm run context101 -- deploy
+npm run context101 -- list
+```
+
+`npx context101 init` / `npx context101 deploy` / `npx context101 list` / `npx context101 destroy` also work **after** `npm install`. Without a local install, `npx context101` downloads the unrelated [Context7](https://www.npmjs.com/package/context101) MCP from npm (`WARNING: Using default CLIENT_IP_ENCRYPTION_KEY` / `too many arguments`). Use the `npm run` form, or `node ./packages/cli/bin/context101.js init`.
+
+Dry-run (no files, no deploy): `npm run context101 -- init --dry-run`. The command checks local tools + AWS, writes a gitignored secrets file (`cdk/.deploy-env`), and tells you to run `npx context101 deploy`. First deploy can add `--seed` to upload the example `knowledge/` files once.
+
+> 🛡️ **Deploy through the CLI.** Do not run `cdk deploy` yourself — it can tear down MCP / Amplify when the gating tokens are missing. `npx context101 deploy` is the supported path. One-time setup if you skip the walkthrough:
 >
 > ```bash
 > cp cdk/.deploy-env.example cdk/.deploy-env   # or ~/.context101/deploy-env
@@ -137,20 +146,18 @@ Before your first deploy, make sure you have:
 > chmod 600 cdk/.deploy-env
 > ```
 >
-> The GitHub PAT is auto-discovered from `gh auth token` if you have the GitHub CLI logged in.
+> The GitHub PAT is auto-discovered from `gh auth token` only when that token is a `ghp_` / `github_pat_` PAT. Installation tokens from Cursor / GitHub Apps are rejected before CDK runs.
 
 ### 1. First deploy (minimal — just KB + docs bucket)
 
 ```bash
-cd cdk
-npm install
-./deploy.sh
+npm run context101 -- deploy
 ```
 
 This provisions the baseline infra — S3 docs bucket, Bedrock Knowledge Base, S3 Vectors, the `pg-http` Lambda layer, and Lambdas. The control-plane schema lives in your Postgres database (apply it with `npm run db:migrate` from `web/`). To also seed the docs bucket with the example markdown under `knowledge/` so a brand-new stack isn't empty, pass `--seed`:
 
 ```bash
-./deploy.sh --seed
+npm run context101 -- deploy --seed
 ```
 
 The seed flag is **off by default** so subsequent deploys never clobber whatever your team has put in S3 via the web UI / connectors / approved suggestions. Once you're past first deploy, omit the flag — the bucket itself is retained and stays the source of truth. The auto-ingest Lambda kicks off a Bedrock ingestion job on every S3 write; wait ~1-3 min after a write before searching (watch the KB in the AWS console).
@@ -168,10 +175,10 @@ The web admin UI and the MCP service are **gated on two CDK context flags** (the
 Both come up together once `CTX_TOKEN` and `CTX_GH_TOKEN` are in your `.deploy-env` file (see the box above):
 
 ```bash
-./deploy.sh
+npx context101 deploy
 ```
 
-`McpLambdaUrl` and `WebAppDefaultDomain` appear in the outputs. Rotating the bearer token = edit `.deploy-env` and re-run the wrapper; rotating the GitHub PAT = same thing, or `gh auth refresh` if you're using the gh-CLI fallback.
+`McpLambdaUrl` and `WebAppDefaultDomain` appear in the outputs. Rotating the bearer token = edit `.deploy-env` and re-run `npx context101 deploy`; rotating the GitHub PAT = same thing, or `gh auth refresh` if you're using the gh-CLI fallback.
 
 `WebAppDefaultDomain` is the URL to share with teammates (e.g. `https://main.abc123xyz.amplifyapp.com`). The first Amplify build takes ~4 min.
 
@@ -181,7 +188,7 @@ Both come up together once `CTX_TOKEN` and `CTX_GH_TOKEN` are in your `.deploy-e
 
 App Runner [closed to new customers in April 2026](https://docs.aws.amazon.com/apprunner/latest/dg/apprunner-availability-change.html) and costs ~$10/mo idle; the Lambda path replaces it for ~$0/mo. Existing stacks keep the App Runner service until you remove it explicitly (the CDK keeps it while `MCP_APPRUNNER` is unset), so the cutover is zero-downtime:
 
-1. **Deploy** (`./deploy.sh`). Both compute paths now serve the same brains; grab `McpLambdaUrl` and `McpDistributionDomain` from the outputs.
+1. **Deploy** (`npx context101 deploy`). Both compute paths now serve the same brains; grab `McpLambdaUrl` and `McpDistributionDomain` from the outputs.
 2. **Smoke-test the Lambda path** — point one MCP client at `https://<McpDistributionDomain>/brain/<brain_id>/mcp` with the same bearer token and run a `search_knowledge`.
 3. **Custom domain** (skip if you don't use one): request an ACM cert in `us-east-1` for your MCP host (`aws acm request-certificate --domain-name mcp.example.dev --validation-method DNS`), create the validation CNAME at your DNS provider, wait for `ISSUED`, then set `MCP_DOMAIN_CERT_ARN=<cert-arn>` (with `MCP_PUBLIC_HOST` already set) in `.deploy-env` and re-deploy — the domain attaches to the CloudFront distribution.
 4. **Cut DNS over**: change the MCP host's CNAME from the App Runner domain to `<McpDistributionDomain>`. Clients keep working through the flip (same path shape, same tokens; the Lambda path runs the MCP session-less, which every streamable-HTTP client handles).
@@ -191,7 +198,7 @@ App Runner [closed to new customers in April 2026](https://docs.aws.amazon.com/a
 
 The stack's MCP service (Lambda + CloudFront, plus the legacy App Runner service where still enabled) and the entire Amplify branch (web app + wiki-gen Fargate stack) are wrapped in `if (teamToken) { ... }` / `if (githubToken) { ... }` blocks. A bare `cdk deploy` with neither flag tells CloudFormation those resources should no longer exist — so it deletes them. **This has happened once already.** Recovery took ~30 min plus a new MCP URL (= update every teammate's MCP client config). Accounts/orgs live in Postgres, so they survive a stack rebuild.
 
-`./cdk/deploy.sh` refuses to call `cdk deploy / diff / destroy` without both tokens, sourced from `cdk/.deploy-env` (repo-local, gitignored) or `~/.context101/deploy-env` (user-global). It also falls back to `gh auth token` for the GitHub PAT so you can ignore that field if you have the gh CLI logged in.
+`npx context101 deploy` (and `destroy`) refuse to call CDK without those tokens, sourced from `cdk/.deploy-env` (repo-local, gitignored) or `~/.context101/deploy-env` (user-global). They also fall back to `gh auth token` for the GitHub PAT so you can ignore that field if you have the gh CLI logged in.
 
 > ⚠️ **Amplify build timing gotcha:** if CDK added new Amplify env vars during *this* deploy, the build that was auto-triggered from the deploy doesn't see them — you need to kick one more build after the deploy finishes:
 > ```bash
@@ -207,19 +214,19 @@ DATABASE_URL="postgresql://..."
 DATABASE_DRIVER="neon-http"        # or postgres-js
 DATABASE_PREPARE="true"            # false for Supabase transaction pooler
 BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
-BETTER_AUTH_URL="https://<your-web-domain>"
+# Omit BETTER_AUTH_URL / APP_URL to use Amplify's default
+# https://main.<app-id>.amplifyapp.com — or set a domain you own.
+# Never the hosted Context101 product.
 APP_MODE="self_hosted"             # or hosted
 ALLOW_PUBLIC_SIGNUP="false"
 BILLING_ENABLED="false"
-APP_URL="https://<your-web-domain>"
-MARKETING_URL="https://context101.dev"
 MCP_TOKEN_PEPPER="$(openssl rand -base64 32)"
 SES_REGION="us-east-1"
 SES_FROM_EMAIL="Context101 <no-reply@your-domain.com>"
 SES_REPLY_TO_EMAIL="support@your-domain.com" # optional
 ```
 
-For self-hosted deployments, visit `/setup` after the web app is live. It creates the first Better Auth user and organization. For hosted deployments, keep `ALLOW_PUBLIC_SIGNUP=false` until billing/onboarding gates exist, then invite or provision users intentionally.
+For self-hosted deployments, visit `/setup` on `WebAppDefaultDomain` (or your own host) after the web app is live. It creates the first Better Auth user and organization. For hosted deployments, keep `ALLOW_PUBLIC_SIGNUP=false` until billing/onboarding gates exist, then invite or provision users intentionally.
 
 ### 4. (Optional) Set up data-source connectors
 
@@ -314,7 +321,7 @@ Auth uses Better Auth organizations. In self-hosted mode, create the first admin
 
 Note: Better Auth controls access to the **web admin UI**. The **MCP endpoints** use per-brain bearer tokens; when `DATABASE_URL` and `MCP_TOKEN_PEPPER` are configured, those tokens are validated against hashes in Postgres, with a Secrets Manager fallback. Rotating web auth credentials doesn't affect MCP tokens.
 
-- **Default brain's token** — comes from `CTX_TOKEN` in `cdk/.deploy-env` and is stored in the `context101-bearer-token` secret. To rotate: edit `.deploy-env`, re-run `./cdk/deploy.sh`, redistribute.
+- **Default brain's token** — comes from `CTX_TOKEN` in `cdk/.deploy-env` and is stored in the `context101-bearer-token` secret. To rotate: edit `.deploy-env`, re-run `npx context101 deploy`, redistribute.
 - **Other brains' tokens** — stored in `context101-brain-<brain_id>-token`. To rotate, update the secret value directly with `aws secretsmanager put-secret-value` (no redeploy). The MCP server's token cache picks up the new value within ~5 min.
 
 ## Managing brains
@@ -955,8 +962,7 @@ knowledge/databases.md                   (local markdown)
 **Tear down the whole stack:**
 
 ```bash
-cd cdk
-./deploy.sh destroy
+npx context101 destroy
 ```
 
 The default brain's docs bucket and the shared S3 Vectors bucket have `RETAIN` policies, so `cdk destroy` leaves their data behind. Empty them manually if you want them gone. **Non-default brains created at runtime are NOT in CloudFormation** — they were provisioned by the brain-provisioner Lambda. `cdk destroy` does NOT clean them up; delete them from `/brains` first, or sweep the `context101-brain-*` buckets / KBs / secrets manually.
@@ -974,7 +980,7 @@ The default brain's docs bucket and the shared S3 Vectors bucket have `RETAIN` p
 - `removalPolicy: RETAIN` on the default docs bucket and the shared vector bucket — accidental `cdk destroy` won't wipe your data. Runtime-created brain buckets follow the same convention.
 - The MCP server doesn't write to a KB directly — agents propose via `suggest_knowledge`, which lands in the active brain's review queue. Content flows into S3 through the web UI, approved suggestions, or the data connectors.
 - Each S3 upload triggers an ingestion job for the bucket's brain. The auto-ingest Lambda still uses the legacy brain registry during the transition; the web/MCP read path can resolve brains from Postgres.
-- To rotate the default brain's bearer token: edit `CTX_TOKEN` in `cdk/.deploy-env` and re-run `./cdk/deploy.sh`. For other brains: `aws secretsmanager put-secret-value --secret-id context101-brain-<id>-token --secret-string '<new-value>'`. The MCP cache picks up the new value within ~5 min.
+- To rotate the default brain's bearer token: edit `CTX_TOKEN` in `cdk/.deploy-env` and re-run `npx context101 deploy`. For other brains: `aws secretsmanager put-secret-value --secret-id context101-brain-<id>-token --secret-string '<new-value>'`. The MCP cache picks up the new value within ~5 min.
 - The wiki generator writes one file per page per run, so a full regen kicks N ingestion jobs in rapid succession. Bedrock dedups internally — safe, just noisy in the console.
 
 ## Roadmap / TODO

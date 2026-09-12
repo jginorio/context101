@@ -10,15 +10,24 @@
 # becomes the shared bearer token your MCP clients send.
 CTX_TOKEN="context101-platea-2026-bearer"
 
-# OPTIONAL — gates the Amplify web app + wiki-gen stack.
-# If you have `gh` installed and authenticated, deploy.sh falls back to
-# `gh auth token` so you can leave this commented out.
+# OPTIONAL — only if Amplify should watch a GitHub repo. Omit both to
+# deploy the AWS stack without a GitHub-watched web app.
+# REPOSITORY="https://github.com/<you>/context101"
 # CTX_GH_TOKEN="ghp_..."
+
+# OPTIONAL — Bedrock embedding model for the default brain.
+# Skip / omit to keep amazon.titan-embed-text-v2:0. Pick any Amazon
+# Titan or Cohere embedding model enabled in Model access.
+# EMBED_MODEL_ID="amazon.titan-embed-text-v2:0"
 
 # OPTIONAL — passed through to the cdk subprocess.
 AWS_PROFILE="plateapr.com"
 
 # OPTIONAL — OpenSaaS/Postgres + Better Auth path.
+# Omit DATABASE_URL and set CREATE_RDS=true to let CDK provision
+# a small public RDS Postgres (db.t3.micro). The password stays in
+# Secrets Manager (ControlPlaneDbSecretArn) and is never printed.
+# CREATE_RDS="true"
 # DATABASE_URL should be your Postgres connection string.
 # Neon URLs auto-select DATABASE_DRIVER=neon-http. Supabase/RDS/local Postgres
 # can use DATABASE_DRIVER=postgres-js.
@@ -26,7 +35,10 @@ AWS_PROFILE="plateapr.com"
 # DATABASE_DRIVER="neon-http"
 # DATABASE_PREPARE="true"
 # BETTER_AUTH_SECRET="$(openssl rand -base64 32)"
-# BETTER_AUTH_URL="https://main.<amplify-app-id>.amplifyapp.com"
+# Leave BETTER_AUTH_URL / APP_URL unset so CDK binds Better Auth to
+# Amplify's default domain (https://main.<app-id>.amplifyapp.com).
+# Set them only if you bring your own host. Never the hosted product.
+# BETTER_AUTH_URL="https://kb.example.com"
 # MCP_TOKEN_PEPPER="$(openssl rand -base64 32)"
 #
 # Deployment mode:
@@ -35,9 +47,8 @@ AWS_PROFILE="plateapr.com"
 # APP_MODE="self_hosted"
 # ALLOW_PUBLIC_SIGNUP="false"
 # BILLING_ENABLED="false"
-# APP_URL="https://main.<amplify-app-id>.amplifyapp.com"
-# MARKETING_URL="https://context101.dev"
-# MCP_PUBLIC_HOST="https://mcp.context101.dev"
+# APP_URL="https://kb.example.com"
+# MCP_PUBLIC_HOST="https://mcp.example.com"
 #
 # Transactional email (hosted paid default: AWS SES).
 # SES_FROM_EMAIL must be a verified SES identity.

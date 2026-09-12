@@ -19,7 +19,61 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import * as path from "path";
+import { execSync } from "node:child_process";
 import { BrainShared } from "./brain-shared";
+import {
+  applyControlPlaneMigrations,
+  contextWantsRds,
+  provisionRdsPostgres,
+} from "./control-plane-db";
+
+/** Hosted product zone. Self-host uses an operator domain or Amplify default. */
+function isHostedContext101Url(raw: string | undefined): boolean {
+  if (!raw) return false;
+  try {
+    const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(raw)
+      ? raw
+      : `https://${raw}`;
+    const host = new URL(withScheme).hostname.toLowerCase();
+    return host === "context101.dev" || host.endsWith(".context101.dev");
+  } catch {
+    const host = raw
+      .replace(/^[a-z][a-z0-9+.-]*:\/\//i, "")
+      .split("/")[0]
+      .split(":")[0]
+      .toLowerCase();
+    return host === "context101.dev" || host.endsWith(".context101.dev");
+  }
+}
+
+function ownPublicUrl(raw: string | undefined): string | undefined {
+  const value = raw?.trim();
+  if (!value || isHostedContext101Url(value)) return undefined;
+  return value;
+}
+
+const DEFAULT_EMBED_MODEL_ID = "amazon.titan-embed-text-v2:0";
+
+/** Default dimensions — keep in sync with web/lib/embedding-models.ts */
+const EMBED_MODEL_META: Record<
+  string,
+  { dimensions: number; configurable: boolean }
+> = {
+  "amazon.titan-embed-text-v2:0": { dimensions: 1024, configurable: true },
+  "amazon.titan-embed-text-v1": { dimensions: 1536, configurable: false },
+  "amazon.titan-embed-image-v1": { dimensions: 1024, configurable: false },
+  "cohere.embed-english-v3": { dimensions: 1024, configurable: false },
+  "cohere.embed-multilingual-v3": { dimensions: 1024, configurable: false },
+  "cohere.embed-english-light-v3": { dimensions: 384, configurable: false },
+  "cohere.embed-multilingual-light-v3": { dimensions: 384, configurable: false },
+};
+
+function embeddingModelMeta(modelId: string): {
+  dimensions: number;
+  configurable: boolean;
+} {
+  return EMBED_MODEL_META[modelId] ?? { dimensions: 1024, configurable: false };
+}
 
 /**
  * Context101 — shared team knowledge base.
@@ -36,8 +90,12 @@ export class Context101Stack extends cdk.Stack {
     super(scope, id, props);
 
     const namePrefix = "context101";
-    const embedDim = 1024;
-    const embedModelArn = `arn:aws:bedrock:${this.region}::foundation-model/amazon.titan-embed-text-v2:0`;
+    const embedModelId =
+      (this.node.tryGetContext("EMBED_MODEL_ID") as string | undefined)?.trim() ||
+      DEFAULT_EMBED_MODEL_ID;
+    const embedMeta = embeddingModelMeta(embedModelId);
+    const embedDim = embedMeta.dimensions;
+    const embedModelArn = `arn:aws:bedrock:${this.region}::foundation-model/${embedModelId}`;
 
     // Embedding models a brain can be provisioned with at runtime are listed
     // dynamically from Bedrock in the web app (Amazon Titan + Cohere Embed —
@@ -50,24 +108,82 @@ export class Context101Stack extends cdk.Stack {
       `arn:aws:bedrock:${this.region}::foundation-model/cohere.embed-*`,
     ];
 
-    // ── Postgres control plane (Neon) ─────────────────────────────────
-    //   The web app + MCP server already read the brain/connector/
-    //   suggestion registry from Postgres. The AWS worker Lambdas below
-    //   share the same source of truth via a tiny zero-dependency
-    //   Neon-over-HTTP helper packaged as a layer (see layers/pg-http).
-    //   DATABASE_URL is passed at deploy time via `-c DATABASE_URL=...`
-    //   (deploy.sh forwards it from .deploy-env).
-    const databaseUrl = this.node.tryGetContext("DATABASE_URL") as
-      | string
-      | undefined;
+    // ── Postgres control plane ────────────────────────────────────────
+    //   Bring your own URL (Neon / Supabase / existing RDS) via
+    //   `-c DATABASE_URL=...`, or pass `-c CREATE_RDS=true` and the
+    //   stack provisions a small public Postgres. Worker Lambdas use
+    //   the pg-http layer (Neon HTTP, or `pg` TCP for RDS).
+    let wikiVpcSingleton: ec2.Vpc | undefined;
+    const ensureWikiVpc = (): ec2.Vpc => {
+      if (!wikiVpcSingleton) {
+        wikiVpcSingleton = new ec2.Vpc(this, "WikiGenVpc", {
+          maxAzs: 2,
+          natGateways: 0,
+          subnetConfiguration: [
+            { name: "public", subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
+          ],
+        });
+      }
+      return wikiVpcSingleton;
+    };
+
+    const pgHttpSrc = path.resolve(__dirname, "..", "layers", "pg-http");
     const pgHttpLayer = new lambda.LayerVersion(this, "PgHttpLayer", {
-      code: lambda.Code.fromAsset(
-        path.resolve(__dirname, "..", "layers", "pg-http")
-      ),
+      code: lambda.Code.fromAsset(pgHttpSrc, {
+        bundling: {
+          image: lambda.Runtime.NODEJS_20_X.bundlingImage,
+          environment: {
+            HOME: "/tmp",
+            npm_config_cache: "/tmp/.npm",
+            npm_config_update_notifier: "false",
+          },
+          command: [
+            "bash",
+            "-c",
+            "cp -au . /asset-output && cd /asset-output/nodejs && npm install --omit=dev --no-audit --no-fund --loglevel=error",
+          ],
+          local: {
+            tryBundle(outputDir: string): boolean {
+              try {
+                execSync(
+                  `cp -a "${pgHttpSrc}/." "${outputDir}/" && cd "${outputDir}/nodejs" && npm install --omit=dev --no-audit --no-fund --loglevel=error`,
+                  {
+                    stdio: "inherit",
+                    env: {
+                      ...process.env,
+                      npm_config_update_notifier: "false",
+                    },
+                  }
+                );
+                return true;
+              } catch {
+                return false;
+              }
+            },
+          },
+        },
+      }),
       compatibleRuntimes: [lambda.Runtime.NODEJS_20_X],
       description:
-        "Zero-dependency Neon Postgres-over-HTTP helper (pg-http) shared by control-plane Lambdas",
+        "Neon SQL-over-HTTP + pg TCP helper (pg-http) for control-plane Lambdas",
     });
+
+    const providedDatabaseUrl = (
+      this.node.tryGetContext("DATABASE_URL") as string | undefined
+    )?.trim();
+    const createRds = !providedDatabaseUrl && contextWantsRds(this);
+    let databaseUrl = providedDatabaseUrl || undefined;
+    let rdsSecretArn: string | undefined;
+    if (createRds) {
+      const rdsDb = provisionRdsPostgres(this, ensureWikiVpc(), namePrefix);
+      databaseUrl = rdsDb.databaseUrl;
+      rdsSecretArn = rdsDb.secretArn;
+      applyControlPlaneMigrations(this, {
+        databaseUrl: rdsDb.databaseUrl,
+        pgHttpLayer,
+        instance: rdsDb.instance,
+      });
+    }
     // Env injected into every worker Lambda that reaches the control plane.
     const pgLambdaEnv: Record<string, string> = databaseUrl
       ? { DATABASE_URL: databaseUrl }
@@ -190,9 +306,13 @@ export class Context101Stack extends cdk.Stack {
         type: "VECTOR",
         vectorKnowledgeBaseConfiguration: {
           embeddingModelArn: embedModelArn,
-          embeddingModelConfiguration: {
-            bedrockEmbeddingModelConfiguration: { dimensions: embedDim },
-          },
+          ...(embedMeta.configurable
+            ? {
+                embeddingModelConfiguration: {
+                  bedrockEmbeddingModelConfiguration: { dimensions: embedDim },
+                },
+              }
+            : {}),
         },
       },
       storageConfiguration: {
@@ -286,13 +406,8 @@ export class Context101Stack extends cdk.Stack {
     // a) Minimal VPC — public subnets only, no NAT (zero idle cost).
     //    The task has short-lived outbound needs (S3 + Bedrock), so
     //    assignPublicIp is enough and saves ~$32/mo vs a NAT gateway.
-    const wikiVpc = new ec2.Vpc(this, "WikiGenVpc", {
-      maxAzs: 2,
-      natGateways: 0,
-      subnetConfiguration: [
-        { name: "public", subnetType: ec2.SubnetType.PUBLIC, cidrMask: 24 },
-      ],
-    });
+    //    Reused for CDK-created RDS when CREATE_RDS=true.
+    const wikiVpc = ensureWikiVpc();
 
     // b) ECS cluster (free; only tasks incur cost)
     const wikiCluster = new ecs.Cluster(this, "WikiGenCluster", {
@@ -694,18 +809,18 @@ export class Context101Stack extends cdk.Stack {
     //   token_secret_arn is resolved via cdk.Lazy because the secret
     //   itself is conditional on `-c token=<value>` being passed.
     const teamToken = this.node.tryGetContext("token") as string | undefined;
-    const databaseDriver = this.node.tryGetContext("DATABASE_DRIVER") as
-      | string
-      | undefined;
-    const databasePrepare = this.node.tryGetContext("DATABASE_PREPARE") as
-      | string
-      | undefined;
+    const databaseDriver =
+      (this.node.tryGetContext("DATABASE_DRIVER") as string | undefined) ||
+      (createRds ? "postgres-js" : undefined);
+    const databasePrepare =
+      (this.node.tryGetContext("DATABASE_PREPARE") as string | undefined) ||
+      (createRds ? "true" : undefined);
     const betterAuthSecret = this.node.tryGetContext("BETTER_AUTH_SECRET") as
       | string
       | undefined;
-    const betterAuthUrl = this.node.tryGetContext("BETTER_AUTH_URL") as
-      | string
-      | undefined;
+    const betterAuthUrl = ownPublicUrl(
+      this.node.tryGetContext("BETTER_AUTH_URL") as string | undefined
+    );
     const mcpTokenPepper = this.node.tryGetContext("MCP_TOKEN_PEPPER") as
       | string
       | undefined;
@@ -716,13 +831,15 @@ export class Context101Stack extends cdk.Stack {
     const billingEnabled = this.node.tryGetContext("BILLING_ENABLED") as
       | string
       | undefined;
-    const appUrl = this.node.tryGetContext("APP_URL") as string | undefined;
-    const marketingUrl = this.node.tryGetContext("MARKETING_URL") as
-      | string
-      | undefined;
-    const mcpPublicHost = this.node.tryGetContext("MCP_PUBLIC_HOST") as
-      | string
-      | undefined;
+    const appUrl = ownPublicUrl(
+      this.node.tryGetContext("APP_URL") as string | undefined
+    );
+    const marketingUrl = ownPublicUrl(
+      this.node.tryGetContext("MARKETING_URL") as string | undefined
+    );
+    const mcpPublicHost = ownPublicUrl(
+      this.node.tryGetContext("MCP_PUBLIC_HOST") as string | undefined
+    );
     const sesRegion = this.node.tryGetContext("SES_REGION") as
       | string
       | undefined;
@@ -1076,12 +1193,23 @@ export class Context101Stack extends cdk.Stack {
     }
 
     // ── 9. Optional: Amplify Hosting for the web admin UI ─────────────
-    //      Only provisioned if -c githubToken=<pat> is passed.
+    //      Only provisioned if -c githubToken=<pat> and -c REPOSITORY= are
+    //      passed. There is no default watch target — a found-the-repo
+    //      operator deploys the stack without a GitHub-watched web app.
     const githubToken = this.node.tryGetContext("githubToken") as
       | string
       | undefined;
+    const amplifyRepository = (
+      this.node.tryGetContext("REPOSITORY") as string | undefined
+    )?.trim();
 
-    if (githubToken) {
+    if (githubToken && !amplifyRepository) {
+      throw new Error(
+        "REPOSITORY is required when githubToken is set. Omit both to skip Amplify."
+      );
+    }
+
+    if (githubToken && amplifyRepository) {
       // a) Service role for the Amplify app. Auth is Better Auth + Postgres
       //    now, so there's no Amplify Gen 2 backend (Cognito) to provision —
       //    this role exists only so Amplify Hosting can deliver SSR compute
@@ -1109,7 +1237,7 @@ export class Context101Stack extends cdk.Stack {
       const webApp = new amplify.CfnApp(this, "WebApp", {
         name: `${namePrefix}-web`,
         description: "Context101 knowledge admin UI",
-        repository: "https://github.com/jginorio/context101",
+        repository: amplifyRepository,
         accessToken: githubToken,
         iamServiceRole: amplifyServiceRole.roleArn,
         platform: "WEB_COMPUTE", // Next.js SSR
@@ -1165,14 +1293,36 @@ export class Context101Stack extends cdk.Stack {
       });
 
       // c) Branch — tracks main and auto-builds on push
+      const amplifyDefaultUrl = cdk.Fn.join("", [
+        "https://main.",
+        webApp.attrDefaultDomain,
+      ]);
+      const selfHostWebUrl = betterAuthUrl || appUrl;
       const mainBranch = new amplify.CfnBranch(this, "WebAppMain", {
         appId: webApp.attrAppId,
         branchName: "main",
         stage: "PRODUCTION",
         enableAutoBuild: true,
         framework: "Next.js - SSR",
+        // Branch env can reference the app default domain without a cycle.
+        // First-time self-host leaves BETTER_AUTH_URL / APP_URL unset so
+        // Better Auth binds to Amplify's domain, not the hosted product.
+        ...(selfHostWebUrl
+          ? {}
+          : {
+              environmentVariables: [
+                { name: "BETTER_AUTH_URL", value: amplifyDefaultUrl },
+                { name: "APP_URL", value: amplifyDefaultUrl },
+              ],
+            }),
       });
       mainBranch.addDependency(webApp);
+      if (!appUrl) {
+        ingestFn.addEnvironment(
+          "CONFLICT_EVIDENCE_URL",
+          cdk.Fn.join("", [amplifyDefaultUrl, "/api/conflicts/evidence"])
+        );
+      }
 
       // d) SSR Compute role — the IAM role the Amplify Hosting compute
       //    Lambda assumes at runtime. Granting it S3 perms on the docs
@@ -1486,7 +1636,8 @@ export class Context101Stack extends cdk.Stack {
           "https://main.",
           webApp.attrDefaultDomain,
         ]),
-        description: "The web admin URL once the first build finishes.",
+        description:
+          "Self-host web URL (Amplify default). Use this for /setup unless you brought your own domain.",
       });
       new cdk.CfnOutput(this, "WebSsrComputeRoleArn", {
         value: ssrComputeRole.roleArn,
@@ -1509,5 +1660,12 @@ export class Context101Stack extends cdk.Stack {
     });
     new cdk.CfnOutput(this, "VectorBucketArn", { value: vectorBucketArn });
     new cdk.CfnOutput(this, "VectorIndexArn", { value: vectorIndexArn });
+    if (rdsSecretArn) {
+      new cdk.CfnOutput(this, "ControlPlaneDbSecretArn", {
+        value: rdsSecretArn,
+        description:
+          "Secrets Manager ARN for the CDK-created RDS user/password. Not the connection string.",
+      });
+    }
   }
 }
