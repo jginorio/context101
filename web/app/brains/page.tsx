@@ -412,7 +412,7 @@ function DeleteBrainDialog({
         setSubmitting(false);
         return;
       }
-      toast.success(`Brain "${brain.display_name}" deleted`);
+      toast.success(`Deleting "${brain.display_name}"…`);
       onDeleted();
       onClose();
     } catch (err) {
@@ -513,17 +513,20 @@ function BrainRow({
                 </Button>
               </Link>
             ) : null}
-            {brain.brain_id !== "default" && brain.status !== "deleting" ? (
-              // Errored brains must be deletable too — that's the only way
-              // to clean up the half-created S3/KB/secret resources from a
-              // failed provision. (The provisioner's delete handler tolerates
-              // already-gone resources.) Previously gated on status==="ready"
-              // which left users stranded on errored rows.
+            {brain.brain_id !== "default" ? (
+              // Errored *and* stuck-deleting brains must stay deletable —
+              // that's the only way to retry a teardown that failed after
+              // flipping status to `deleting` (the provisioner is
+              // idempotent and treats already-gone resources as success).
+              // Previously gated off `deleting`, which hid the button and
+              // left rows stranded on "Deleting…" forever.
               <Button
                 variant="ghost"
                 size="icon-sm"
                 onClick={onDelete}
-                aria-label="Delete brain"
+                aria-label={
+                  brain.status === "deleting" ? "Retry delete" : "Delete brain"
+                }
               >
                 <Trash2 className="h-4 w-4" />
               </Button>

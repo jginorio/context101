@@ -79,6 +79,23 @@ async function ingestForBucket(bucket, keys) {
     console.warn(`no brain row matches bucket ${bucket}; skipping`);
     return { skipped: true, bucket };
   }
+  // The in-memory registry is TTL'd at 60s and only loads `ready` rows.
+  // emptyBucket during delete fires ObjectRemoved events that can still
+  // hit a warm container whose cache says this brain is ready — and
+  // StartIngestionJob then races DeleteDataSource (ConflictException).
+  // Re-check status so we never ingest a brain that's being torn down.
+  const live = await pgQuery(
+    DATABASE_URL,
+    `select status from brains where id = $1`,
+    [brain.brainId]
+  );
+  const status = live.rows[0]?.status;
+  if (status !== "ready") {
+    console.log(
+      `[brain=${brain.brainId}] skip ingest; status is ${status ?? "gone"}`
+    );
+    return { skipped: true, bucket, reason: "not-ready" };
+  }
   try {
     const res = await bedrock.send(
       new StartIngestionJobCommand({
