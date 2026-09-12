@@ -1,0 +1,121 @@
+# Publish context101-cli to npm and create a GitHub Release on push to main
+# when the version in packages/cli/package.json is new.
+#
+# Repo secret NPM_TOKEN must be an npm automation token with permission to
+# publish `context101-cli`. Do not put a token in this file.
+#
+# Bump packages/cli/package.json version on the same PR as CLI changes; merge
+# to main publishes and tags. If v$VERSION already exists (git tag or npm),
+# publish is skipped so main stays green (e.g. 0.1.1 is already on npm).
+
+name: Publish CLI
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "packages/cli/**"
+      - ".github/workflows/publish-cli.yml"
+
+# contents:write is enough to push the annotated tag and create the release.
+# npm auth is secrets.NPM_TOKEN (NODE_AUTH_TOKEN), not GITHUB_TOKEN.
+permissions:
+  contents: write
+
+concurrency:
+  group: publish-cli-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      # Root is a private monorepo (workspaces: site, web, packages/*) with a
+      # single lockfile — same install Amplify uses.
+      - name: Install
+        run: npm ci
+
+      - name: Test CLI
+        run: npm test -w context101-cli
+
+      - name: Read CLI version
+        id: pkg
+        run: |
+          set -euo pipefail
+          VERSION="$(node -p "require('./packages/cli/package.json').version")"
+          NAME="$(node -p "require('./packages/cli/package.json').name")"
+          {
+            echo "version=${VERSION}"
+            echo "name=${NAME}"
+          } >> "${GITHUB_OUTPUT}"
+          echo "Resolved ${NAME}@${VERSION}"
+
+      - name: Skip if tag or npm version already exists
+        id: decide
+        run: |
+          set -euo pipefail
+          VERSION="${{ steps.pkg.outputs.version }}"
+          NAME="${{ steps.pkg.outputs.name }}"
+          TAG="v${VERSION}"
+
+          if git ls-remote --exit-code --tags origin "refs/tags/${TAG}" >/dev/null 2>&1; then
+            echo "Git tag ${TAG} already exists — skipping publish and release."
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+
+          # Public registry lookup (no auth). Avoid `npm view` here: setup-node
+          # writes an auth .npmrc, and an empty NODE_AUTH_TOKEN can 401.
+          HTTP="$(curl -sS -o /dev/null -w "%{http_code}" "https://registry.npmjs.org/${NAME}/${VERSION}")"
+          if [ "${HTTP}" = "200" ]; then
+            echo "npm already has ${NAME}@${VERSION} — skipping publish and release."
+            echo "skip=true" >> "${GITHUB_OUTPUT}"
+            exit 0
+          fi
+          if [ "${HTTP}" != "404" ]; then
+            echo "Unexpected registry status ${HTTP} for ${NAME}@${VERSION}"
+            exit 1
+          fi
+
+          echo "No git tag ${TAG} and npm does not have ${NAME}@${VERSION} — will publish."
+          echo "skip=false" >> "${GITHUB_OUTPUT}"
+
+      - name: Publish to npm
+        if: steps.decide.outputs.skip != 'true'
+        working-directory: packages/cli
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [ -z "${NODE_AUTH_TOKEN}" ]; then
+            echo "Repository secret NPM_TOKEN is not set. Add an npm automation token."
+            exit 1
+          fi
+          npm publish --access public
+
+      - name: Create annotated tag and GitHub Release
+        if: steps.decide.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.pkg.outputs.version }}
+        run: |
+          set -euo pipefail
+          TAG="v${VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "${TAG}" -m "context101-cli ${VERSION}"
+          git push origin "${TAG}"
+          gh release create "${TAG}" \
+            --title "context101-cli ${VERSION}" \
+            --notes "CLI release"

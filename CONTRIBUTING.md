@@ -24,6 +24,22 @@ cd cdk && npx cdk synth
 
 `npm --prefix web run lint` is expected to be clean before release, but the current branch may have existing lint debt while the public-alpha cleanup is in progress.
 
+For CLI changes, also run `npm test -w context101-cli` and bump `version` in `packages/cli/package.json` on the same PR (see below).
+
+## CLI releases (`context101-cli`)
+
+The publishable package name is `context101-cli` (bin `context101`). The public npm package named `context101` is Context7's MCP, not this tool.
+
+On push to `main`, `.github/workflows/publish-cli.yml` runs only when `packages/cli/**` or that workflow file changed:
+
+1. Checkout, Node 20, `npm ci` at the repo root, then `npm test -w context101-cli` (the job fails if tests fail).
+2. If git tag `v$VERSION` already exists **or** npm already has that version, publish and release are skipped and the job succeeds. The first run after this workflow lands will see `0.1.1` already on npm and take that path.
+3. Otherwise it publishes from `packages/cli` (`npm publish --access public`), pushes an annotated tag `v$VERSION`, and creates a GitHub Release titled `context101-cli $VERSION`.
+
+**When you change the CLI:** bump `version` in `packages/cli/package.json` on the same PR as the code change. Merge to `main` publishes and tags.
+
+**Secret:** set repository secret `NPM_TOKEN` to an npm **automation** token that can publish `context101-cli`. Never commit the token or put it in the workflow YAML.
+
 ## Security
 
 Please report suspected security issues privately. See `SECURITY.md`.
