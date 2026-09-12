@@ -5,9 +5,10 @@ import { Anthropic, Bedrock, Gemini, Grok, OpenAI } from "@lobehub/icons";
 
 import { Marquee } from "@/components/ui/marquee";
 
-// LLM providers Context101 can generate wikis with. Rendered as monochrome
-// brand marks (a clean, consistent "logo cloud") via @lobehub/icons — which,
-// unlike Lucide or Simple Icons, ships an official xAI Grok mark.
+// Provider marks for the marketing marquee. Retrieve itself is Amazon
+// Bedrock Knowledge Bases. Rendered as monochrome brand marks via
+// @lobehub/icons — which, unlike Lucide or Simple Icons, ships an official
+// xAI Grok mark.
 const PROVIDERS: { name: string; Icon: React.ComponentType<{ size?: number }> }[] =
   [
     { name: "Amazon Bedrock", Icon: Bedrock },
