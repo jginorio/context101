@@ -69,6 +69,9 @@ export function fakeExec(overrides = {}) {
     if (command === "sh" && args[1] === "command -v docker") {
       return ok("/usr/bin/docker");
     }
+    if (command === "docker" && args[0] === "info") {
+      return ok("Server Version: 24.0.0");
+    }
     if (command === "sh" && args[1] === "command -v gh") {
       return ok("/usr/bin/gh");
     }

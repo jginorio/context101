@@ -15,6 +15,9 @@ export function formatDryRun(plan) {
     "Plan (dry-run — nothing will be written, nothing will be deployed)",
     "",
     `  1. Local tools: Node 20+, npm, AWS CLI v2, Docker, optional gh`,
+    plan.dockerInstalled && plan.dockerDaemon === false
+      ? "     docker daemon is not running — start it before deploy"
+      : null,
     `  2. AWS account in ${plan.region} (smooth path)`,
     plan.account
       ? `     account ${plan.account}`

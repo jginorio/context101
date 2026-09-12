@@ -90,3 +90,48 @@ test("--yes --deploy refuses a ghs_ gh token", async () => {
   assert.match(io.stderrText, /PAT|webhook|roll the stack back/i);
   assert.equal(io.stderrText.includes("ghs_installation_must_never_appear"), false);
 });
+
+test("--yes --deploy refuses when the Docker daemon is down", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-dock-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(
+    [
+      "init",
+      "--yes",
+      "--deploy",
+      "--database-url",
+      "postgresql://localhost/db",
+      "--force",
+      "--deploy-env",
+      path.join(root, "cdk", ".deploy-env"),
+    ],
+    {
+      cwd: root,
+      env: testEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      exec: fakeExec({
+        "docker info": {
+          ok: false,
+          code: 1,
+          stdout: "",
+          stderr: "Cannot connect to the Docker daemon",
+          error: null,
+        },
+      }),
+      runDeploy: async (spec) => {
+        calls.push(spec);
+        return 0;
+      },
+    }
+  );
+
+  assert.equal(code, 1);
+  assert.equal(calls.length, 0);
+  assert.match(io.stderrText, /Docker daemon is not running/);
+  assert.match(`${io.stdoutText}\n${io.stderrText}`, /colima start|systemctl start docker/);
+});

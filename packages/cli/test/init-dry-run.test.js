@@ -41,6 +41,7 @@ test("dry-run prints the plan and writes nothing", async () => {
   assert.match(text, /deploy\.sh --seed/);
   assert.equal(text.includes("would ask which profile"), false);
   assert.match(text, /would ask for AWS access key and secret/);
+  assert.equal(text.includes("docker daemon is not running"), false);
   assert.match(text, /https:\/\/github.com\/acme\/context101/);
   assert.match(text, new RegExp(DRIVER_NEON));
   assert.equal(text.includes(secretUrl), false);
@@ -135,4 +136,32 @@ test("dry-run with static AWS keys does not print them", async () => {
   assert.match(text, /using AWS access keys/);
   assert.equal(text.includes(secret), false);
   assert.equal(text.includes("TESTACCESSKEYID12345"), false);
+});
+
+test("dry-run tells the user when the Docker daemon is down", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-dry-dock-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+
+  const code = await main(["init", "--dry-run"], {
+    cwd: root,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec({
+      "docker info": {
+        ok: false,
+        code: 1,
+        stdout: "",
+        stderr: "Cannot connect to the Docker daemon",
+        error: null,
+      },
+    }),
+  });
+
+  assert.equal(code, 0);
+  const text = `${io.stdoutText}\n${io.stderrText}`;
+  assert.match(text, /docker daemon is not running/);
+  assert.match(text, /colima start|systemctl start docker|Docker Desktop/);
 });

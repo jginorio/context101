@@ -101,7 +101,12 @@ export async function runInit(opts, ctx) {
     accessKeyId: awsAccessKeyId,
     secretAccessKey: awsSecretAccessKey,
   });
-  const checks = runChecks({ exec, env: awsEnv, region });
+  const checks = runChecks({
+    exec,
+    env: awsEnv,
+    region,
+    dryRun: opts.dryRun,
+  });
   printChecks(
     {
       ...checks,
@@ -112,6 +117,9 @@ export async function runInit(opts, ctx) {
     },
     io
   );
+  if (checks.docker?.hint && !checks.docker.daemon) {
+    io.write(checks.docker.hint);
+  }
   if (checks.bootstrap.ok === false && checks.aws.identity?.account) {
     io.warn(
       `CDK bootstrap needed: npx cdk bootstrap aws://${checks.aws.identity.account}/${region}`
@@ -165,6 +173,8 @@ export async function runInit(opts, ctx) {
     envExists,
     seed: answers.seed,
     deploy: answers.deploy,
+    dockerInstalled: Boolean(checks.docker?.installed),
+    dockerDaemon: Boolean(checks.docker?.daemon),
   };
 
   if (opts.dryRun) {
@@ -226,6 +236,14 @@ export async function runInit(opts, ctx) {
   io.write("");
 
   if (!answers.deploy) return 0;
+
+  if (!checks.docker?.daemon) {
+    io.err(
+      "not deploying: Docker daemon is not running. Start it, then run ./cdk/deploy.sh."
+    );
+    if (checks.docker?.hint) io.write(checks.docker.hint);
+    return 1;
+  }
 
   if (!githubReadyForAmplify(checks, answers)) {
     io.err(

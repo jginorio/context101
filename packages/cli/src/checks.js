@@ -1,5 +1,6 @@
 import { SMOOTH_REGION } from "./defaults.js";
 import { commandExists } from "./exec.js";
+import { ensureDockerDaemon } from "./docker.js";
 
 /** Amplify CreateApp calls GitHub list-repository-webhooks with this token. */
 export function classifyGithubToken(token) {
@@ -25,12 +26,19 @@ function versionOf(exec, command, args, pattern) {
   return match ? match[1] : text.split("\n")[0];
 }
 
-export function runChecks({ exec, env = {}, region = SMOOTH_REGION }) {
+export function runChecks({
+  exec,
+  env = {},
+  region = SMOOTH_REGION,
+  platform,
+  dryRun = false,
+  wait,
+} = {}) {
   const nodeMajor = Number.parseInt(process.versions.node.split(".")[0], 10);
   const nodeOk = nodeMajor >= 20;
   const npmVersion = versionOf(exec, "npm", ["-v"], /^(\d+\.\d+\.\d+)/m);
   const awsVersion = versionOf(exec, "aws", ["--version"], /aws-cli\/(\S+)/);
-  const dockerOk = commandExists(exec, "docker");
+  const docker = ensureDockerDaemon({ exec, platform, dryRun, wait });
   const ghOk = commandExists(exec, "gh");
 
   let awsIdentity = null;
@@ -86,7 +94,7 @@ export function runChecks({ exec, env = {}, region = SMOOTH_REGION }) {
     node: { ok: nodeOk, version: process.versions.node },
     npm: { ok: Boolean(npmVersion), version: npmVersion },
     aws: { ok: Boolean(awsVersion), version: awsVersion, identity: awsIdentity },
-    docker: { ok: dockerOk },
+    docker,
     gh: {
       ok: ghOk,
       loggedIn: ghLoggedIn,
@@ -122,7 +130,7 @@ export function printChecks(checks, io) {
   } else if (checks.awsProfiles?.length === 0) {
     warn("no AWS profiles — will ask for access key and secret");
   }
-  (checks.docker.ok ? ok : warn)(checks.docker.ok ? "docker" : "docker not found (needed for CDK image assets)");
+  printDockerCheck(checks.docker, { ok, warn });
   if (checks.gh.ok && checks.gh.amplifyOk) {
     ok("gh (logged in with a PAT — deploy.sh can use it for Amplify)");
   } else if (checks.gh.ok && checks.gh.loggedIn) {
@@ -134,4 +142,24 @@ export function printChecks(checks, io) {
   } else {
     dim("gh optional — set CTX_GH_TOKEN in the env file if you skip it");
   }
+}
+
+function printDockerCheck(docker, { ok, warn }) {
+  if (!docker) {
+    warn("docker not found (needed for CDK image assets)");
+    return;
+  }
+  if (!docker.installed) {
+    warn("docker not found (needed for CDK image assets)");
+    return;
+  }
+  if (docker.daemon && docker.started) {
+    ok(`docker (started ${docker.starter})`);
+    return;
+  }
+  if (docker.daemon) {
+    ok("docker");
+    return;
+  }
+  warn("docker daemon is not running (needed for CDK image assets)");
 }
