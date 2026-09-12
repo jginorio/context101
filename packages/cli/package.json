@@ -1,8 +1,9 @@
 {
   "name": "context101-cli",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": false,
-  "description": "Context101 self-host CLI. Use `npx context101-cli` or the `context101` bin. The public npm package named context101 is Context7's MCP, not this tool.",
+  "description": "Context101 self-host CLI — your context. every agent. Use `npx context101-cli` or the `context101` bin. Unscoped `npx context101` is Context7's MCP, not this tool.",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "context101": "./bin/context101.js"
@@ -10,6 +11,22 @@
   "files": [
     "bin",
     "src"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jginorio/context101.git"
+  },
+  "homepage": "https://github.com/jginorio/context101",
+  "bugs": {
+    "url": "https://github.com/jginorio/context101/issues"
+  },
+  "keywords": [
+    "context101",
+    "cli",
+    "knowledge-base",
+    "bedrock",
+    "mcp",
+    "self-host"
   ],
   "scripts": {
     "test": "node --test test/*.test.js"

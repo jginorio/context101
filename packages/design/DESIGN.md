@@ -115,13 +115,13 @@ components:
 
 Context101 looks like a powered-on brain in a dark room. Near-black substrate, signal moving along faint magenta-violet traces, light pooling only where there's activity — beams flowing between nodes, a cursor blinking after a typed line, a card edge catching the accent. The identity is unapologetically dark and unapologetically purple: the `--brain` mark is the loudest thing on the page, and that's the point. This is infrastructure with a pulse, built for engineers who'd rather see the wiring than a stock photo of a handshake.
 
-The system spans two surfaces that are recognizably the same product. The **brand site** (`site/`) is drenched dark — `#060509` ground, luminous Space Grotesk headlines, animated synaptic beams — built to make a technical evaluator feel the product's point of view in three seconds. The **product app** (`web/`) is quieter and more instrumented: a light-default, magenta-tinted OKLCH palette (with a full `.dark` mode) on Geist, tuned for dense admin work — creating brains, wiring connectors, reviewing suggestions — where legibility and honest state beat spectacle. Brand can shout; product keeps its voice down. The shared `--brain` purple is the thread between them.
+The system spans three registers that are recognizably the same product. The **brand site** (`site/`) is drenched dark — `#060509` ground, luminous Space Grotesk headlines, animated synaptic beams — built to make a technical evaluator feel the product's point of view in three seconds. The **product app** (`web/`) is quieter and more instrumented: a light-default, magenta-tinted OKLCH palette (with a full `.dark` mode) on Geist, tuned for dense admin work — creating brains, wiring connectors, reviewing suggestions — where legibility and honest state beat spectacle. The **CLI** (`context101`) is the operate register: louder brand than `web/` at instrument volume — mark + accent, no figlet. Brand can shout; product keeps its voice down; CLI leads with the mark. The shared `--brain` purple is the thread between them. See PRODUCT.md for the third-register brief.
 
 What this system explicitly rejects: **corporate-cold** sterility (no navy-and-gray fintech polish, no stock photography, no soulless enterprise sheen) and **enterprise-heavy** clutter (no AWS-console density, no walls of gray tables dumped on the user). It also refuses the cross-register AI tells: gradient text, side-stripe borders, decorative glassmorphism, the hero-metric template, identical icon-card grids, and tracked-uppercase eyebrows on every section.
 
 **Key Characteristics:**
 - Dark, purple, and committed to it — the brand mark leads, it doesn't hide
-- Two registers, one identity: drenched-dark brand site, quiet light-default product app, shared accent
+- Three registers, one identity: drenched-dark brand site, quiet light-default product app, louder-instrument CLI, shared accent
 - Confident & tactile components — surfaces that lift, buttons that press, motion that rewards
 - Depth is hybrid: flat at rest, real shadow only on things that float
 - Engineer-grade legibility over decoration; honest state over fake progress

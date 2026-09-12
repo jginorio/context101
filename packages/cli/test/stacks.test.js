@@ -9,6 +9,7 @@ import {
   formatDeployments,
   isContext101Deployment,
   parseStackSummaries,
+  statusTone,
 } from "../src/stacks.js";
 import { homeSrcDir } from "../src/clone.js";
 import { fakeExec, makeRepoFixture, memoryIo, mockCloneCheckout, testEnv } from "./helpers.js";
@@ -64,6 +65,21 @@ test("formatDeployments prints an empty next-step and a table", () => {
   assert.match(table, /Context101Stack/);
   assert.match(table, /CREATE_COMPLETE/);
   assert.match(table, /2026-09-12T20:00:00/);
+  assert.match(table, /NAME/);
+  assert.match(table, /STATUS/);
+  assert.match(table, /UPDATED/);
+  assert.equal(table.includes("│"), false);
+  assert.equal(table.includes("┌"), false);
+});
+
+test("statusTone is brand for complete, violet for in-flight, red for failed", () => {
+  const colors = { magenta: "M", violet: "V", red: "R" };
+  assert.equal(statusTone("UPDATE_COMPLETE", colors), "M");
+  assert.equal(statusTone("CREATE_COMPLETE", colors), "M");
+  assert.equal(statusTone("UPDATE_IN_PROGRESS", colors), "V");
+  assert.equal(statusTone("UPDATE_COMPLETE_CLEANUP_IN_PROGRESS", colors), "V");
+  assert.equal(statusTone("CREATE_FAILED", colors), "R");
+  assert.equal(statusTone("UPDATE_ROLLBACK_COMPLETE", colors), "R");
 });
 
 test("parseStackSummaries tolerates a missing list", () => {
@@ -152,9 +168,13 @@ test("context101 list works without a checkout", async () => {
   });
 
   assert.equal(code, 0);
+  assert.match(io.stdoutText, /your context\. every agent\./);
   assert.match(io.stdoutText, /Context101Stack/);
   assert.match(io.stdoutText, /UPDATE_COMPLETE/);
   assert.match(io.stdoutText, /2026-09-12T20:00:00/);
+  assert.equal(io.stdoutText.includes("self-host setup"), false);
+  assert.equal(io.stdoutText.includes("deploy.sh"), false);
+  assert.equal(io.stdoutText.includes("site/"), false);
   assert.equal(io.stderrText.includes("checkout"), false);
 });
 

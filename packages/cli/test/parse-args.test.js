@@ -149,6 +149,8 @@ test("context101 help lists every command and exits 0", async () => {
   ]) {
     assert.match(io.stdoutText, new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
+  assert.match(io.stdoutText, /your context\. every agent\./);
+  assert.equal(io.stdoutText.includes("self-host setup"), false);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
   assert.equal(io.stdoutText.includes("site/"), false);
 });
@@ -190,8 +192,31 @@ test("workspace package is context101-cli with bin context101", async () => {
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.2");
+  assert.equal(pkg.version, "0.1.3");
   assert.equal(pkg.private, false);
+  assert.equal(pkg.license, "MIT");
   assert.equal(pkg.bin.context101, "./bin/context101.js");
   assert.deepEqual(pkg.files, ["bin", "src"]);
+  assert.equal(pkg.homepage, "https://github.com/jginorio/context101");
+  assert.equal(pkg.repository?.url, "https://github.com/jginorio/context101.git");
+  assert.match(pkg.description, /Context7/);
+  assert.equal(pkg.description.includes("npx context101-cli"), true);
+});
+
+test("npm README is on-brand and warns about the Context7 name collision", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { fileURLToPath } = await import("node:url");
+  const readmePath = fileURLToPath(new URL("../README.md", import.meta.url));
+  const text = await readFile(readmePath, "utf8");
+  assert.match(text, /^# context101-cli/m);
+  assert.match(text, /your context\. every agent\./);
+  assert.match(text, /npx context101-cli@latest/);
+  assert.match(text, /npm i -g context101-cli/);
+  assert.match(text, /Context7/);
+  assert.match(text, /https:\/\/github.com\/jginorio\/context101/);
+  assert.equal(text.includes("npx context101"), true);
+  assert.equal(text.includes("billing"), false);
+  assert.equal(text.includes("SaaS"), false);
+  assert.equal(text.includes("deploy.sh"), false);
+  assert.equal(text.includes("site/"), false);
 });

@@ -44,21 +44,31 @@ export function listDeployments({ exec, env, region = SMOOTH_REGION } = {}) {
   }
 }
 
-export function formatDeployments(stacks, { region = SMOOTH_REGION } = {}) {
+export function statusTone(status, colors = {}) {
+  const s = String(status);
+  if (/FAIL|ROLLBACK/i.test(s)) return colors.red ?? "";
+  if (/IN_PROGRESS|PENDING|REVIEW/i.test(s)) return colors.violet ?? "";
+  if (/COMPLETE/i.test(s)) return colors.magenta ?? "";
+  return colors.violet ?? "";
+}
+
+export function formatDeployments(stacks, { region = SMOOTH_REGION, colors } = {}) {
+  const c = colors ?? { magenta: "", violet: "", dim: "", red: "", bold: "", reset: "" };
   if (!stacks.length) {
     return [`No Context101 deployments in ${region}.`, `Next: ${DEPLOY_CLI}`].join("\n");
   }
   const nameW = Math.max(4, ...stacks.map((s) => String(s.StackName).length));
   const statusW = Math.max(6, ...stacks.map((s) => String(s.StackStatus).length));
   const lines = [
-    `Context101 deployments in ${region}`,
+    `${c.dim}Context101 deployments in ${region}${c.reset}`,
     "",
-    `${"NAME".padEnd(nameW)}  ${"STATUS".padEnd(statusW)}  UPDATED`,
+    `${c.dim}${"NAME".padEnd(nameW)}  ${"STATUS".padEnd(statusW)}  UPDATED${c.reset}`,
   ];
   for (const stack of stacks) {
     const updated = stack.LastUpdatedTime || stack.CreationTime || "";
+    const tone = statusTone(stack.StackStatus, c);
     lines.push(
-      `${String(stack.StackName).padEnd(nameW)}  ${String(stack.StackStatus).padEnd(statusW)}  ${updated}`
+      `${String(stack.StackName).padEnd(nameW)}  ${tone}${String(stack.StackStatus).padEnd(statusW)}${c.reset}  ${c.dim}${updated}${c.reset}`
     );
   }
   return lines.join("\n");
@@ -80,7 +90,7 @@ export async function runList(opts, ctx) {
     io.err(listed.error);
     return 1;
   }
-  io.write(formatDeployments(listed.stacks, { region: SMOOTH_REGION }));
+  io.write(formatDeployments(listed.stacks, { region: SMOOTH_REGION, colors: io.c }));
   io.write("");
   return 0;
 }
@@ -113,7 +123,7 @@ export async function runDestroy(opts, ctx) {
     return 1;
   }
 
-  io.write(formatDeployments(listed.stacks, { region: SMOOTH_REGION }));
+  io.write(formatDeployments(listed.stacks, { region: SMOOTH_REGION, colors: io.c }));
   io.write("");
 
   const known = listed.stacks.some((stack) => stack.StackName === stackName);
