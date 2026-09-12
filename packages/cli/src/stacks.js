@@ -1,5 +1,6 @@
-import { DEPLOY_CLI, DESTROY_CLI, SMOOTH_REGION, STACK_NAME } from "./defaults.js";
-import { createExec, runDeployWrapper } from "./exec.js";
+import { DEPLOY_CLI, DESTROY_CLI, LIST_CLI, SMOOTH_REGION } from "./defaults.js";
+import { runCdk } from "./cdk-invoke.js";
+import { createExec } from "./exec.js";
 import { findRepoRoot } from "./repo.js";
 import { banner, writers } from "./style.js";
 
@@ -106,6 +107,13 @@ export async function runDestroy(opts, ctx) {
     return 1;
   }
 
+  const stackName = String(opts.stackName || "").trim();
+  if (!stackName) {
+    io.err(`destroy needs a stack name from \`${LIST_CLI}\`.`);
+    io.write(`Next: ${LIST_CLI}`);
+    return 1;
+  }
+
   const env = withAwsAuth(ctx.env ?? {}, {
     profile: opts.awsProfile,
     accessKeyId: opts.awsAccessKeyId,
@@ -120,13 +128,15 @@ export async function runDestroy(opts, ctx) {
   io.write(formatDeployments(listed.stacks, { region: SMOOTH_REGION }));
   io.write("");
 
-  if (listed.stacks.length === 0) {
-    return 0;
+  const known = listed.stacks.some((stack) => stack.StackName === stackName);
+  if (!known) {
+    io.err(`unknown stack ${stackName}. Use a name from \`${LIST_CLI}\`.`);
+    return 1;
   }
 
   if (opts.dryRun) {
-    io.write(`Would destroy ${STACK_NAME}`);
-    io.write(`Next: ${DESTROY_CLI} --yes`);
+    io.write(`Would destroy ${stackName}`);
+    io.write(`Next: ${DESTROY_CLI} ${stackName} --yes`);
     return 0;
   }
 
@@ -137,7 +147,7 @@ export async function runDestroy(opts, ctx) {
       return 1;
     }
     const confirm = ctx.confirmDestroy ?? confirmDestroyPrompt;
-    const ok = await confirm();
+    const ok = await confirm(stackName);
     if (!ok) {
       io.write("Cancelled.");
       return 1;
@@ -147,19 +157,23 @@ export async function runDestroy(opts, ctx) {
   io.warn(
     "Non-default brains are not in CloudFormation — delete them from /brains first."
   );
-  io.write(`Destroying ${STACK_NAME}…`);
-  return (ctx.runDeploy ?? runDeployWrapper)({
+  io.write(`Destroying ${stackName}…`);
+  return (ctx.runDeploy ?? runCdk)({
     repoRoot,
     action: "destroy",
-    extraArgs: ["--force"],
+    stackName,
     env,
+    home: opts.home,
+    envFile: opts.envFile,
+    cwd: ctx.cwd,
+    exec,
   });
 }
 
-async function confirmDestroyPrompt() {
+async function confirmDestroyPrompt(stackName) {
   const { confirm } = await import("@inquirer/prompts");
   return confirm({
-    message: `Destroy ${STACK_NAME}? This cannot be undone.`,
+    message: `Destroy ${stackName}? This cannot be undone.`,
     default: false,
   });
 }

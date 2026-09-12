@@ -1,5 +1,5 @@
 import { spawn, spawnSync } from "node:child_process";
-import { DEPLOY_WRAPPER } from "./defaults.js";
+import { runCdk } from "./cdk-invoke.js";
 
 export function createExec(baseEnv = process.env) {
   return function exec({ command, args = [], env, cwd, timeout = 15_000 }) {
@@ -27,27 +27,8 @@ export function commandExists(exec, name) {
   return result.ok && Boolean(result.stdout);
 }
 
-export function runDeployWrapper({
-  repoRoot,
-  seed,
-  env,
-  action = "deploy",
-  extraArgs = [],
-  stdio = "inherit",
-}) {
-  const args = [];
-  if (action && action !== "deploy") args.push(action);
-  if (seed) args.push("--seed");
-  args.push(...extraArgs);
-  return new Promise((resolve, reject) => {
-    const child = spawn(DEPLOY_WRAPPER, args, {
-      cwd: repoRoot,
-      env,
-      stdio,
-    });
-    child.on("error", reject);
-    child.on("exit", (code) => {
-      resolve(code ?? 1);
-    });
-  });
+export function runDeployWrapper(opts) {
+  return runCdk(opts);
 }
+
+export { spawn };

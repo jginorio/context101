@@ -10,7 +10,7 @@ export async function promptAnswers({ defaults, io, exec, env }) {
   const { confirm, input, password, select } = await import("@inquirer/prompts");
 
   io.write("This writes a local secrets file. Deploy afterwards with:");
-  io.write("  npx context101 deploy");
+  io.write("  context101 deploy");
   io.write("Press ^C to quit.");
   io.write("");
 

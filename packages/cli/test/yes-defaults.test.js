@@ -91,7 +91,7 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
   }
   assert.equal(text.includes("ghp_test_token_must_never_appear"), false);
   assert.match(text, /wrote tmp-deploy-env/);
-  assert.match(text, /npx context101 deploy/);
+  assert.match(text, /context101 deploy/);
   assert.equal(text.includes("deploy.sh"), false);
   assert.match(text, /Amplify is skipped/);
   assert.equal(text.includes("site/"), false);
@@ -387,7 +387,7 @@ test("interactive init writes cdk/.deploy-env without asking where", async () =>
   assert.equal(src.includes("Optional last steps"), false);
   assert.equal(src.includes("Request access for all of these"), false);
   assert.equal(src.includes("Embedding models"), false);
-  assert.match(io.stdoutText, /npx context101 deploy/);
+  assert.match(io.stdoutText, /context101 deploy/);
   assert.match(io.stdoutText, /Bedrock embedding access:/);
 });
 
