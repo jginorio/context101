@@ -28,5 +28,5 @@ Preconditions:
 ## Gotchas
 
 - Creating a brain invokes BrainProvisionerFn (real AWS). Skip unless the user asked.
-- Deleting a brain empties its S3 bucket. Default cannot be deleted. Never use delete in a default verify run.
+- Deleting a brain empties its S3 bucket. Default cannot be deleted. Never use delete in a default verify run. Non-default rows keep a delete / retry-delete control even while status is `deleting`, so a failed teardown is not stranded.
 - Switching brains closes all Knowledge tabs.

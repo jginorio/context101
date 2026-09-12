@@ -26,6 +26,7 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
+import { isNotFound, withConflictRetry } from "./teardown-helpers.mjs";
 import {
   BedrockAgentClient,
   CreateKnowledgeBaseCommand,
@@ -96,18 +97,6 @@ function isAlreadyExists(err) {
     name === "ConflictException" ||
     name === "AlreadyExistsException" ||
     name === "ResourceAlreadyExistsException"
-  );
-}
-
-function isNotFound(err) {
-  if (!err) return false;
-  const name = err.name || err.Code;
-  return (
-    name === "NoSuchBucket" ||
-    name === "NoSuchKey" ||
-    name === "ResourceNotFoundException" ||
-    name === "NotFoundException" ||
-    name === "NoSuchEntity"
   );
 }
 
@@ -671,6 +660,21 @@ async function startIngestion(kbId, dsId) {
   }
 }
 
+async function clearBucketNotifications(bucket) {
+  try {
+    await s3.send(
+      new PutBucketNotificationConfigurationCommand({
+        Bucket: bucket,
+        NotificationConfiguration: {},
+      })
+    );
+  } catch (err) {
+    if (!isNotFound(err)) {
+      console.warn("clearBucketNotifications failed:", err.message);
+    }
+  }
+}
+
 // Tear down a set of per-brain AWS resources (bucket, data source, KB, vector
 // index). Used both by deleteBrain and by the in-place re-embed to dispose of
 // a brain's *previous* resources after the swap.
@@ -688,12 +692,10 @@ async function teardownResources({ bucket, kbId, dsId, indexName: idxName }) {
   }
 
   if (bucket) {
-    try {
-      await emptyBucket(bucket);
-      await s3.send(new DeleteBucketCommand({ Bucket: bucket }));
-    } catch (err) {
-      if (!isNotFound(err)) throw err;
-    }
+    // Drop S3 → auto-ingest notifications *before* emptying the bucket.
+    // Otherwise ObjectRemoved events start a Bedrock ingestion job and
+    // DeleteDataSource fails with ConflictException ("already in use").
+    await clearBucketNotifications(bucket);
     try {
       await lambdaClient.send(
         new RemovePermissionCommand({
@@ -704,24 +706,34 @@ async function teardownResources({ bucket, kbId, dsId, indexName: idxName }) {
     } catch (err) {
       if (!isNotFound(err)) console.warn("RemovePermission failed:", err.message);
     }
+    try {
+      await emptyBucket(bucket);
+      await s3.send(new DeleteBucketCommand({ Bucket: bucket }));
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
   }
 
   if (kbId) {
     if (dsId) {
       try {
-        await bedrock.send(
-          new DeleteDataSourceCommand({
-            knowledgeBaseId: kbId,
-            dataSourceId: dsId,
-          })
+        await withConflictRetry(() =>
+          bedrock.send(
+            new DeleteDataSourceCommand({
+              knowledgeBaseId: kbId,
+              dataSourceId: dsId,
+            })
+          )
         );
       } catch (err) {
         if (!isNotFound(err)) throw err;
       }
     }
     try {
-      await bedrock.send(
-        new DeleteKnowledgeBaseCommand({ knowledgeBaseId: kbId })
+      await withConflictRetry(() =>
+        bedrock.send(
+          new DeleteKnowledgeBaseCommand({ knowledgeBaseId: kbId })
+        )
       );
     } catch (err) {
       if (!isNotFound(err)) throw err;
@@ -917,7 +929,7 @@ async function emptyBucket(bucket) {
   }
 }
 
-async function deleteBrain({ brain_id }) {
+async function deleteBrain({ brain_id, org_id }) {
   if (!brain_id) throw new Error("brain_id required");
   if (brain_id === "default") {
     throw new Error("the default brain cannot be deleted");
@@ -925,41 +937,57 @@ async function deleteBrain({ brain_id }) {
 
   const row = await pgFetchOne(
     DATABASE_URL,
-    `select id, docs_bucket, kb_id, ds_id, vector_index_arn from brains where id = $1`,
+    `select id, org_id, docs_bucket, kb_id, ds_id, vector_index_arn from brains where id = $1`,
     [brain_id]
   );
   if (!row) {
     return { ok: true, alreadyGone: true };
   }
+  if (org_id && row.org_id !== org_id) {
+    throw new Error("brain belongs to a different org");
+  }
 
   await setBrainStatus(brain_id, "deleting", null);
 
-  // Tear down the brain's resources. Use the *stored* index name (an
-  // in-place re-embed may have moved the brain to a generation-salted index
-  // that differs from the id-derived default), falling back to the derived
-  // name for older rows that predate vector_index_arn.
-  await teardownResources({
-    bucket: row.docs_bucket,
-    kbId: row.kb_id,
-    dsId: row.ds_id,
-    indexName: indexNameFromArn(row.vector_index_arn) || indexName(brain_id),
-  });
-
-  // Delete the bearer token secret (force, no recovery window).
   try {
-    await secrets.send(
-      new DeleteSecretCommand({
-        SecretId: tokenSecretName(brain_id),
-        ForceDeleteWithoutRecovery: true,
-      })
-    );
-  } catch (err) {
-    if (!isNotFound(err)) throw err;
-  }
+    // Tear down the brain's resources. Use the *stored* index name (an
+    // in-place re-embed may have moved the brain to a generation-salted index
+    // that differs from the id-derived default), falling back to the derived
+    // name for older rows that predate vector_index_arn.
+    await teardownResources({
+      bucket: row.docs_bucket,
+      kbId: row.kb_id,
+      dsId: row.ds_id,
+      indexName: indexNameFromArn(row.vector_index_arn) || indexName(brain_id),
+    });
 
-  // 5. Remove the registry row. Connectors, suggestions, and mcp_tokens
-  //    cascade-delete via their brain_id foreign keys.
-  await pgExecute(DATABASE_URL, `delete from brains where id = $1`, [brain_id]);
+    // Delete the bearer token secret (force, no recovery window).
+    try {
+      await secrets.send(
+        new DeleteSecretCommand({
+          SecretId: tokenSecretName(brain_id),
+          ForceDeleteWithoutRecovery: true,
+        })
+      );
+    } catch (err) {
+      if (!isNotFound(err)) throw err;
+    }
+
+    // Remove the registry row. Connectors, suggestions, and mcp_tokens
+    // cascade-delete via their brain_id foreign keys.
+    await pgExecute(DATABASE_URL, `delete from brains where id = $1`, [brain_id]);
+  } catch (err) {
+    // Flip to `error` so the /brains UI shows the message and the delete
+    // button again. Leaving status=`deleting` with no error_msg is what
+    // hid the retry control and stranded the row.
+    const msg = err?.message || String(err);
+    try {
+      await setBrainStatus(brain_id, "error", `delete failed: ${msg}`.slice(0, 1000));
+    } catch (e2) {
+      console.error("also failed to update error status:", e2);
+    }
+    throw err;
+  }
 
   return { ok: true, brain_id };
 }

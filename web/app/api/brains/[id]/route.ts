@@ -4,7 +4,12 @@ import type { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { getAuth } from "@/lib/auth/server";
-import { getBrainById, publicBrain } from "@/lib/brains-server";
+import {
+  getBrainById,
+  getBrainByIdForOrg,
+  publicBrain,
+  readAuthContext,
+} from "@/lib/brains-server";
 import { db } from "@/lib/db/client";
 import { brains as brainsTable } from "@/lib/db/schema";
 
@@ -78,18 +83,26 @@ export async function GET(request: NextRequest, { params }: RouteCtx) {
 /**
  * DELETE /api/brains/<id>
  *
- * Refuses for brain_id="default". For any other brain, invokes the
- * BrainProvisionerFn delete handler — that empties + deletes the S3
- * bucket, deletes the KB + data source + vector index, deletes the per-
- * brain DDB tables, deletes the bearer-token secret, and removes the
- * registry row. The web UI polls the registry until the row disappears.
+ * Refuses for brain_id="default". For any other brain, flips the registry
+ * row to `deleting` and fire-and-forgets BrainProvisionerFn — that empties
+ * + deletes the S3 bucket, deletes the KB + data source + vector index,
+ * deletes the bearer-token secret, and removes the registry row. The web
+ * UI polls until the row disappears.
+ *
+ * Event (not RequestResponse) so Amplify SSR's ~29s timeout cannot kill
+ * the HTTP request mid-teardown. The provisioner is idempotent; a stuck
+ * `deleting` / `error` row can be retried.
  */
-export async function DELETE(_req: NextRequest, { params }: RouteCtx) {
+export async function DELETE(request: NextRequest, { params }: RouteCtx) {
   if (!PROVISIONER_FN_NAME) {
     return NextResponse.json(
       { error: "BRAIN_PROVISIONER_FN_NAME env var is not set" },
       { status: 500 }
     );
+  }
+  const auth = await readAuthContext(request);
+  if (!auth) {
+    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
   }
   const { id } = await params;
   if (id === "default") {
@@ -98,27 +111,44 @@ export async function DELETE(_req: NextRequest, { params }: RouteCtx) {
       { status: 400 }
     );
   }
+  const brain = await getBrainByIdForOrg(auth.orgId, id);
+  if (!brain) {
+    return NextResponse.json({ error: "not found" }, { status: 404 });
+  }
   try {
-    const resp = await lambdaClient.send(
+    // Pre-flip so the /brains card shows Deleting… immediately, the same
+    // way create pre-inserts a provisioning row before the Event invoke.
+    if (db) {
+      await db
+        .update(brainsTable)
+        .set({ status: "deleting", errorMsg: null, updatedAt: new Date() })
+        .where(and(eq(brainsTable.orgId, auth.orgId), eq(brainsTable.id, id)));
+    }
+
+    await lambdaClient.send(
       new InvokeCommand({
         FunctionName: PROVISIONER_FN_NAME,
-        InvocationType: "RequestResponse",
+        InvocationType: "Event",
         Payload: new TextEncoder().encode(
-          JSON.stringify({ action: "delete", brain_id: id })
+          JSON.stringify({ action: "delete", brain_id: id, org_id: auth.orgId })
         ),
       })
     );
-    if (resp.FunctionError) {
-      const raw = new TextDecoder().decode(resp.Payload ?? new Uint8Array());
-      console.error("provisioner delete returned error:", raw);
-      return NextResponse.json(
-        { error: `provisioner failed: ${raw}` },
-        { status: 500 }
-      );
-    }
-    return NextResponse.json({ ok: true, brain_id: id });
+    return NextResponse.json({ ok: true, brain_id: id }, { status: 202 });
   } catch (err) {
     console.error("brains/[id] DELETE failed:", err);
+    if (db) {
+      const msg = err instanceof Error ? err.message : String(err);
+      await db
+        .update(brainsTable)
+        .set({
+          status: "error",
+          errorMsg: `delete failed: ${msg}`.slice(0, 1000),
+          updatedAt: new Date(),
+        })
+        .where(and(eq(brainsTable.orgId, auth.orgId), eq(brainsTable.id, id)))
+        .catch((e2) => console.error("also failed to update error status:", e2));
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : String(err) },
       { status: 500 }
