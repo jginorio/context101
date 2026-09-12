@@ -26,6 +26,12 @@ test("parses init flags", () => {
     "https://github.com/acme/context101",
     "--deploy-env",
     "/tmp/deploy-env",
+    "--aws-profile",
+    "findit",
+    "--aws-access-key-id",
+    "TESTACCESSKEYID12345",
+    "--aws-secret-access-key",
+    "test-secret-access-key-must-never-appear",
   ]);
   assert.equal(opts.dryRun, true);
   assert.equal(opts.yes, true);
@@ -35,6 +41,13 @@ test("parses init flags", () => {
   assert.equal(opts.databasePrepare, false);
   assert.equal(opts.repo, "https://github.com/acme/context101");
   assert.equal(opts.envFile, "/tmp/deploy-env");
+  assert.equal(opts.awsProfile, "findit");
+  assert.equal(opts.awsAccessKeyId, "TESTACCESSKEYID12345");
+  assert.equal(opts.awsSecretAccessKey, "test-secret-access-key-must-never-appear");
+});
+
+test("help text says --aws-profile is required with --yes when several exist", () => {
+  assert.match(helpText(), /required with --yes/);
 });
 
 test("rejects unknown command and flag", () => {

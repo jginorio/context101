@@ -43,6 +43,12 @@ export function renderDeployEnv(values) {
   if (values.AWS_PROFILE) {
     lines.push(`AWS_PROFILE=${quoteShell(values.AWS_PROFILE)}`);
   }
+  if (values.AWS_ACCESS_KEY_ID) {
+    lines.push(`AWS_ACCESS_KEY_ID=${quoteShell(values.AWS_ACCESS_KEY_ID)}`);
+  }
+  if (values.AWS_SECRET_ACCESS_KEY) {
+    lines.push(`AWS_SECRET_ACCESS_KEY=${quoteShell(values.AWS_SECRET_ACCESS_KEY)}`);
+  }
   if (values.AWS_REGION) {
     lines.push(`AWS_REGION=${quoteShell(values.AWS_REGION)}`);
   }

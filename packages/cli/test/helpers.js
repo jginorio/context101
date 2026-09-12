@@ -1,6 +1,16 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
+export function testEnv(extra = {}) {
+  const env = { ...process.env, NO_COLOR: "1", ...extra };
+  if (!Object.hasOwn(extra, "AWS_PROFILE")) delete env.AWS_PROFILE;
+  if (!Object.hasOwn(extra, "AWS_ACCESS_KEY_ID")) delete env.AWS_ACCESS_KEY_ID;
+  if (!Object.hasOwn(extra, "AWS_SECRET_ACCESS_KEY")) delete env.AWS_SECRET_ACCESS_KEY;
+  if (!Object.hasOwn(extra, "AWS_SESSION_TOKEN")) delete env.AWS_SESSION_TOKEN;
+  if (!Object.hasOwn(extra, "DATABASE_URL")) delete env.DATABASE_URL;
+  return env;
+}
+
 export function memoryIo() {
   let out = "";
   let err = "";
@@ -52,6 +62,9 @@ export function fakeExec(overrides = {}) {
     }
     if (command === "aws" && args[0] === "cloudformation") {
       return ok("CREATE_COMPLETE");
+    }
+    if (command === "aws" && args[0] === "configure" && args[1] === "list-profiles") {
+      return ok("");
     }
     if (command === "sh" && args[1] === "command -v docker") {
       return ok("/usr/bin/docker");

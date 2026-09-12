@@ -33,6 +33,7 @@ import {
 } from "./repo.js";
 import { generateCtxToken, generateSecret } from "./secrets.js";
 import { banner, writers } from "./style.js";
+import { listAwsProfiles, resolveAwsAuth } from "./aws-profiles.js";
 
 export async function runInit(opts, ctx) {
   const io = writers(ctx);
@@ -52,9 +53,65 @@ export async function runInit(opts, ctx) {
 
   const region = opts.region ?? SMOOTH_REGION;
   const env = ctx.env ?? {};
-  const awsEnv = withAwsProfile(env, opts.awsProfile ?? env.AWS_PROFILE);
+  const tty = Boolean(ctx.stdin && ctx.stdin.isTTY && ctx.stdout && ctx.stdout.isTTY);
+  const profiles = listAwsProfiles({ exec, env });
+  const resolved = resolveAwsAuth({
+    explicitProfile: opts.awsProfile || env.AWS_PROFILE || null,
+    accessKeyId: opts.awsAccessKeyId || env.AWS_ACCESS_KEY_ID || null,
+    secretAccessKey: opts.awsSecretAccessKey || env.AWS_SECRET_ACCESS_KEY || null,
+    profiles,
+    yes: opts.yes,
+    dryRun: opts.dryRun,
+  });
+  let awsProfile = resolved.profile;
+  let awsAccessKeyId = resolved.accessKeyId;
+  let awsSecretAccessKey = resolved.secretAccessKey;
+  if (resolved.source === "ask-profile" && !opts.dryRun) {
+    if (resolved.error && (opts.yes || !tty)) {
+      io.err(resolved.error);
+      return 1;
+    }
+    if (!tty) {
+      io.err(
+        `multiple AWS profiles (${profiles.join(", ")}). Pass --aws-profile or run in a TTY.`
+      );
+      return 1;
+    }
+    awsProfile = await (ctx.chooseProfile ?? chooseAwsProfile)(profiles, {
+      current: opts.awsProfile || env.AWS_PROFILE || null,
+    });
+  }
+  if (resolved.source === "ask-keys" && !opts.dryRun) {
+    if (resolved.error && (opts.yes || !tty)) {
+      io.err(resolved.error);
+      return 1;
+    }
+    if (!tty) {
+      io.err(
+        "no AWS profiles. Pass --aws-access-key-id and --aws-secret-access-key, or configure a profile."
+      );
+      return 1;
+    }
+    const keys = await (ctx.promptAwsKeys ?? promptAwsKeys)();
+    awsAccessKeyId = keys.accessKeyId;
+    awsSecretAccessKey = keys.secretAccessKey;
+  }
+  const awsEnv = withAwsAuth(env, {
+    profile: awsProfile,
+    accessKeyId: awsAccessKeyId,
+    secretAccessKey: awsSecretAccessKey,
+  });
   const checks = runChecks({ exec, env: awsEnv, region });
-  printChecks(checks, io);
+  printChecks(
+    {
+      ...checks,
+      awsProfile,
+      awsProfiles: profiles,
+      hasAwsKeys: Boolean(awsAccessKeyId && awsSecretAccessKey),
+      awsAuthSource: resolved.source,
+    },
+    io
+  );
   if (checks.bootstrap.ok === false && checks.aws.identity?.account) {
     io.warn(
       `CDK bootstrap needed: npx cdk bootstrap aws://${checks.aws.identity.account}/${region}`
@@ -70,7 +127,11 @@ export async function runInit(opts, ctx) {
       exec,
       io,
       env,
-      tty: Boolean(ctx.stdin && ctx.stdin.isTTY && ctx.stdout && ctx.stdout.isTTY),
+      tty,
+      awsProfile,
+      awsAccessKeyId,
+      awsSecretAccessKey,
+      promptAnswers: ctx.promptAnswers,
     });
   } catch (error) {
     if (error && error.code === "USAGE") {
@@ -92,6 +153,9 @@ export async function runInit(opts, ctx) {
   const plan = {
     region: answers.region,
     account: checks.aws.identity?.account ?? "",
+    awsProfile,
+    awsProfiles: profiles,
+    hasAwsKeys: Boolean(awsAccessKeyId && awsSecretAccessKey),
     bootstrapped: checks.bootstrap.ok,
     repository: answers.repository,
     hasDatabaseUrl: Boolean(answers.databaseUrl),
@@ -134,6 +198,8 @@ export async function runInit(opts, ctx) {
   const values = {
     ...secrets,
     AWS_PROFILE: answers.awsProfile,
+    AWS_ACCESS_KEY_ID: answers.awsAccessKeyId,
+    AWS_SECRET_ACCESS_KEY: answers.awsSecretAccessKey,
     AWS_REGION: answers.region,
     DATABASE_DRIVER: answers.databaseDriver,
     DATABASE_PREPARE: answers.databasePrepare,
@@ -183,7 +249,9 @@ async function collectAnswers(opts, ctx) {
   const remote = detectGitRemote(exec, repoRoot);
   const repository = opts.repo || remote || stackRepo || DEFAULT_AMPLIFY_REPO;
   const databaseUrl = opts.databaseUrl || env.DATABASE_URL || "";
-  const awsProfile = opts.awsProfile || env.AWS_PROFILE || null;
+  const awsProfile = ctx.awsProfile ?? null;
+  const awsAccessKeyId = ctx.awsAccessKeyId ?? null;
+  const awsSecretAccessKey = ctx.awsSecretAccessKey ?? null;
 
   if (opts.dryRun || opts.yes) {
     if (opts.yes && !opts.dryRun && !databaseUrl) {
@@ -198,6 +266,8 @@ async function collectAnswers(opts, ctx) {
       databasePrepare:
         opts.databasePrepare == null ? inferPrepare(databaseUrl) : opts.databasePrepare,
       awsProfile,
+      awsAccessKeyId,
+      awsSecretAccessKey,
       home: opts.home,
       envFile: opts.envFile,
       seed: opts.seed,
@@ -212,10 +282,17 @@ async function collectAnswers(opts, ctx) {
     return null;
   }
 
-  const { promptAnswers } = await import("./prompt.js");
+  const prompt = ctx.promptAnswers ?? (await import("./prompt.js")).promptAnswers;
   return {
-    ...(await promptAnswers({
-      defaults: { repoRoot, region: SMOOTH_REGION, repository, awsProfile },
+    ...(await prompt({
+      defaults: {
+        repoRoot,
+        region: SMOOTH_REGION,
+        repository,
+        awsProfile,
+        awsAccessKeyId,
+        awsSecretAccessKey,
+      },
       io,
     })),
     ghToken: null,
@@ -234,9 +311,12 @@ async function readStackRepo(repoRoot) {
   }
 }
 
-function withAwsProfile(env, profile) {
-  if (!profile) return { ...env };
-  return { ...env, AWS_PROFILE: profile };
+function withAwsAuth(env, { profile, accessKeyId, secretAccessKey } = {}) {
+  const next = { ...env };
+  if (profile) next.AWS_PROFILE = profile;
+  if (accessKeyId) next.AWS_ACCESS_KEY_ID = accessKeyId;
+  if (secretAccessKey) next.AWS_SECRET_ACCESS_KEY = secretAccessKey;
+  return next;
 }
 
 function githubReadyForAmplify(checks, answers) {
@@ -244,4 +324,28 @@ function githubReadyForAmplify(checks, answers) {
     return githubTokenWorksForAmplify(classifyGithubToken(answers.ghToken));
   }
   return Boolean(checks.gh.amplifyOk);
+}
+
+async function chooseAwsProfile(profiles, { current } = {}) {
+  const { select } = await import("@inquirer/prompts");
+  const fallback = current && profiles.includes(current) ? current : profiles[0];
+  return select({
+    message: "AWS profile to deploy to",
+    default: fallback,
+    choices: profiles.map((name) => ({ name, value: name })),
+  });
+}
+
+async function promptAwsKeys() {
+  const { input, password } = await import("@inquirer/prompts");
+  const accessKeyId = await input({
+    message: "AWS access key ID",
+    validate: (value) => (value ? true : "needed to deploy"),
+  });
+  const secretAccessKey = await password({
+    message: "AWS secret access key",
+    mask: true,
+    validate: (value) => (value ? true : "needed to deploy"),
+  });
+  return { accessKeyId, secretAccessKey };
 }

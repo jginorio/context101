@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { main } from "../src/main.js";
-import { fakeExec, makeRepoFixture, memoryIo } from "./helpers.js";
+import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
 
 test("--yes --deploy calls ./cdk/deploy.sh only", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-"));
@@ -26,7 +26,7 @@ test("--yes --deploy calls ./cdk/deploy.sh only", async () => {
     ],
     {
       cwd: root,
-      env: { ...process.env, NO_COLOR: "1" },
+      env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
       stdin: io.stdin,
@@ -65,7 +65,7 @@ test("--yes --deploy refuses a ghs_ gh token", async () => {
     ],
     {
       cwd: root,
-      env: { ...process.env, NO_COLOR: "1" },
+      env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
       stdin: io.stdin,

@@ -14,7 +14,11 @@ deploy-env. Does not run cdk deploy. Deploy only via ./cdk/deploy.sh.
   --database-url <url>   Postgres URL (also reads DATABASE_URL)
   --database-driver      ${DRIVER_NEON} | ${DRIVER_POSTGRES}
   --database-prepare     true | false
-  --aws-profile <name>   also reads AWS_PROFILE
+  --aws-profile <name>   also reads AWS_PROFILE; required with --yes
+                         when more than one profile exists
+  --aws-access-key-id    used when no profile exists (also AWS_ACCESS_KEY_ID)
+  --aws-secret-access-key
+                         used when no profile exists (also AWS_SECRET_ACCESS_KEY)
   --repo <url>           GitHub repo Amplify should watch
   --seed                 print (or run) ./cdk/deploy.sh --seed
   --deploy               run ./cdk/deploy.sh after writing
@@ -43,6 +47,8 @@ export function parseArgs(argv) {
     databaseDriver: null,
     databasePrepare: null,
     awsProfile: null,
+    awsAccessKeyId: null,
+    awsSecretAccessKey: null,
     repo: null,
   };
 
@@ -101,6 +107,12 @@ export function parseArgs(argv) {
         break;
       case "--aws-profile":
         opts.awsProfile = needValue(arg, args);
+        break;
+      case "--aws-access-key-id":
+        opts.awsAccessKeyId = needValue(arg, args);
+        break;
+      case "--aws-secret-access-key":
+        opts.awsSecretAccessKey = needValue(arg, args);
         break;
       case "--repo":
         opts.repo = needValue(arg, args);

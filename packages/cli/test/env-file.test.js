@@ -97,3 +97,20 @@ test("writer drops hosted product URLs instead of copying them", () => {
   assert.equal(body.includes("APP_URL="), false);
   assert.match(body, /amplifyapp\.com/);
 });
+
+test("writer includes static AWS keys next to the region", () => {
+  const body = renderDeployEnv({
+    CTX_TOKEN: "generated-ctx-token-value",
+    BETTER_AUTH_SECRET: "generated-auth-secret-value",
+    MCP_TOKEN_PEPPER: "generated-pepper-value",
+    DATABASE_URL: "postgresql://localhost/db",
+    DATABASE_DRIVER: "postgres-js",
+    DATABASE_PREPARE: true,
+    AWS_ACCESS_KEY_ID: "TESTACCESSKEYID12345",
+    AWS_SECRET_ACCESS_KEY: "test-secret-access-key-must-never-appear",
+    AWS_REGION: SMOOTH_REGION,
+  });
+  assert.match(body, /AWS_ACCESS_KEY_ID="TESTACCESSKEYID12345"/);
+  assert.match(body, /AWS_SECRET_ACCESS_KEY="test-secret-access-key-must-never-appear"/);
+  assert.equal(body.includes("AWS_PROFILE="), false);
+});

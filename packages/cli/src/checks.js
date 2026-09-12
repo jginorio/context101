@@ -111,6 +111,17 @@ export function printChecks(checks, io) {
   } else {
     warn("aws cli not found");
   }
+  if (checks.awsProfile) {
+    ok(`AWS profile ${checks.awsProfile}`);
+  } else if (checks.hasAwsKeys) {
+    ok("AWS access keys (no profile)");
+  } else if (checks.awsProfiles?.length > 1) {
+    warn(
+      `${checks.awsProfiles.length} AWS profiles (${checks.awsProfiles.join(", ")}) — pick one`
+    );
+  } else if (checks.awsProfiles?.length === 0) {
+    warn("no AWS profiles — will ask for access key and secret");
+  }
   (checks.docker.ok ? ok : warn)(checks.docker.ok ? "docker" : "docker not found (needed for CDK image assets)");
   if (checks.gh.ok && checks.gh.amplifyOk) {
     ok("gh (logged in with a PAT — deploy.sh can use it for Amplify)");

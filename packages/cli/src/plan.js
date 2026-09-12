@@ -19,6 +19,13 @@ export function formatDryRun(plan) {
     plan.account
       ? `     account ${plan.account}`
       : "     aws sts get-caller-identity not confirmed",
+    plan.awsProfile
+      ? `     profile ${plan.awsProfile}`
+      : plan.awsProfiles?.length > 1
+        ? `     would ask which profile: ${plan.awsProfiles.join(", ")}`
+        : plan.hasAwsKeys
+          ? "     using AWS access keys (written to deploy-env)"
+          : "     would ask for AWS access key and secret",
     `  3. CDK bootstrap: ${bootstrapLabel(plan)}`,
     `  4. Bedrock model access`,
     `     required: ${TITAN_EMBED_MODEL}`,

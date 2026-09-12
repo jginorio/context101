@@ -56,11 +56,6 @@ export async function promptAnswers({ defaults, io }) {
     default: inferPrepare(databaseUrl),
   });
 
-  const awsProfile = await input({
-    message: "AWS_PROFILE (blank to skip)",
-    default: defaults.awsProfile ?? "",
-  });
-
   const envChoice = await select({
     message: "Write deploy-env to",
     default: "repo",
@@ -95,7 +90,9 @@ export async function promptAnswers({ defaults, io }) {
     databaseUrl,
     databaseDriver,
     databasePrepare,
-    awsProfile: awsProfile.trim() || null,
+    awsProfile: defaults.awsProfile ?? null,
+    awsAccessKeyId: defaults.awsAccessKeyId ?? null,
+    awsSecretAccessKey: defaults.awsSecretAccessKey ?? null,
     home: envChoice === "home",
     envFile: envChoice === "home" ? defaultEnvPath(defaults.repoRoot, { home: true }) : null,
     seed,
