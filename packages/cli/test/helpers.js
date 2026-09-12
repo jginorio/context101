@@ -8,6 +8,8 @@ export function testEnv(extra = {}) {
   if (!Object.hasOwn(extra, "AWS_SECRET_ACCESS_KEY")) delete env.AWS_SECRET_ACCESS_KEY;
   if (!Object.hasOwn(extra, "AWS_SESSION_TOKEN")) delete env.AWS_SESSION_TOKEN;
   if (!Object.hasOwn(extra, "DATABASE_URL")) delete env.DATABASE_URL;
+  if (!Object.hasOwn(extra, "CTX_TOKEN")) delete env.CTX_TOKEN;
+  if (!Object.hasOwn(extra, "CTX_GH_TOKEN")) delete env.CTX_GH_TOKEN;
   return env;
 }
 
@@ -89,6 +91,15 @@ export function fakeExec(overrides = {}) {
       return ok("acme-user");
     }
     if (command === "git") {
+      if (args[0] === "clone") {
+        return {
+          ok: false,
+          code: 1,
+          stdout: "",
+          stderr: "unmocked git clone",
+          error: null,
+        };
+      }
       return ok("https://github.com/acme/context101.git");
     }
     return { ok: false, code: 1, stdout: "", stderr: `unmocked: ${key}`, error: null };
@@ -171,6 +182,9 @@ function ok(stdout) {
 export async function makeRepoFixture(root) {
   await mkdir(path.join(root, "cdk", "lib"), { recursive: true });
   await mkdir(path.join(root, "web"), { recursive: true });
+  await writeFile(path.join(root, "cdk", "cdk.json"), '{"app":"npx ts-node bin/context101.ts"}\n', {
+    encoding: "utf8",
+  });
   await writeFile(path.join(root, "cdk", "deploy.sh"), "#!/bin/sh\nexit 0\n", {
     mode: 0o755,
   });
@@ -185,4 +199,14 @@ export async function makeRepoFixture(root) {
     "utf8"
   );
   await writeFile(path.join(root, "web", "package.json"), '{"name":"web"}\n', "utf8");
+}
+
+export async function writeTestDeployEnv(root, extra = "") {
+  const body = ['CTX_TOKEN="ctx_testtoken_xx"', 'APP_MODE="self_hosted"', extra, ""]
+    .filter((line) => line !== "")
+    .join("\n");
+  await writeFile(path.join(root, "cdk", ".deploy-env"), `${body}\n`, {
+    encoding: "utf8",
+    mode: 0o600,
+  });
 }

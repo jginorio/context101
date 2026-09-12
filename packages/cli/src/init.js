@@ -32,6 +32,7 @@ import {
 import { startDeploy } from "./deploy.js";
 import { createExec } from "./exec.js";
 import { formatDryRun, nextSteps } from "./plan.js";
+import { ensureRepoRoot } from "./clone.js";
 import {
   detectGitRemote,
   displayEnvPath,
@@ -53,10 +54,24 @@ export async function runInit(opts, ctx) {
     io.write("");
   }
 
-  const repoRoot = findRepoRoot(ctx.cwd);
-  if (!repoRoot) {
+  const checkout = ensureRepoRoot({
+    cwd: ctx.cwd,
+    dir: opts.dir,
+    exec,
+    io,
+    dryRun: opts.dryRun,
+  });
+  if (checkout.error) {
+    io.err(checkout.error);
+    return 1;
+  }
+  const repoRoot = checkout.repoRoot;
+  if (!repoRoot || (!opts.dryRun && !findRepoRoot(repoRoot))) {
     io.err("run this from a Context101 checkout (needs cdk/ and web/).");
     return 1;
+  }
+  if (checkout.wouldClone && opts.dryRun) {
+    io.write("");
   }
 
   const region = opts.region ?? SMOOTH_REGION;
@@ -271,6 +286,8 @@ export async function runInit(opts, ctx) {
     repoRoot,
     seed: answers.seed,
     env: awsEnv,
+    home: answers.home ?? opts.home,
+    envFile: answers.envFile ?? opts.envFile,
     dockerDaemon: Boolean(checks.docker?.daemon),
     dockerHint: checks.docker?.hint,
   });

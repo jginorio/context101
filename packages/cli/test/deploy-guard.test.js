@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { main } from "../src/main.js";
-import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
+import { fakeExec, makeRepoFixture, memoryIo, testEnv, writeTestDeployEnv } from "./helpers.js";
 
 test("--yes --deploy deploys through the CLI runner", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-"));
@@ -47,9 +47,36 @@ test("--yes --deploy deploys through the CLI runner", async () => {
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
 });
 
+test("context101 deploy refuses to invoke cdk without CTX_TOKEN", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-notoken-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(["deploy"], {
+    cwd: root,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(),
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
+  });
+
+  assert.equal(code, 1);
+  assert.equal(calls.length, 0);
+  assert.match(io.stderrText, /CTX_TOKEN/);
+  assert.match(io.stderrText, /context101 init|context101 deploy/);
+  assert.equal(io.stdoutText.includes("deploy.sh"), false);
+});
+
 test("context101 deploy runs the stack deploy", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-cmd-"));
   await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
   const io = memoryIo();
   const calls = [];
 
@@ -77,6 +104,7 @@ test("context101 deploy runs the stack deploy", async () => {
 test("context101 deploy --dry-run does not deploy", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-dry-"));
   await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
   const io = memoryIo();
   const calls = [];
 
@@ -95,7 +123,7 @@ test("context101 deploy --dry-run does not deploy", async () => {
 
   assert.equal(code, 0);
   assert.equal(calls.length, 0);
-  assert.match(io.stdoutText, /npx context101 deploy/);
+  assert.match(io.stdoutText, /context101 deploy/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
 });
 

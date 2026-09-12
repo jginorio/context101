@@ -80,10 +80,22 @@ test("rejects init flags on deploy", () => {
 test("parses list and destroy aliases", () => {
   assert.equal(parseArgs(["list"]).command, "list");
   assert.equal(parseArgs(["ls"]).command, "list");
-  assert.equal(parseArgs(["destroy", "--yes"]).command, "destroy");
+  assert.equal(parseArgs(["destroy", "Context101Stack", "--yes"]).command, "destroy");
+  assert.equal(parseArgs(["destroy", "Context101Stack", "--yes"]).stackName, "Context101Stack");
   assert.equal(parseArgs(["destroy", "--yes"]).yes, true);
   assert.equal(parseArgs(["remove", "--dry-run"]).command, "destroy");
   assert.equal(parseArgs(["rm", "--aws-profile", "findit"]).awsProfile, "findit");
+});
+
+test("parses config and diff/synth", () => {
+  assert.equal(parseArgs(["diff"]).command, "diff");
+  assert.equal(parseArgs(["synth"]).command, "synth");
+  assert.equal(parseArgs(["config"]).command, "config");
+  const set = parseArgs(["config", "set", "CTX_TOKEN=ctx_secret"]);
+  assert.equal(set.command, "config");
+  assert.equal(set.configAction, "set");
+  assert.equal(set.configKey, "CTX_TOKEN");
+  assert.equal(set.configValue, "ctx_secret");
 });
 
 test("rejects init-only flags on list and seed on destroy", () => {
@@ -92,24 +104,27 @@ test("rejects init-only flags on list and seed on destroy", () => {
   assert.throws(() => parseArgs(["destroy", "--seed"]), /deploy option/);
 });
 
-test("help text names init and deploy, not site/", () => {
+test("help text names the CLI, not site/", () => {
   const text = helpText();
-  assert.match(text, /npx context101 init/);
-  assert.match(text, /npx context101 deploy/);
-  assert.match(text, /npx context101 list/);
-  assert.match(text, /npx context101 destroy/);
+  assert.match(text, /npx context101-cli init/);
+  assert.match(text, /npx context101-cli deploy/);
+  assert.match(text, /context101 destroy Context101Stack/);
+  assert.match(text, /context101 config/);
   assert.match(text, /npm run context101 -- init/);
   assert.match(text, /npm run context101 -- deploy/);
   assert.match(text, /Context7/);
+  assert.match(text, /fails closed/);
   assert.equal(text.includes("deploy.sh"), false);
   assert.equal(text.includes("site/"), false);
 });
 
-test("workspace package is named context101 so npx does not fetch Context7", async () => {
+test("workspace package is context101-cli with bin context101", async () => {
   const { readFile } = await import("node:fs/promises");
   const { fileURLToPath } = await import("node:url");
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
-  assert.equal(pkg.name, "context101");
+  assert.equal(pkg.name, "context101-cli");
+  assert.equal(pkg.private, false);
   assert.equal(pkg.bin.context101, "./bin/context101.js");
+  assert.deepEqual(pkg.files, ["bin", "src"]);
 });

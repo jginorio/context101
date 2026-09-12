@@ -3,21 +3,27 @@ import { DRIVER_NEON, DRIVER_POSTGRES } from "./defaults.js";
 const FLAG_HELP = `
 Usage: context101 <command> [options]
 
-  init      write a local secrets file (default if you omit the command)
-  deploy    deploy the AWS stack
-  list, ls  list Context101 CloudFormation deployments
-  destroy, remove, rm
-            tear down the AWS stack
+  init                 write a local secrets file (default)
+  deploy               deploy the AWS stack (loads deploy-env, invokes cdk)
+  diff                 cdk diff with the same context flags
+  synth                cdk synth with the same context flags
+  list, ls             list Context101 CloudFormation deployments
+  destroy, remove, rm  tear down a listed stack (name required)
+  config               show deploy-env keys (values redacted)
+  config set KEY=value write one key (chmod 600; value is not printed)
 
-init walks a trusted-team self-host and writes a gitignored secrets
-file. It does not deploy unless you pass --deploy. When you are ready:
+CDK fails closed: a bare \`cdk deploy\` without \`-c token=\` throws
+instead of deleting MCP / Amplify. The CLI is the front door.
 
-  npm run context101 -- deploy
-  npx context101 deploy
+  context101 init
+  context101 deploy
+  npx context101-cli init
+  npx context101-cli deploy
 
   --dry-run              print the plan; write nothing, deploy nothing
   --yes, -y              accept defaults (creates RDS if no --database-url)
   --force                overwrite an existing env file
+  --dir <path>           clone into this directory when not in a checkout
   --deploy-env <path>    default: <repo>/cdk/.deploy-env
   --home                 write ~/.context101/deploy-env instead
   --database-url <url>   Postgres URL (also reads DATABASE_URL)
@@ -37,18 +43,18 @@ file. It does not deploy unless you pass --deploy. When you are ready:
   --seed                 first deploy uploads knowledge/ once
   --deploy               deploy after writing (combine with --yes)
 
-deploy:
+deploy / diff / synth:
   --seed                 upload knowledge/ once (first deploy only)
   --deploy-env <path>
   --home
-  --dry-run              print the command; deploy nothing
+  --dry-run              print the command; invoke nothing
 
 list:
   --aws-profile <name>
   --aws-access-key-id
   --aws-secret-access-key
 
-destroy:
+destroy <StackName>:
   --yes, -y              skip the confirmation prompt
   --aws-profile <name>
   --aws-access-key-id
@@ -57,18 +63,21 @@ destroy:
   --home
   --dry-run              print the plan; destroy nothing
 
+config:
+  --deploy-env <path>
+  --home
+
 From this checkout (after npm install):
   npm run context101 -- init
   npm run context101 -- deploy
-  npm run context101 -- list
-  npm run context101 -- destroy
-  npx context101 init
-  npx context101 deploy
-  npx context101 list
-  npx context101 destroy
+  npx context101-cli init
+  npx context101-cli deploy
+  context101 list
+  context101 destroy Context101Stack
+  context101 config
 
-npx context101 without a local install downloads Context7's MCP
-from npm (unrelated) and fails with "too many arguments".
+npx context101 (unscoped) downloads Context7's MCP from npm — unrelated.
+The publishable CLI is context101-cli; the bin name is context101.
 `.trim();
 
 const INIT_ONLY = new Set([
@@ -76,6 +85,7 @@ const INIT_ONLY = new Set([
   "-y",
   "--force",
   "--deploy",
+  "--dir",
   "--database-url",
   "--create-rds",
   "--database-driver",
@@ -102,14 +112,19 @@ const LIST_FROM_INIT = new Set([
   "--aws-secret-access-key",
 ]);
 
+const CDK_COMMANDS = new Set(["deploy", "diff", "synth"]);
+
 const COMMANDS = {
   init: "init",
   deploy: "deploy",
+  diff: "diff",
+  synth: "synth",
   list: "list",
   ls: "list",
   destroy: "destroy",
   remove: "destroy",
   rm: "destroy",
+  config: "config",
 };
 
 export function helpText() {
@@ -126,6 +141,7 @@ export function parseArgs(argv) {
     deploy: false,
     seed: false,
     home: false,
+    dir: null,
     envFile: null,
     databaseUrl: null,
     createRds: false,
@@ -137,6 +153,10 @@ export function parseArgs(argv) {
     repo: null,
     embedModel: null,
     skipBedrockAccess: false,
+    stackName: null,
+    configAction: "show",
+    configKey: null,
+    configValue: null,
   };
 
   const args = [...argv];
@@ -155,8 +175,31 @@ export function parseArgs(argv) {
     throw err;
   }
 
+  if (opts.command === "config" && args[0] === "set") {
+    args.shift();
+    const pair = args.shift();
+    if (!pair || !pair.includes("=")) {
+      const err = new Error("usage: context101 config set KEY=value");
+      err.code = "USAGE";
+      throw err;
+    }
+    const eq = pair.indexOf("=");
+    opts.configAction = "set";
+    opts.configKey = pair.slice(0, eq);
+    opts.configValue = pair.slice(eq + 1);
+  }
+
   while (args.length) {
     const arg = args.shift();
+    if (opts.command === "destroy" && !arg.startsWith("-")) {
+      if (opts.stackName) {
+        const err = new Error("destroy takes one stack name");
+        err.code = "USAGE";
+        throw err;
+      }
+      opts.stackName = arg;
+      continue;
+    }
     if (!flagAllowed(opts.command, arg)) {
       const err = new Error(
         opts.command === "init" ? `unknown flag: ${arg}` : `${arg} is an init option`
@@ -164,7 +207,7 @@ export function parseArgs(argv) {
       err.code = "USAGE";
       throw err;
     }
-    if (arg === "--seed" && (opts.command === "list" || opts.command === "destroy")) {
+    if (arg === "--seed" && !CDK_COMMANDS.has(opts.command) && opts.command !== "init") {
       const err = new Error(`--seed is a deploy option`);
       err.code = "USAGE";
       throw err;
@@ -192,6 +235,9 @@ export function parseArgs(argv) {
         break;
       case "--home":
         opts.home = true;
+        break;
+      case "--dir":
+        opts.dir = needValue(arg, args);
         break;
       case "--deploy-env":
         opts.envFile = needValue(arg, args);
@@ -242,6 +288,7 @@ function flagAllowed(command, arg) {
   if (command === "init") return true;
   if (command === "destroy") return DESTROY_FROM_INIT.has(arg);
   if (command === "list") return LIST_FROM_INIT.has(arg);
+  if (command === "config") return arg === "--home";
   return false;
 }
 

@@ -11,7 +11,7 @@ export function dockerDaemonRunning(exec) {
 
 export function dockerStartHint(platform = process.platform) {
   const lines = [
-    "Start the Docker daemon, then run npx context101 deploy:",
+    "Start the Docker daemon, then run context101 deploy:",
     "  · Docker Desktop — open the app and wait until it is running",
     "  · Colima — colima start",
   ];

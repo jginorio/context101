@@ -3,12 +3,19 @@ import { homedir } from "node:os";
 import path from "node:path";
 import { DEFAULT_AMPLIFY_REPO, HOME_ENV_REL, REPO_ENV_REL } from "./defaults.js";
 
+export function isContext101Checkout(dir, exists = existsSync) {
+  const web = exists(path.join(dir, "web", "package.json"));
+  const cdk =
+    exists(path.join(dir, "cdk", "cdk.json")) ||
+    exists(path.join(dir, "cdk", "bin", "context101.ts")) ||
+    exists(path.join(dir, "cdk", "deploy.sh"));
+  return web && cdk;
+}
+
 export function findRepoRoot(startDir, exists = existsSync) {
   let dir = path.resolve(startDir);
   for (;;) {
-    const deploy = path.join(dir, "cdk", "deploy.sh");
-    const web = path.join(dir, "web", "package.json");
-    if (exists(deploy) && exists(web)) return dir;
+    if (isContext101Checkout(dir, exists)) return dir;
     const parent = path.dirname(dir);
     if (parent === dir) return null;
     dir = parent;
