@@ -15,6 +15,9 @@ CTX_TOKEN="context101-platea-2026-bearer"
 # `gh auth token` so you can leave this commented out.
 # CTX_GH_TOKEN="ghp_..."
 
+# OPTIONAL — Amplify repo URL if your fork isn't the stack default.
+# REPOSITORY="https://github.com/<you>/context101"
+
 # OPTIONAL — passed through to the cdk subprocess.
 AWS_PROFILE="plateapr.com"
 

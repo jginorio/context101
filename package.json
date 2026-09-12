@@ -5,5 +5,8 @@
     "site",
     "web",
     "packages/*"
-  ]
+  ],
+  "scripts": {
+    "context101": "node ./packages/cli/bin/context101.js"
+  }
 }

@@ -129,7 +129,15 @@ Before your first deploy, make sure you have:
 
 ## Setup
 
-> 🛡️ **Use the deploy wrapper.** All the `cdk deploy` examples below go through `./cdk/deploy.sh`, which refuses to run unless both gating tokens (`CTX_TOKEN`, `CTX_GH_TOKEN`) are set in a local env file. Skipping it once already cost the team a full stack rebuild — see [Why the wrapper exists](#why-the-wrapper-exists). One-time setup:
+First-run self-host walkthrough (from this checkout):
+
+```bash
+npx context101 init
+```
+
+Dry-run (no files, no deploy): `npx context101 init --dry-run`. The command checks local tools + AWS, writes a gitignored `cdk/.deploy-env` (or `~/.context101/deploy-env`), and prints `./cdk/deploy.sh`. It never runs `cdk deploy` itself.
+
+> 🛡️ **Use the deploy wrapper.** All the `cdk deploy` examples below go through `./cdk/deploy.sh`, which refuses to run unless both gating tokens (`CTX_TOKEN`, `CTX_GH_TOKEN`) are set in a local env file. Skipping it once already cost the team a full stack rebuild — see [Why the wrapper exists](#why-the-wrapper-exists). One-time setup if you skip the walkthrough:
 >
 > ```bash
 > cp cdk/.deploy-env.example cdk/.deploy-env   # or ~/.context101/deploy-env

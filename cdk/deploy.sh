@@ -33,7 +33,8 @@
 #   BETTER_AUTH_SECRET, BETTER_AUTH_URL, MCP_TOKEN_PEPPER,
 #   APP_MODE, ALLOW_PUBLIC_SIGNUP, BILLING_ENABLED, APP_URL, MARKETING_URL,
 #   MCP_PUBLIC_HOST, MCP_DOMAIN_CERT_ARN, MCP_APPRUNNER,
-#   SES_REGION, SES_FROM_EMAIL, SES_REPLY_TO_EMAIL.
+#   SES_REGION, SES_FROM_EMAIL, SES_REPLY_TO_EMAIL,
+#   REPOSITORY.
 #
 # MCP compute (see "Migrating off App Runner" in the README):
 #   MCP_DOMAIN_CERT_ARN — issued us-east-1 ACM cert ARN for the MCP custom
@@ -181,6 +182,7 @@ add_context_if_set "MCP_APPRUNNER"
 add_context_if_set "SES_REGION"
 add_context_if_set "SES_FROM_EMAIL"
 add_context_if_set "SES_REPLY_TO_EMAIL"
+add_context_if_set "REPOSITORY"
 
 if [[ "$SUBCOMMAND" == "deploy" ]]; then
   CDK_ARGS+=("--require-approval" "never")
@@ -208,6 +210,7 @@ printf "  ${DIM}githubToken: %s${RESET}\n" "$(mask "$GH_TOKEN")"
 [[ -n "${BILLING_ENABLED:-}" ]]     && printf "  ${DIM}BILLING_ENABLED:    %s${RESET}\n" "$BILLING_ENABLED"
 [[ -n "${APP_URL:-}" ]]             && printf "  ${DIM}APP_URL:            %s${RESET}\n" "$APP_URL"
 [[ -n "${MARKETING_URL:-}" ]]       && printf "  ${DIM}MARKETING_URL:      %s${RESET}\n" "$MARKETING_URL"
+[[ -n "${REPOSITORY:-}" ]]          && printf "  ${DIM}REPOSITORY:         %s${RESET}\n" "$REPOSITORY"
 $SEED && printf "  ${DIM}seed:        ${RESET}${YELLOW}true${RESET}\n"
 printf "\n"
 

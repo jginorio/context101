@@ -1109,7 +1109,9 @@ export class Context101Stack extends cdk.Stack {
       const webApp = new amplify.CfnApp(this, "WebApp", {
         name: `${namePrefix}-web`,
         description: "Context101 knowledge admin UI",
-        repository: "https://github.com/jginorio/context101",
+        repository:
+          (this.node.tryGetContext("REPOSITORY") as string | undefined) ||
+          "https://github.com/jginorio/context101",
         accessToken: githubToken,
         iamServiceRole: amplifyServiceRole.roleArn,
         platform: "WEB_COMPUTE", // Next.js SSR
