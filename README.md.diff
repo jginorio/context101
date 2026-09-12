@@ -1,0 +1,74 @@
+--- a/README.md
++++ b/README.md
+@@ -66,7 +66,7 @@
+ │   ├── lib/db/                   # Drizzle schema + Postgres client
+ │   ├── lib/brains-server.ts      # resolveBrainFromRequest + registry helpers
+ │   └── lib/brain-context.tsx     # client-side BrainProvider + useBrain()
+-├── wiki-generator/               # Fargate task — per-brain DOCS_BUCKET via overrides
++├── wiki-generator-ts/            # Fargate task — per-brain DOCS_BUCKET via overrides
+ └── requirements.txt
+ ```
+ 
+@@ -106,9 +106,9 @@
+ **Local tooling**
+ - **AWS CLI v2** authenticated for the target account (`aws sts get-caller-identity` should work). The examples use `AWS_PROFILE=<your-profile>`; replace with your own profile/region.
+ - **Node 20+** and **npm** — for the CDK app and the Next.js web build.
+-- **Docker** — CDK asset bundling for the wiki-generator image uses it. `colima start` on macOS if you use Colima.
++- **Docker** — CDK asset bundling for the wiki-generator-ts image uses it. `colima start` on macOS if you use Colima.
+ - **GitHub CLI (`gh`)** or a manually-created Personal Access Token — Amplify Hosting needs a GitHub token with `repo` scope to watch your fork. `gh auth token` returns one if you're already logged in.
+-- **Python 3.11+** — only if you want to run the MCP server or the wiki generator locally.
++- **Python 3.11+** — only if you want to run the MCP server locally (wiki generator is TypeScript under `wiki-generator-ts/`).
+ 
+ **AWS account setup**
+ - **Region** — everything is wired up for `us-east-1`. It can be changed, but S3 Vectors and the Opus 4.7 cross-region inference profile (`us.anthropic.claude-opus-4-7`) have region caveats; staying in `us-east-1` for the first deploy is the smooth path.
+@@ -690,7 +690,7 @@
+ - Each successful regen records a **corpus fingerprint** in `wiki/_meta.json` — SHA-256 over sorted `(key, ETag)` pairs of every input file. Mode-aware: main mode hashes the whole bucket excluding top-level `wiki/<slug>.md`; code mode hashes `sources/github/<repo-slug>/`. ETags are MD5s S3 already computes server-side, so the hash needs **no body downloads** — one `ListObjectsV2` paginate is enough.
+ - A run lists the corpus, computes the new fingerprint, reads the old one from `_meta.json`. **Same hash → exit 0 without calling Opus.** A no-op invocation costs ~3-5s of Fargate boot + 1-2 S3 calls; nothing is overwritten.
+ - The manual **Refresh now** button passes `WIKI_FORCE=1` to the container (via `start-wiki-gen` Lambda → `containerOverrides.environment`), which bypasses the guard. So:
+-  - **User click** → forced → always regenerates (e.g. when you've edited prompts in `wiki-generator/prompts.py` and want the existing corpus re-synthesized with the new prompt).
++  - **User click** → forced → always regenerates (e.g. when you've edited prompts in `wiki-generator-ts/src/prompts/` and want the existing corpus re-synthesized with the new prompt).
+   - **Re-enabled schedule / auto-fire** → guarded → no-op when nothing changed.
+   - **GitHub-sync invocation** (when auto-fire is on) → unguarded but the corpus literally just changed, so the hash differs and it regenerates. Belt-and-suspenders: the github connector's tree-SHA gate already filters out unchanged-repo invocations one layer up.
+ 
+@@ -707,16 +707,15 @@
+ ### Run the generator locally
+ 
+ ```bash
+-cd wiki-generator
+-pip install -r requirements.txt
+-
+-\
+-AWS_REGION=us-east-1 \
+-DOCS_BUCKET=<DocsBucketName> \
+-python generate.py
++cd wiki-generator-ts
++npm install
++
++AWS_REGION=us-east-1 \
++DOCS_BUCKET=<DocsBucketName> \
++npm run dev
+ ```
+ 
+-Env knobs (all optional): `WIKI_PREFIX` (default `wiki/`), `MODEL_ID` (default `us.anthropic.claude-opus-4-7`), `MIN_PAGES` / `MAX_PAGES` (default 4 / 8), `CORPUS_PREVIEW_CHARS` (default 600 — how much of each source doc feeds into the structure call), `MAX_TOKENS` (default 8192 per Opus call), `WIKI_FORCE=1` (bypass the corpus-hash guard described above).
++Env knobs (all optional): `WIKI_PREFIX` (default `wiki/`), `MODEL_ID` (default `us.anthropic.claude-opus-4-7`), `MIN_PAGES` / `MAX_PAGES` (default 4 / 8), `CORPUS_PREVIEW_CHARS` (default 600 — how much of each source doc feeds into the structure call), `MAX_TOKENS` (default 8192 per Opus call), `WIKI_FORCE=1` (bypass the corpus-hash guard described above). See [`wiki-generator-ts/README.md`](./wiki-generator-ts/README.md) for provider flags and incremental options.
+ 
+ Set `WIKI_PREFIX=wiki-preview/` to iterate on prompts without overwriting the live wiki.
+ 
+@@ -756,7 +755,7 @@
+ 
+ ### One Fargate task, two modes
+ 
+-`wiki-generator/generate.py` switches behavior on `WIKI_MODE`:
++`wiki-generator-ts` switches behavior on `WIKI_MODE`:
+ 
+ | Env | `main` (default) | `code` |
+ |---|---|---|
+@@ -905,7 +904,7 @@
+     ▼                          └────────────────────────┘
+ ┌──────────────────┐
+ │  Fargate task    │   (0.5 vCPU, ~3-5 min)
+-│  generate.py     │
++│  generate.ts     │
+ └────────┬─────────┘
+          │
+          │  1. List s3://docs/ *.md (excluding wiki/)
