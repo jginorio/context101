@@ -176,7 +176,8 @@ test("--yes does not watch Amplify for a found-the-repo operator", async () => {
   assert.equal(code, 0);
   const body = await readFile(envPath, "utf8");
   assert.equal(body.includes("REPOSITORY="), false);
-  assert.match(io.stdoutText, /Amplify is skipped/);
+  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.match(io.stdoutText, /^context101 deploy$/m);
 });
 
 test("--yes watches the default repo when gh login is the owner", async () => {
@@ -208,7 +209,8 @@ test("--yes watches the default repo when gh login is the owner", async () => {
   assert.equal(code, 0);
   const body = await readFile(envPath, "utf8");
   assert.match(body, new RegExp(`REPOSITORY="${DEFAULT_AMPLIFY_REPO}"`));
-  assert.match(io.stdoutText, /WebAppDefaultDomain|\/setup/);
+  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.match(io.stdoutText, /context101 deploy/);
 });
 
 test("--yes --repo writes that repo and --embed-model writes the id", async () => {

@@ -83,29 +83,5 @@ function bootstrapLabel(plan) {
 }
 
 export function nextSteps(plan) {
-  const rds = plan.createRds
-    ? "CDK will create RDS Postgres and apply the control-plane schema. Fetch the secret via ControlPlaneDbSecretArn — the password is never printed."
-    : null;
-  const next = [
-    `Next: ${deployCommand(plan.seed)}`,
-    plan.seed ? null : "First time? add --seed to upload the example knowledge/ files once.",
-    rds,
-  ];
-  if (plan.repository) {
-    return [
-      ...next,
-      "After Amplify is up (~4 min), open /setup on WebAppDefaultDomain (or your own domain).",
-      "Leave BETTER_AUTH_URL / APP_URL unset unless you bring your own host. CDK fills the Amplify default.",
-    ]
-      .filter(Boolean)
-      .join("\n");
-  }
-  return [
-    ...next,
-    "Amplify is skipped — this deploy is the AWS stack only (no GitHub-watched web app).",
-    "Run the web app from web/, or re-run init with --repo when you want Amplify.",
-    "Leave BETTER_AUTH_URL / APP_URL unset unless you bring your own host.",
-  ]
-    .filter(Boolean)
-    .join("\n");
+  return deployCommand(plan.seed);
 }

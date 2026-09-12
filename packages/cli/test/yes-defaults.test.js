@@ -91,9 +91,10 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
   }
   assert.equal(text.includes("ghp_test_token_must_never_appear"), false);
   assert.match(text, /wrote tmp-deploy-env/);
-  assert.match(text, /context101 deploy/);
+  assert.match(text, /^context101 deploy$/m);
   assert.equal(text.includes("deploy.sh"), false);
-  assert.match(text, /Amplify is skipped/);
+  assert.equal(text.includes("Amplify is skipped —"), false);
+  assert.equal(text.includes("BETTER_AUTH_URL"), false);
   assert.equal(text.includes("site/"), false);
   assert.equal(deployed, false);
 });
@@ -240,6 +241,7 @@ test("interactive init asks which AWS profile and writes it", async () => {
         deploy: false,
         extras: "skip",
       }),
+      confirmDeploy: async () => false,
     }
   );
 
@@ -329,6 +331,7 @@ test("interactive init asks for AWS keys when no profiles exist", async () => {
         deploy: false,
         extras: "skip",
       }),
+      confirmDeploy: async () => false,
     }
   );
 
@@ -371,6 +374,7 @@ test("interactive init writes cdk/.deploy-env without asking where", async () =>
         databasePrepare: true,
         awsProfile: defaults.awsProfile,
       }),
+      confirmDeploy: async () => false,
     }
   );
 
@@ -388,7 +392,7 @@ test("interactive init writes cdk/.deploy-env without asking where", async () =>
   assert.equal(src.includes("Request access for all of these"), false);
   assert.equal(src.includes("Embedding models"), false);
   assert.match(io.stdoutText, /context101 deploy/);
-  assert.match(io.stdoutText, /Bedrock embedding access:/);
+  assert.equal(io.stdoutText.includes("Bedrock embedding access:"), false);
 });
 
 test("interactive --deploy-env still honors the flag", async () => {
@@ -427,6 +431,7 @@ test("interactive --deploy-env still honors the flag", async () => {
         databasePrepare: true,
         awsProfile: defaults.awsProfile,
       }),
+      confirmDeploy: async () => false,
     }
   );
 
@@ -455,5 +460,8 @@ test("--yes without a database URL writes CREATE_RDS", async () => {
   const body = await readFile(envPath, "utf8");
   assert.match(body, /CREATE_RDS="true"/);
   assert.equal(body.includes("DATABASE_URL="), false);
-  assert.match(io.stdoutText, /CDK will create RDS|CREATE_RDS|creates RDS/);
+  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.match(io.stdoutText, /context101 deploy/);
+  assert.equal(io.stdoutText.includes("ControlPlaneDbSecretArn"), false);
+  assert.equal(io.stdoutText.includes("BETTER_AUTH_URL"), false);
 });

@@ -6,12 +6,24 @@ import {
 import { inferDriver, inferPrepare } from "./env-file.js";
 import { normalizeRepoUrl } from "./repo.js";
 
+export function deployNowMessage({ createRds = false } = {}) {
+  return createRds
+    ? "Deploy the stack now? (CDK + Docker; creates RDS)"
+    : "Deploy the stack now?";
+}
+
+export async function promptDeployNow(details = {}) {
+  const { confirm } = await import("@inquirer/prompts");
+  return confirm({
+    message: deployNowMessage(details),
+    default: false,
+  });
+}
+
 export async function promptAnswers({ defaults, io, exec, env }) {
   const { confirm, input, password, select } = await import("@inquirer/prompts");
 
-  io.write("This writes a local secrets file. Deploy afterwards with:");
-  io.write("  context101 deploy");
-  io.write("Press ^C to quit.");
+  io.write("This writes a local secrets file. Press ^C to quit.");
   io.write("");
 
   const region = await input({

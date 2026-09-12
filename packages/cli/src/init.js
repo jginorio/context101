@@ -15,10 +15,7 @@ import {
   printChecks,
   runChecks,
 } from "./checks.js";
-import {
-  formatAccessResult,
-  requestEmbeddingModelAccess,
-} from "./bedrock-access.js";
+import { requestEmbeddingModelAccess } from "./bedrock-access.js";
 import {
   isKnownEmbeddingModel,
   listEmbeddingModels,
@@ -267,11 +264,22 @@ export async function runInit(opts, ctx) {
       "no Amplify-capable GitHub PAT yet — set CTX_GH_TOKEN to a ghp_ or github_pat_ token before deploy"
     );
   }
-  io.write("");
-  io.write(nextSteps(plan));
-  io.write("");
 
-  if (!answers.deploy) return 0;
+  let deploy = Boolean(answers.deploy);
+  if (!deploy && !opts.yes && tty) {
+    deploy = Boolean(
+      await askDeployNow(ctx, {
+        createRds: Boolean(answers.createRds),
+        seed: Boolean(answers.seed),
+        repository: answers.repository || "",
+      })
+    );
+  }
+
+  if (!deploy) {
+    io.write(nextSteps({ seed: answers.seed }));
+    return 0;
+  }
 
   if (answers.repository && !githubReadyForAmplify(checks, answers)) {
     io.err(
@@ -391,15 +399,28 @@ function withAwsAuth(env, { profile, accessKeyId, secretAccessKey } = {}) {
   return next;
 }
 
+async function askDeployNow(ctx, details) {
+  if (typeof ctx.confirmDeploy === "function") {
+    return ctx.confirmDeploy(details);
+  }
+  const { promptDeployNow } = await import("./prompt.js");
+  return promptDeployNow(details);
+}
+
 function printBedrockAccess(results, io) {
-  io.write("Bedrock embedding access:");
-  for (const result of results) {
-    const line = formatAccessResult(result);
-    if (result.status === "needs-console" || result.status === "failed") {
-      io.warn(line);
-    } else {
-      io.dim(`  ${line}`);
-    }
+  const problems = (results || []).filter(
+    (result) => result.status === "needs-console" || result.status === "failed"
+  );
+  const granted = (results || []).filter((result) => result.status === "granted").length;
+  if (problems.length) {
+    const ids = problems
+      .slice(0, 2)
+      .map((result) => result.id)
+      .join(", ");
+    const extra = problems.length > 2 ? ` (+${problems.length - 2})` : "";
+    io.warn(`Bedrock: enable ${ids}${extra} in console → Model access`);
+  } else if (granted) {
+    io.ok("Bedrock access granted");
   }
 }
 
