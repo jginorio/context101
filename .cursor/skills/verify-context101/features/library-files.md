@@ -17,7 +17,7 @@ Library files lets a user create, rename, move, and delete markdown files and fo
 
 ## How to get to it (user POV)
 
-- Open Knowledge (`/knowledge`), Library → Uploaded Files.
+- Open Knowledge (`/knowledge`). If the brain already has uploaded files, Library → Uploaded Files. An empty library hides that section; seed via `bin/files put` (or **Add source** → **Upload files**) so the tree appears.
 - Choose `New file` or `New folder` in the page toolbar (or the Library `…` menu).
 - Right-click a file or folder row in the tree and choose Rename (edits the name in place) or Delete. F2 on a focused row also starts renaming.
 - Drag a library file onto a folder row (into that folder) or onto **Uploaded Files** / a parent folder (out of the current folder).
@@ -48,7 +48,7 @@ Preconditions:
 ## Gotchas
 
 - Toolbar New file creates at the library root, not under `verify/`. Use `bin/files put` when you need a namespaced key, or create a folder first and use its context (the current UI only namespaces from the Library `…` at root).
-- `Uploaded Files` is a virtual root (`prefix=""`). It has no Rename/Delete. Right-clicking it must not open those items.
+- `Uploaded Files` is a virtual root (`prefix=""`). It has no Rename/Delete. Right-clicking it must not open those items. The Library section is hidden when the listing has no user files or folders (only `sources/` / `wiki/` do not count).
 - Connector rows under Sources are browse-only: Open / Open in new tab, no Rename/Delete, no drag, no drop-to-move.
 - Folder keys end with `/`. File keys do not. Move/delete of a folder must use the trailing slash and `recursive: true`.
 - List hides `.keep` and `.metadata.json`. An empty folder still exists in S3 after create.

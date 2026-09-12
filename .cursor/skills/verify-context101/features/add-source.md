@@ -8,6 +8,7 @@ GitHub’s form is no longer the same “label + URL” shape as Google/Notion. 
 
 - `src-open-header` opens the picker from the Knowledge toolbar **Add source** button.
 - `src-open-sidebar` opens the picker from the sidebar **Add source** button under Sources.
+- `src-pick-files` shows the **Upload files** drop zone / file picker without uploading.
 - `src-pick-provider` shows a provider’s params form (Google Docs / Sheets / Slides, Notion, GitHub) without submitting.
 - `src-mobile-drawer` below the `md` breakpoint renders the picker as a bottom sheet, not a centered dialog.
 - `src-github` is the GitHub-specific form — [github-source](./github-source.md).
@@ -16,7 +17,7 @@ GitHub’s form is no longer the same “label + URL” shape as Google/Notion. 
 
 - Knowledge header: button `Add source` (desktop) or `aria-label="Add source"` (icon on small viewports).
 - Knowledge sidebar Sources: button `Add source`.
-- Sources page: heading **Data sources**, toolbar **Add new source**, or a sidebar provider row (including **GitHub**).
+- Sources page: heading **Data sources**, toolbar **Add new source**, or a sidebar provider row (including **Upload files** and **GitHub**).
 
 ## Driving it with Chrome DevTools
 
@@ -25,7 +26,8 @@ Preconditions:
 - Doctor healthy for HTTP + session (S3 is not required to open the picker). Cookie injected. `/knowledge` on Default.
 - Do not fill fields and submit. Do not click **Connect GitHub** or **configure the shared GitHub App**.
 
-- **Open.** Click button `Add source`. Dialog `Add a source` lists Google Docs, Google Sheets, Google Slides, Notion, GitHub.
+- **Open.** Click button `Add source`. Dialog `Add a source` lists Upload files, Google Docs, Google Sheets, Google Slides, Notion, GitHub.
+- **Upload files.** Click `Upload files`. Title becomes `Upload files`. The form is a drop zone (`Drop .md files here, or click to choose`). Do not pick or drop files in a default run (root keys need `/tmp/verify-context101-extra-keys`). A Back control (`Back to source types`) returns to the picker.
 - **Provider (Google / Notion).** Click `Google Docs` (or Sheets / Slides / Notion). Title becomes `Add a Google Doc` (or that provider’s copy). Fields are **Label** and the URL. A Back control (`Back to source types`) returns to the picker.
 - **Provider (GitHub).** Click `GitHub`. Title becomes `Add a GitHub repository`. The fields depend on `GET /api/connectors/github-app` — see [github-source](./github-source.md). Driven path when `configured` is false: Connection name, Repository URL, Personal access token, optional Paths to sync; **Add repository** stays disabled.
 - **Close.** Dismiss with the dialog close control or **Cancel**. No connector is created.

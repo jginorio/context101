@@ -29,9 +29,11 @@ import { AddSourceDialog } from "@/components/add-source-dialog";
 import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
 import {
+  FILES_SOURCE,
   PROVIDER_GROUPS,
   SOURCE_TYPES,
   TypeIcon,
+  type AddSourceKind,
   type ConnectorType,
 } from "@/lib/source-providers";
 import { cn } from "@/lib/utils";
@@ -96,9 +98,9 @@ function SourcesContent() {
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [addOpen, setAddOpen] = React.useState(false);
-  const [addType, setAddType] = React.useState<ConnectorType | null>(null);
+  const [addType, setAddType] = React.useState<AddSourceKind | null>(null);
 
-  function openAdd(type?: ConnectorType) {
+  function openAdd(type?: AddSourceKind) {
     setAddType(type ?? null);
     setAddOpen(true);
   }
@@ -220,12 +222,21 @@ function SourcesContent() {
     </>
   );
 
+  const FilesIcon = FILES_SOURCE.icon;
   const sourcesPanel = (
     <div className="space-y-1">
       <p className="px-1.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         Add a source
       </p>
       <nav className="flex flex-col gap-0.5">
+        <button
+          onClick={() => openAdd("files")}
+          className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+        >
+          <FilesIcon className="h-4 w-4 shrink-0" />
+          <span className="flex-1 truncate">{FILES_SOURCE.menuLabel}</span>
+          <Plus className="h-3.5 w-3.5 shrink-0 opacity-50 transition-opacity group-hover:opacity-100" />
+        </button>
         {PROVIDER_GROUPS.flatMap((g) => g.types).map((t) => (
           <button
             key={t}

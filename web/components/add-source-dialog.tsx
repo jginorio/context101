@@ -23,10 +23,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { Combobox } from "@/components/ui/combobox";
 import {
   CONNECTOR_TYPES,
+  FILES_SOURCE,
   SOURCE_TYPES,
   TypeIcon,
+  type AddSourceKind,
   type ConnectorType,
 } from "@/lib/source-providers";
+import {
+  describeUploadResult,
+  uploadMarkdownFiles,
+} from "@/lib/knowledge-upload";
+import { useExternalFileDrop } from "@/lib/use-external-file-drop";
+import { cn } from "@/lib/utils";
 
 type SourceType = ConnectorType;
 
@@ -102,35 +110,188 @@ const COPY: Record<SourceType, Copy> = {
   },
 };
 
+function PickerRow({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted/60"
+    >
+      {icon}
+      <span className="flex-1 text-sm font-medium">{label}</span>
+      <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+    </button>
+  );
+}
+
 function SourcePicker({
   onSelect,
 }: {
-  onSelect: (type: ConnectorType) => void;
+  onSelect: (type: AddSourceKind) => void;
 }) {
+  const FilesIcon = FILES_SOURCE.icon;
   return (
     <>
       <DialogHeader>
         <DialogTitle>Add a source</DialogTitle>
         <DialogDescription>
-          Choose a provider, then fill in the connection details.
+          Upload markdown files or connect a provider.
         </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-2">
+        <PickerRow
+          icon={<FilesIcon className="h-5 w-5 shrink-0" />}
+          label={FILES_SOURCE.menuLabel}
+          onClick={() => onSelect("files")}
+        />
         {CONNECTOR_TYPES.map((t) => (
-          <button
+          <PickerRow
             key={t}
-            type="button"
+            icon={<TypeIcon type={t} className="h-5 w-5 shrink-0" />}
+            label={SOURCE_TYPES[t].menuLabel}
             onClick={() => onSelect(t)}
-            className="flex w-full items-center gap-3 rounded-lg border border-border bg-background px-3 py-2.5 text-left transition-colors hover:bg-muted/60"
-          >
-            <TypeIcon type={t} className="h-5 w-5 shrink-0" />
-            <span className="flex-1 text-sm font-medium">
-              {SOURCE_TYPES[t].menuLabel}
-            </span>
-            <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
-          </button>
+          />
         ))}
       </div>
+    </>
+  );
+}
+
+function UploadFilesForm({
+  onBack,
+  onOpenChange,
+  onUploaded,
+}: {
+  onBack: () => void;
+  onOpenChange: (open: boolean) => void;
+  onUploaded?: (keys: string[]) => void;
+}) {
+  const inputRef = React.useRef<HTMLInputElement>(null);
+  const uploadingRef = React.useRef(false);
+  const [uploading, setUploading] = React.useState(false);
+  const FilesIcon = FILES_SOURCE.icon;
+
+  const handleFiles = React.useCallback(
+    async (files: File[]) => {
+      if (uploadingRef.current) {
+        toast.info("Upload already in progress");
+        return;
+      }
+      uploadingRef.current = true;
+      setUploading(true);
+      const toastId = toast.loading(
+        files.length === 1
+          ? "Uploading file…"
+          : `Uploading ${files.length} files…`
+      );
+      try {
+        const result = await uploadMarkdownFiles("", files);
+        const summary = describeUploadResult(result);
+        if (summary.tone === "success")
+          toast.success(summary.message, { id: toastId });
+        else if (summary.tone === "error")
+          toast.error(summary.message, { id: toastId });
+        else toast.info(summary.message, { id: toastId });
+
+        if (result.uploaded.length > 0) {
+          onUploaded?.(result.uploaded);
+          onOpenChange(false);
+        }
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : String(error),
+          { id: toastId }
+        );
+      } finally {
+        uploadingRef.current = false;
+        setUploading(false);
+      }
+    },
+    [onOpenChange, onUploaded]
+  );
+
+  const drop = useExternalFileDrop(!uploading, (files) => {
+    void handleFiles(files);
+  });
+
+  return (
+    <>
+      <DialogHeader>
+        <DialogTitle className="flex items-center gap-2 pr-8">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onBack}
+            disabled={uploading}
+            aria-label="Back to source types"
+            className="-ml-1"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
+          <FilesIcon className="h-4 w-4" /> Upload files
+        </DialogTitle>
+        <DialogDescription>
+          Drop markdown files or choose them from your computer. They land in
+          the library as Uploaded Files.
+        </DialogDescription>
+      </DialogHeader>
+      <input
+        ref={inputRef}
+        type="file"
+        accept=".md,.markdown,text/markdown"
+        multiple
+        className="sr-only"
+        disabled={uploading}
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          event.target.value = "";
+          if (files.length > 0) void handleFiles(files);
+        }}
+      />
+      <button
+        type="button"
+        disabled={uploading}
+        onClick={() => inputRef.current?.click()}
+        className={cn(
+          "flex min-h-36 w-full flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border px-4 py-6 text-center text-sm transition-colors",
+          drop.active
+            ? "bg-accent/40 text-foreground ring-1 ring-inset ring-primary/40"
+            : "bg-muted/30 text-muted-foreground hover:bg-muted/60 hover:text-foreground",
+          uploading && "pointer-events-none opacity-60"
+        )}
+        data-drop-prefix=""
+        {...drop.handlers}
+      >
+        {uploading ? (
+          <Loader2 className="h-5 w-5 animate-spin" />
+        ) : (
+          <FilesIcon className="h-5 w-5" />
+        )}
+        <span className="font-medium text-foreground">
+          {drop.active
+            ? "Drop markdown files to upload"
+            : uploading
+              ? "Uploading…"
+              : "Drop .md files here, or click to choose"}
+        </span>
+        <span className="text-xs leading-relaxed">
+          Markdown only, up to 5 MB each.
+        </span>
+      </button>
+      <DialogFooter>
+        <Button variant="outline" onClick={onBack} disabled={uploading}>
+          Back
+        </Button>
+      </DialogFooter>
     </>
   );
 }
@@ -613,13 +774,16 @@ export function AddSourceDialog({
   open,
   onOpenChange,
   type = null,
+  onUploaded,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   // When set, skip the picker and open directly on that source's params.
-  type?: ConnectorType | null;
+  type?: AddSourceKind | null;
+  // After a successful file upload, refresh the library and open tabs.
+  onUploaded?: (keys: string[]) => void;
 }) {
-  const [selected, setSelected] = React.useState<ConnectorType | null>(type);
+  const [selected, setSelected] = React.useState<AddSourceKind | null>(type);
 
   React.useEffect(() => {
     if (open) setSelected(type ?? null);
@@ -628,7 +792,13 @@ export function AddSourceDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="md:max-w-md">
-        {selected ? (
+        {selected === "files" ? (
+          <UploadFilesForm
+            onBack={() => setSelected(null)}
+            onOpenChange={onOpenChange}
+            onUploaded={onUploaded}
+          />
+        ) : selected ? (
           <SourceParamsForm
             type={selected}
             onBack={() => setSelected(null)}

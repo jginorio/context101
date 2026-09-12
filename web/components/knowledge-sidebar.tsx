@@ -25,6 +25,10 @@ import {
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
+  HIDDEN_ROOT_FOLDERS,
+  hasVisibleLibraryEntries,
+} from "@/lib/knowledge-library";
+import {
   CONNECTOR_TYPES,
   SOURCE_TYPES,
   TypeIcon,
@@ -32,10 +36,6 @@ import {
 import { useAppShell } from "@/components/app-shell";
 import type { Connector } from "@/utils/connectors";
 import { cn } from "@/lib/utils";
-
-// Root folders that are surfaced through their own grouped sections, so we
-// keep them out of the uploaded files tree.
-const HIDDEN_ROOT_FOLDERS = ["sources", "wiki"];
 
 // A muted group label with an optional hover-revealed action, matching the
 // clean "Overview / Projects / Team" grouping in dashboard-style sidebars.
@@ -108,6 +108,12 @@ export function KnowledgeSidebar({
   const [syncedTypes, setSyncedTypes] = React.useState<Set<string> | null>(
     null
   );
+  // Uploaded Files is just another source — hide the Library section until
+  // there is at least one user file or folder. Stay `null` on first load so
+  // we don't flash an empty tree.
+  const [libraryHasFiles, setLibraryHasFiles] = React.useState<boolean | null>(
+    null
+  );
 
   React.useEffect(() => {
     let cancelled = false;
@@ -121,6 +127,11 @@ export function KnowledgeSidebar({
           !cancelled && setSyncedTypes(new Set(d.folders.map((f) => f.name)))
       )
       .catch(() => !cancelled && setSyncedTypes(new Set()));
+    fetchList("")
+      .then(
+        (d) => !cancelled && setLibraryHasFiles(hasVisibleLibraryEntries(d))
+      )
+      .catch(() => !cancelled && setLibraryHasFiles(false));
     return () => {
       cancelled = true;
     };
@@ -167,52 +178,55 @@ export function KnowledgeSidebar({
 
   return (
     <div className="space-y-3">
-      {/* Library — uploaded files as one expandable parent */}
-      <div className="space-y-0.5">
-        <GroupHeader
-          label="Library"
-          action={
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    className="h-5 w-5 shrink-0"
-                    aria-label="Uploaded files actions"
-                  />
-                }
-              >
-                <MoreHorizontal className="h-3.5 w-3.5" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem
-                  onClick={() => closeMobileNav(() => onNewFile(""))}
+      {/* Library — only when uploaded files exist. An empty tree is the
+          same as an unconnected source: add files from Add source. */}
+      {libraryHasFiles ? (
+        <div className="space-y-0.5">
+          <GroupHeader
+            label="Library"
+            action={
+              <DropdownMenu>
+                <DropdownMenuTrigger
+                  render={
+                    <Button
+                      size="icon-sm"
+                      variant="ghost"
+                      className="h-5 w-5 shrink-0"
+                      aria-label="Uploaded files actions"
+                    />
+                  }
                 >
-                  <FilePlus className="mr-2 h-3.5 w-3.5" /> New file
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => closeMobileNav(() => onNewFolder(""))}
-                >
-                  <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          }
-        />
-        <FolderNode
-          prefix=""
-          name="Uploaded Files"
-          depth={0}
-          ctx={editableCtx}
-          hideRootFolders={HIDDEN_ROOT_FOLDERS}
-          forceHeader
-          defaultOpen
-          headerIcon={
-            <FolderClosed className="h-3.5 w-3.5 shrink-0 opacity-90" />
-          }
-        />
-      </div>
+                  <MoreHorizontal className="h-3.5 w-3.5" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem
+                    onClick={() => closeMobileNav(() => onNewFile(""))}
+                  >
+                    <FilePlus className="mr-2 h-3.5 w-3.5" /> New file
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => closeMobileNav(() => onNewFolder(""))}
+                  >
+                    <FolderPlus className="mr-2 h-3.5 w-3.5" /> New folder
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            }
+          />
+          <FolderNode
+            prefix=""
+            name="Uploaded Files"
+            depth={0}
+            ctx={editableCtx}
+            hideRootFolders={[...HIDDEN_ROOT_FOLDERS]}
+            forceHeader
+            defaultOpen
+            headerIcon={
+              <FolderClosed className="h-3.5 w-3.5 shrink-0 opacity-90" />
+            }
+          />
+        </div>
+      ) : null}
 
       {/* Sources — each connector as an expandable item (Notion gets the
           Notion-style tree). */}
