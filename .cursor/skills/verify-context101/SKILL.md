@@ -78,13 +78,14 @@ Stable handles:
 | New file | button `New file` |
 | New folder | button `New folder` |
 | Add source | button `Add source` → dialog `Add a source` |
+| Upload files | button `Upload files` in the picker → dialog title `Upload files` |
 | GitHub provider | button `GitHub` → dialog title `Add a GitHub repository` |
 | Back to types | button `Back to source types` |
 | Connect GitHub | button `Connect GitHub` → `/api/connectors/github-app/install` (do not click in a default run) |
 | Add repository | button `Add repository` (do not submit in a default run) |
 | Library tree | tree `Tree View` |
 | File row | treeitem named the filename (e.g. `verify-e2e.md`); `data-tree-key` is the S3 key |
-| Folder row | treeitem named the folder (`Uploaded Files` is the virtual root, `data-tree-key=""`) |
+| Folder row | treeitem named the folder (`Uploaded Files` is the virtual root, `data-tree-key=""`). The Library / Uploaded Files section is omitted when the brain has no uploaded files. |
 | File context menu | menuitem `Open`, `Open in new tab`, `Rename`, `Delete` |
 | Folder context menu | menuitem `Rename`, `Delete` |
 | Rename editor | inline textbox `[data-slot="tree-view-node-rename-input"]` on the row (no dialog); Enter or blur saves, Escape cancels |

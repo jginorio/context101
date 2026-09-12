@@ -290,6 +290,11 @@ export default function Home() {
       <AddSourceDialog
         open={addSourceOpen}
         onOpenChange={setAddSourceOpen}
+        onUploaded={(keys) => {
+          setRefreshKey((k) => k + 1);
+          const toOpen = keys.slice(-5);
+          toOpen.forEach((key, i) => openTab(key, i === toOpen.length - 1));
+        }}
       />
     </AppShell>
   );

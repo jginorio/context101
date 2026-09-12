@@ -1,5 +1,5 @@
 import type { ComponentType } from "react";
-import { Plug } from "lucide-react";
+import { FileUp, Plug } from "lucide-react";
 
 import {
   GithubLogo,
@@ -15,9 +15,18 @@ import {
 export type SourceIcon = ComponentType<{ className?: string }>;
 
 // Connector types that surface in the UI. Mirrors the Postgres `source_type`
-// enum minus `manual` (manual files are created directly in the Knowledge UI,
-// not through a connector).
+// enum minus `manual` (manual files are uploaded through Add source, not a
+// connector row).
 export type ConnectorType = "sheets" | "docs" | "slides" | "notion" | "github";
+
+// Picker kind for Add source — connectors plus local markdown uploads.
+export type AddSourceKind = ConnectorType | "files";
+
+export const FILES_SOURCE = {
+  kind: "files" as const,
+  menuLabel: "Upload files",
+  icon: FileUp,
+};
 
 export type SourceTypeMeta = {
   type: ConnectorType;
