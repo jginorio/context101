@@ -7,7 +7,6 @@ import {
 import { BrainGlobe } from "@/components/brain-globe";
 import { FadeIn } from "@context101/ui/fade-in";
 import { IntegrationsBeam } from "@context101/ui/integrations-beam";
-import { ProviderMarquee } from "@/components/provider-logos";
 import { GithubLogo, SOURCES } from "@context101/ui/stack-logos";
 import { Button } from "@/components/ui/button";
 import { Marquee } from "@/components/ui/marquee";
@@ -46,7 +45,7 @@ export default function HomePage() {
 
         <FadeIn className="mx-auto flex max-w-3xl flex-col items-center">
           <h1 className="text-[clamp(52px,13vw,82px)] leading-[0.95] font-bold tracking-[-0.06em]">
-            Your AWS.
+            Your context.
             <br />
             <span className="text-primary">Every agent.</span>
           </h1>
@@ -216,12 +215,6 @@ export default function HomePage() {
             Amazon Bedrock Knowledge Bases, S3, and S3 Vectors. You need Bedrock
             model access in the account you deploy to.
           </p>
-        </FadeIn>
-        <FadeIn
-          className="mt-7 overflow-hidden surface-card surface-card--flat py-5"
-          delayMs={60}
-        >
-          <ProviderMarquee />
         </FadeIn>
       </section>
 

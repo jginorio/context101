@@ -7,7 +7,7 @@ import { ImageResponse } from "next/og";
 // fallback, the Twitter card) for every page. 1200x630 is the standard size.
 // Fonts are loaded from local woff files so the card pixel-matches the site:
 // Space Grotesk for the headline, Inter for body — same as the live pages.
-export const alt = "Context101 — Your AWS. Every agent.";
+export const alt = "Context101 — Your context. Every agent.";
 export const size = { width: 1200, height: 630 };
 export const contentType = "image/png";
 
@@ -71,7 +71,7 @@ export default async function OpengraphImage() {
             letterSpacing: "-0.06em",
           }}
         >
-          <div style={{ display: "flex" }}>Your AWS.</div>
+          <div style={{ display: "flex" }}>Your context.</div>
           <div style={{ display: "flex", color: "#b855c9" }}>
             Every agent.
           </div>

@@ -5,7 +5,7 @@ import { SiteBackground } from "@/components/site-background";
 import "./globals.css";
 
 const SITE_URL = "https://context101.dev";
-const TITLE = "Context101 — Your AWS. Every agent.";
+const TITLE = "Context101 — Your context. Every agent.";
 const DESCRIPTION =
   "A thin open-source wrapper around Amazon Bedrock Knowledge Bases. Self-host it in your AWS account. Agents retrieve the same docs through MCP. Hosted later — not yet.";
 
