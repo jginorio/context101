@@ -95,7 +95,7 @@ elif load_env_file "$HOME/.context101/deploy-env"; then
   LOADED_FROM="~/.context101/deploy-env"
 fi
 
-# Allow env vars to take precedence over file values.
+# Allow env vars to take precedence over file values for the two tokens.
 TOKEN="${CTX_TOKEN:-}"
 GH_TOKEN="${CTX_GH_TOKEN:-}"
 
@@ -104,6 +104,14 @@ if [[ -z "$GH_TOKEN" ]] && command -v gh >/dev/null 2>&1; then
   GH_TOKEN=$(gh auth token 2>/dev/null || true)
 fi
 
+# Amplify CreateApp calls GitHub list-repository-webhooks with this
+# token. Installation tokens (ghs_) and gh OAuth tokens (gho_) return
+# 403 and CloudFormation rolls the whole stack back.
+github_token_works_for_amplify() {
+  local t="$1"
+  [[ "$t" == ghp_* || "$t" == github_pat_* ]]
+}
+
 # ── Guardrail: refuse to run for state-changing subcommands ──────────
 needs_guard() {
   case "$SUBCOMMAND" in
@@ -111,6 +119,13 @@ needs_guard() {
     *) return 1 ;;
   esac
 }
+
+if needs_guard && [[ -n "$GH_TOKEN" ]] && ! github_token_works_for_amplify "$GH_TOKEN"; then
+  err "GitHub token is not a personal access token (need ghp_ or github_pat_)."
+  err "Amplify CreateApp calls list-repository-webhooks; ghs_ / gho_ tokens 403 and roll the stack back."
+  err "Set CTX_GH_TOKEN to a classic PAT with repo scope (webhook + contents)."
+  exit 1
+fi
 
 if needs_guard && [[ -z "$TOKEN" || -z "$GH_TOKEN" ]]; then
   err "Missing one or both required tokens for 'cdk $SUBCOMMAND':"
@@ -129,8 +144,8 @@ if needs_guard && [[ -z "$TOKEN" || -z "$GH_TOKEN" ]]; then
     cat > ~/.context101/deploy-env <<'ENV'
     # Required
     CTX_TOKEN="context101-platea-2026-bearer"
-    # GitHub PAT (or omit this line — the wrapper will fall back to
-    # \`gh auth token\` if you have the GitHub CLI logged in).
+    # GitHub classic PAT (ghp_) with repo scope. \`gh auth token\` is
+    # only used when it returns a PAT — ghs_ / gho_ tokens are rejected.
     # CTX_GH_TOKEN="ghp_..."
 
     # Optional
@@ -156,8 +171,28 @@ $SEED && CDK_ARGS+=("-c" "seed=true")
 CDK_ARGS+=("-c" "token=$TOKEN")
 CDK_ARGS+=("-c" "githubToken=$GH_TOKEN")
 
+# When an env file was loaded, only forward keys declared in that file.
+# Ambient hosted vars (BETTER_AUTH_URL, APP_URL, MCP_PUBLIC_HOST, …)
+# must not become CDK context on a self-host deploy.
+env_file_declares() {
+  local key="$1"
+  local f="$2"
+  [[ -n "$f" && -f "$f" ]] || return 1
+  grep -qE "^[[:space:]]*(export[[:space:]]+)?${key}=" "$f"
+}
+
+LOADED_FROM_PATH=""
+if [[ "$LOADED_FROM" == ".deploy-env" ]]; then
+  LOADED_FROM_PATH=".deploy-env"
+elif [[ "$LOADED_FROM" == "~/.context101/deploy-env" ]]; then
+  LOADED_FROM_PATH="$HOME/.context101/deploy-env"
+fi
+
 add_context_if_set() {
   local key="$1"
+  if [[ -n "$LOADED_FROM_PATH" ]] && ! env_file_declares "$key" "$LOADED_FROM_PATH"; then
+    return 0
+  fi
   local value="${!key:-}"
   if [[ -n "$value" ]]; then
     CDK_ARGS+=("-c" "$key=$value")
@@ -199,18 +234,29 @@ printf "\n${BOLD}cdk %s${RESET}\n" "$SUBCOMMAND"
 [[ -n "${AWS_PROFILE:-}" ]] && printf "  ${DIM}AWS_PROFILE: %s${RESET}\n" "$AWS_PROFILE"
 printf "  ${DIM}token:       %s${RESET}\n" "$(mask "$TOKEN")"
 printf "  ${DIM}githubToken: %s${RESET}\n" "$(mask "$GH_TOKEN")"
-[[ -n "${DATABASE_URL:-}" ]]        && printf "  ${DIM}DATABASE_URL:       %s${RESET}\n" "$(mask "$DATABASE_URL")"
-[[ -n "${DATABASE_DRIVER:-}" ]]     && printf "  ${DIM}DATABASE_DRIVER:    %s${RESET}\n" "$DATABASE_DRIVER"
-[[ -n "${DATABASE_PREPARE:-}" ]]    && printf "  ${DIM}DATABASE_PREPARE:   %s${RESET}\n" "$DATABASE_PREPARE"
-[[ -n "${BETTER_AUTH_SECRET:-}" ]]  && printf "  ${DIM}BETTER_AUTH_SECRET: %s${RESET}\n" "$(mask "$BETTER_AUTH_SECRET")"
-[[ -n "${BETTER_AUTH_URL:-}" ]]     && printf "  ${DIM}BETTER_AUTH_URL:    %s${RESET}\n" "$BETTER_AUTH_URL"
-[[ -n "${MCP_TOKEN_PEPPER:-}" ]]    && printf "  ${DIM}MCP_TOKEN_PEPPER:   %s${RESET}\n" "$(mask "$MCP_TOKEN_PEPPER")"
-[[ -n "${APP_MODE:-}" ]]            && printf "  ${DIM}APP_MODE:           %s${RESET}\n" "$APP_MODE"
-[[ -n "${ALLOW_PUBLIC_SIGNUP:-}" ]] && printf "  ${DIM}ALLOW_PUBLIC_SIGNUP:%s${RESET}\n" "$ALLOW_PUBLIC_SIGNUP"
-[[ -n "${BILLING_ENABLED:-}" ]]     && printf "  ${DIM}BILLING_ENABLED:    %s${RESET}\n" "$BILLING_ENABLED"
-[[ -n "${APP_URL:-}" ]]             && printf "  ${DIM}APP_URL:            %s${RESET}\n" "$APP_URL"
-[[ -n "${MARKETING_URL:-}" ]]       && printf "  ${DIM}MARKETING_URL:      %s${RESET}\n" "$MARKETING_URL"
-[[ -n "${REPOSITORY:-}" ]]          && printf "  ${DIM}REPOSITORY:         %s${RESET}\n" "$REPOSITORY"
+
+preview_if_forwarded() {
+  local key="$1"
+  local label="$2"
+  if [[ -n "$LOADED_FROM_PATH" ]] && ! env_file_declares "$key" "$LOADED_FROM_PATH"; then
+    return 0
+  fi
+  local raw="${!key:-}"
+  [[ -n "$raw" ]] && printf "  ${DIM}%s${RESET}\n" "$label"
+}
+
+preview_if_forwarded "DATABASE_URL"        "DATABASE_URL:       $(mask "${DATABASE_URL:-}")"
+preview_if_forwarded "DATABASE_DRIVER"     "DATABASE_DRIVER:    ${DATABASE_DRIVER:-}"
+preview_if_forwarded "DATABASE_PREPARE"    "DATABASE_PREPARE:   ${DATABASE_PREPARE:-}"
+preview_if_forwarded "BETTER_AUTH_SECRET"  "BETTER_AUTH_SECRET: $(mask "${BETTER_AUTH_SECRET:-}")"
+preview_if_forwarded "BETTER_AUTH_URL"     "BETTER_AUTH_URL:    ${BETTER_AUTH_URL:-}"
+preview_if_forwarded "MCP_TOKEN_PEPPER"    "MCP_TOKEN_PEPPER:   $(mask "${MCP_TOKEN_PEPPER:-}")"
+preview_if_forwarded "APP_MODE"            "APP_MODE:           ${APP_MODE:-}"
+preview_if_forwarded "ALLOW_PUBLIC_SIGNUP" "ALLOW_PUBLIC_SIGNUP:${ALLOW_PUBLIC_SIGNUP:-}"
+preview_if_forwarded "BILLING_ENABLED"     "BILLING_ENABLED:    ${BILLING_ENABLED:-}"
+preview_if_forwarded "APP_URL"             "APP_URL:            ${APP_URL:-}"
+preview_if_forwarded "MARKETING_URL"       "MARKETING_URL:      ${MARKETING_URL:-}"
+preview_if_forwarded "REPOSITORY"          "REPOSITORY:         ${REPOSITORY:-}"
 $SEED && printf "  ${DIM}seed:        ${RESET}${YELLOW}true${RESET}\n"
 printf "\n"
 

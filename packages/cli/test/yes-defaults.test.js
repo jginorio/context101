@@ -86,7 +86,7 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
   for (const secret of secrets) {
     assert.equal(text.includes(secret), false, "stdout leaked a secret");
   }
-  assert.equal(text.includes("gho_test_token_must_never_appear"), false);
+  assert.equal(text.includes("ghp_test_token_must_never_appear"), false);
   assert.match(text, /wrote tmp-deploy-env/);
   assert.match(text, /\.\/cdk\/deploy\.sh/);
   assert.match(text, /\/setup/);

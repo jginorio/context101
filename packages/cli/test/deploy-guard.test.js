@@ -45,3 +45,48 @@ test("--yes --deploy calls ./cdk/deploy.sh only", async () => {
   assert.match(io.stdoutText, /Running \.\/cdk\/deploy\.sh/);
   assert.equal(io.stdoutText.includes("cdk deploy"), false);
 });
+
+test("--yes --deploy refuses a ghs_ gh token", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-ghs-"));
+  await makeRepoFixture(root);
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(
+    [
+      "init",
+      "--yes",
+      "--deploy",
+      "--database-url",
+      "postgresql://localhost/db",
+      "--force",
+      "--deploy-env",
+      path.join(root, "cdk", ".deploy-env"),
+    ],
+    {
+      cwd: root,
+      env: { ...process.env, NO_COLOR: "1" },
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      exec: fakeExec({
+        "gh auth token": {
+          ok: true,
+          code: 0,
+          stdout: "ghs_installation_must_never_appear",
+          stderr: "",
+          error: null,
+        },
+      }),
+      runDeploy: async (spec) => {
+        calls.push(spec);
+        return 0;
+      },
+    }
+  );
+
+  assert.equal(code, 1);
+  assert.equal(calls.length, 0);
+  assert.match(io.stderrText, /PAT|webhook|roll the stack back/i);
+  assert.equal(io.stderrText.includes("ghs_installation_must_never_appear"), false);
+});

@@ -107,7 +107,7 @@ Before your first deploy, make sure you have:
 - **AWS CLI v2** authenticated for the target account (`aws sts get-caller-identity` should work). The examples use `AWS_PROFILE=<your-profile>`; replace with your own profile/region.
 - **Node 20+** and **npm** — for the CDK app and the Next.js web build.
 - **Docker** — CDK asset bundling for the wiki-generator image uses it. `colima start` on macOS if you use Colima.
-- **GitHub CLI (`gh`)** or a manually-created Personal Access Token — Amplify Hosting needs a GitHub token with `repo` scope to watch your fork. `gh auth token` returns one if you're already logged in.
+- **GitHub CLI (`gh`)** or a manually-created Personal Access Token — Amplify Hosting needs a **classic PAT (`ghp_`)** with `repo` scope (it creates a repo webhook). `gh auth token` only works when that token is a PAT. GitHub App installation tokens (`ghs_`) and gh OAuth tokens (`gho_`) 403 and roll the stack back — put a PAT in `CTX_GH_TOKEN`.
 - **Python 3.11+** — only if you want to run the MCP server or the wiki generator locally.
 
 **AWS account setup**
@@ -145,7 +145,7 @@ Dry-run (no files, no deploy): `npx context101 init --dry-run`. The command chec
 > chmod 600 cdk/.deploy-env
 > ```
 >
-> The GitHub PAT is auto-discovered from `gh auth token` if you have the GitHub CLI logged in.
+> The GitHub PAT is auto-discovered from `gh auth token` only when that token is a `ghp_` / `github_pat_` PAT. Installation tokens from Cursor / GitHub Apps are rejected before CDK runs.
 
 ### 1. First deploy (minimal — just KB + docs bucket)
 

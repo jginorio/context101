@@ -34,7 +34,7 @@ export function renderDeployEnv(values) {
     lines.push(`CTX_GH_TOKEN=${quoteShell(values.CTX_GH_TOKEN)}`);
   } else {
     lines.push(
-      "# CTX_GH_TOKEN omitted — ./cdk/deploy.sh will use `gh auth token` if logged in."
+      "# CTX_GH_TOKEN omitted — ./cdk/deploy.sh uses `gh auth token` only when it is a PAT."
     );
   }
 

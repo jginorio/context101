@@ -60,7 +60,7 @@ export function fakeExec(overrides = {}) {
       return ok("/usr/bin/gh");
     }
     if (command === "gh" && args[0] === "auth") {
-      return ok("gho_test_token_must_never_appear");
+      return ok("ghp_test_token_must_never_appear");
     }
     if (command === "git") {
       return ok("https://github.com/acme/context101.git");

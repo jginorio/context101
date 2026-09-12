@@ -1,6 +1,22 @@
 import { SMOOTH_REGION } from "./defaults.js";
 import { commandExists } from "./exec.js";
 
+/** Amplify CreateApp calls GitHub list-repository-webhooks with this token. */
+export function classifyGithubToken(token) {
+  const value = String(token ?? "").trim();
+  if (!value) return "missing";
+  if (value.startsWith("ghp_")) return "classic_pat";
+  if (value.startsWith("github_pat_")) return "fine_grained_pat";
+  if (value.startsWith("ghs_")) return "installation";
+  if (value.startsWith("gho_")) return "oauth";
+  if (value.startsWith("ghu_")) return "user_to_server";
+  return "unknown";
+}
+
+export function githubTokenWorksForAmplify(kind) {
+  return kind === "classic_pat" || kind === "fine_grained_pat";
+}
+
 function versionOf(exec, command, args, pattern) {
   const result = exec({ command, args });
   if (!result.ok) return null;
@@ -59,9 +75,11 @@ export function runChecks({ exec, env = {}, region = SMOOTH_REGION }) {
   }
 
   let ghLoggedIn = false;
+  let ghTokenKind = "missing";
   if (ghOk) {
     const token = exec({ command: "gh", args: ["auth", "token"] });
-    ghLoggedIn = token.ok && token.stdout.length > 0;
+    ghLoggedIn = token.ok && token.stdout.trim().length > 0;
+    if (ghLoggedIn) ghTokenKind = classifyGithubToken(token.stdout);
   }
 
   return {
@@ -69,7 +87,12 @@ export function runChecks({ exec, env = {}, region = SMOOTH_REGION }) {
     npm: { ok: Boolean(npmVersion), version: npmVersion },
     aws: { ok: Boolean(awsVersion), version: awsVersion, identity: awsIdentity },
     docker: { ok: dockerOk },
-    gh: { ok: ghOk, loggedIn: ghLoggedIn },
+    gh: {
+      ok: ghOk,
+      loggedIn: ghLoggedIn,
+      tokenKind: ghTokenKind,
+      amplifyOk: githubTokenWorksForAmplify(ghTokenKind),
+    },
     bootstrap: { ok: bootstrapped, region },
   };
 }
@@ -89,8 +112,12 @@ export function printChecks(checks, io) {
     warn("aws cli not found");
   }
   (checks.docker.ok ? ok : warn)(checks.docker.ok ? "docker" : "docker not found (needed for CDK image assets)");
-  if (checks.gh.ok && checks.gh.loggedIn) {
-    ok("gh (logged in — deploy.sh can pick up the PAT)");
+  if (checks.gh.ok && checks.gh.amplifyOk) {
+    ok("gh (logged in with a PAT — deploy.sh can use it for Amplify)");
+  } else if (checks.gh.ok && checks.gh.loggedIn) {
+    warn(
+      `gh token is ${checks.gh.tokenKind} — Amplify needs CTX_GH_TOKEN=ghp_… (repo webhooks)`
+    );
   } else if (checks.gh.ok) {
     warn("gh found but not logged in — set CTX_GH_TOKEN before deploy");
   } else {

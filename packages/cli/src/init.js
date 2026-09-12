@@ -9,7 +9,12 @@ import {
   EXAMPLE_ENV_REL,
   SMOOTH_REGION,
 } from "./defaults.js";
-import { runChecks, printChecks } from "./checks.js";
+import {
+  classifyGithubToken,
+  githubTokenWorksForAmplify,
+  printChecks,
+  runChecks,
+} from "./checks.js";
 import {
   inferDriver,
   inferPrepare,
@@ -141,8 +146,10 @@ export async function runInit(opts, ctx) {
   await writeDeployEnv(envPath, values);
 
   io.ok(`wrote ${envDisplay} (chmod 600)`);
-  if (!checks.gh.loggedIn && !answers.ghToken) {
-    io.warn("no GitHub PAT yet — add CTX_GH_TOKEN or run `gh auth login` before deploy");
+  if (!githubReadyForAmplify(checks, answers)) {
+    io.warn(
+      "no Amplify-capable GitHub PAT yet — set CTX_GH_TOKEN to a ghp_ or github_pat_ token before deploy"
+    );
   }
   io.write("");
   io.write(nextSteps(plan));
@@ -154,8 +161,10 @@ export async function runInit(opts, ctx) {
 
   if (!answers.deploy) return 0;
 
-  if (!checks.gh.loggedIn && !answers.ghToken) {
-    io.err("not deploying: CTX_GH_TOKEN / gh auth is missing. The wrapper would refuse.");
+  if (!githubReadyForAmplify(checks, answers)) {
+    io.err(
+      "not deploying: Amplify needs a GitHub PAT (ghp_ / github_pat_). Installation and gh OAuth tokens cannot create repo webhooks and will roll the stack back."
+    );
     return 1;
   }
 
@@ -228,4 +237,11 @@ async function readStackRepo(repoRoot) {
 function withAwsProfile(env, profile) {
   if (!profile) return { ...env };
   return { ...env, AWS_PROFILE: profile };
+}
+
+function githubReadyForAmplify(checks, answers) {
+  if (answers.ghToken) {
+    return githubTokenWorksForAmplify(classifyGithubToken(answers.ghToken));
+  }
+  return Boolean(checks.gh.amplifyOk);
 }
