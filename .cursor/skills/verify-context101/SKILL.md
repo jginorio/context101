@@ -84,7 +84,7 @@ Stable handles:
 | Add repository | button `Add repository` (do not submit in a default run) |
 | Library tree | tree `Tree View` |
 | File row | treeitem named the filename (e.g. `verify-e2e.md`); `data-tree-key` is the S3 key |
-| Folder row | treeitem named the folder (`Uploaded Files` is the virtual root, `data-tree-key=""`) |
+| Folder row | treeitem named the folder (`Uploaded Files` is the virtual root, `data-tree-key=""`). Browse-mode source trees (GitHub, Docs, …) join empty parent folders into one row (`apps/plateapr.com/docs`); `data-tree-key` is the deepest folder prefix |
 | File context menu | menuitem `Open`, `Open in new tab`, `Rename`, `Delete` |
 | Folder context menu | menuitem `Rename`, `Delete` |
 | Rename editor | inline textbox `[data-slot="tree-view-node-rename-input"]` on the row (no dialog); Enter or blur saves, Escape cancels |

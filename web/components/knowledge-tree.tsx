@@ -34,6 +34,11 @@ import { toast } from "sonner";
 
 import { cn } from "@/lib/utils";
 import {
+  compactFolder,
+  compactedChildrenToExpand,
+  nextCompactPrefetchKey,
+} from "@/lib/compact-folders";
+import {
   type DragPayload,
   computeMoveTarget,
   computeRenameTarget,
@@ -232,6 +237,7 @@ function TreeNode({
         icon={node.headerIcon ? null : undefined}
         expandedIcon={node.headerIcon ? null : undefined}
         className={highlighted}
+        title={node.name.includes("/") ? node.name : undefined}
         data-drop-prefix={canUpload || canReceiveMove ? node.key : undefined}
         data-tree-key={node.key}
         {...rowDragProps}
@@ -378,8 +384,12 @@ export function FolderNode({
   const requestVersion = React.useRef(0);
   const listingsRef = React.useRef<Record<string, LoadState>>({});
   const movingRef = React.useRef(false);
+  const autoExpandedRef = React.useRef<Set<string>>(new Set());
   const [expanded, setExpanded] = React.useState<string[]>(initialExpanded);
   const [listings, setListings] = React.useState<Record<string, LoadState>>({});
+  // Connector trees (GitHub, Docs, …) collapse empty parent folders into
+  // one path so a scoped sync like `apps/plateapr.com/docs` is one click.
+  const compactFolders = ctx.mode === "browse";
 
   const setListingState = React.useCallback(
     (targetPrefix: string, state: LoadState) => {
@@ -401,6 +411,12 @@ export function FolderNode({
       const data = await fetchList(targetPrefix);
       if (requestVersion.current !== version) return;
       setListingState(targetPrefix, { status: "loaded", data });
+      // Walk empty parent folders so the joined path is ready when the
+      // repo row is opened (apps → plateapr.com → docs).
+      if (compactFolders) {
+        const next = nextCompactPrefetchKey(data);
+        if (next) void loadPrefix(next);
+      }
     } catch (error) {
       if (requestVersion.current !== version) return;
       setListingState(targetPrefix, {
@@ -408,7 +424,7 @@ export function FolderNode({
         message: error instanceof Error ? error.message : String(error),
       });
     }
-  }, [setListingState]);
+  }, [compactFolders, setListingState]);
 
   const expandDest = React.useCallback((parentPrefix: string) => {
     if (!parentPrefix) return;
@@ -498,6 +514,7 @@ export function FolderNode({
   React.useEffect(() => {
     requestVersion.current += 1;
     listingsRef.current = {};
+    autoExpandedRef.current = new Set();
     setListings({});
     // Keep folders the user already opened so a drop-refresh doesn't
     // collapse the destination.
@@ -513,6 +530,26 @@ export function FolderNode({
     }
   }, [defaultOpen, expanded, loadPrefix, prefix, showRoot, ctx.refreshKey]);
 
+  React.useEffect(() => {
+    if (!compactFolders) return;
+    const toAdd: string[] = [];
+    for (const id of expanded) {
+      // First-level rows under the connector header stay collapsed until
+      // the user opens them; only join paths *inside* an opened repo.
+      if (id === prefix) continue;
+      for (const key of compactedChildrenToExpand(id, listings)) {
+        if (autoExpandedRef.current.has(key) || expanded.includes(key)) {
+          autoExpandedRef.current.add(key);
+          continue;
+        }
+        autoExpandedRef.current.add(key);
+        toAdd.push(key);
+      }
+    }
+    if (toAdd.length === 0) return;
+    setExpanded((prev) => [...new Set([...prev, ...toAdd])]);
+  }, [compactFolders, expanded, listings, prefix]);
+
   function buildChildren(parentPrefix: string): KnowledgeTreeNode[] {
     const state = listings[parentPrefix];
     if (!state || state.status === "loading") {
@@ -527,15 +564,23 @@ export function FolderNode({
       (folder) =>
         !(parentPrefix === prefix && hideRootFolders?.includes(folder.name))
     );
+    // Keep the first level under a connector header as-is (the repo name).
+    // Compact only the empty parents *inside* that repo.
+    const joinEmptyParents = compactFolders && parentPrefix !== prefix;
 
     const children: KnowledgeTreeNode[] = [
-      ...visibleFolders.map((folder) => ({
-        children: buildChildren(folder.key),
-        id: folder.key,
-        key: folder.key,
-        kind: "folder" as const,
-        name: folder.name,
-      })),
+      ...visibleFolders.map((folder) => {
+        const resolved = joinEmptyParents
+          ? compactFolder(folder, listings)
+          : { key: folder.key, name: folder.name };
+        return {
+          children: buildChildren(resolved.key),
+          id: resolved.key,
+          key: resolved.key,
+          kind: "folder" as const,
+          name: resolved.name,
+        };
+      }),
       ...state.data.files.map((file) => ({
         id: file.key,
         key: file.key,
