@@ -21,6 +21,7 @@ export async function main(argv, ctx) {
   }
 
   try {
+    // await so Inquirer ExitPromptError is caught; a bare return leaks the rejection
     if (opts.help || opts.command === "help") {
       const topic =
         opts.helpTopic ?? (opts.command !== "help" ? opts.command : null);
@@ -30,19 +31,19 @@ export async function main(argv, ctx) {
     }
 
     if (opts.command === "deploy" || opts.command === "diff" || opts.command === "synth") {
-      return runDeploy(opts, ctx);
+      return await runDeploy(opts, ctx);
     }
     if (opts.command === "list") {
-      return runList(opts, ctx);
+      return await runList(opts, ctx);
     }
     if (opts.command === "destroy") {
-      return runDestroy(opts, ctx);
+      return await runDestroy(opts, ctx);
     }
     if (opts.command === "config") {
-      return runConfig(opts, ctx);
+      return await runConfig(opts, ctx);
     }
 
-    return runInit(opts, ctx);
+    return await runInit(opts, ctx);
   } catch (error) {
     if (isExitPromptError(error)) {
       return printCancelled(io);
