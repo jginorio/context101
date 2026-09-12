@@ -14,6 +14,7 @@ import {
   Plug,
   Settings,
   Sparkles,
+  GitCompare,
   User,
 } from "lucide-react";
 import { authClient } from "@/lib/auth/client";
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
   { href: "/knowledge", label: "Knowledge", icon: FolderTree },
   { href: "/wiki", label: "Wiki", icon: BookOpen },
   { href: "/suggestions", label: "Suggestions", icon: Sparkles },
+  { href: "/conflicts", label: "Conflicts", icon: GitCompare },
   { href: "/sources", label: "Sources", icon: Plug },
   { href: "/brains", label: "Brains", icon: Brain },
 ];
