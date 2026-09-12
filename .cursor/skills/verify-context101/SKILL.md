@@ -82,6 +82,11 @@ Stable handles:
 | Conflict sheet | row click; title is the conflict title. Buttons `Keep left`, `Keep right`, `Merge`, `Approve`, `Reject` |
 | Sources nav | link `Sources` → `/sources` (heading `Data sources`) |
 | Brains nav | link `Brains` → `/brains` |
+| New brain | button `New brain` (do not submit in a default run) |
+| Brain Advanced | button `Advanced` / `aria-label="Advanced settings"` on a ready row (opens `/settings`) |
+| Delete brain | icon button `aria-label="Delete brain"` on a non-default row; while `deleting` the label is `Retry delete`. Dialog title `Delete brain "{name}"?`. Type the display name; footer button `Delete brain`. Never use in a default run |
+| Brain error gate | heading `Brain failed to provision`; button `Delete & retry` goes to `/brains` (do not delete) |
+| First-run setup | `/setup` — heading `Set up Context101`, card `Create first admin`. Redirects to `/login` when an org already exists. Skip on a shared instance |
 | New file | button `New file` |
 | New folder | button `New folder` |
 | Add source | button `Add source` → dialog `Add a source` |

@@ -35,7 +35,7 @@ This directory is the maintained source for verifying user-facing behavior of th
 - [Knowledge viewer](./knowledge-viewer.md) — open a file, preview, edit, save.
 - [Add source](./add-source.md) — open the picker (do not submit a connector in a default run).
 - [GitHub source](./github-source.md) — org-scoped GitHub App (Connect GitHub / repo picker); PAT is fallback only. Do not install or submit in a default run.
-- [Login](./login.md) — email sign-in and session cookie.
-- [Brains](./brains.md) — switch and inspect brains (do not provision or delete brains in a default run).
+- [Login](./login.md) — email sign-in and session cookie. `/setup` is first admin only (skip when an org exists).
+- [Brains](./brains.md) — switch and inspect brains (do not provision, delete, or retry-delete brains in a default run).
 - [Wiki](./wiki.md) — open the wiki index and a page; do not click Refresh now unless asked.
 - [Conflicts](./conflicts.md) — open the Conflicts queue; filter/search/refresh. Do not approve a GitHub write-back in a default run.

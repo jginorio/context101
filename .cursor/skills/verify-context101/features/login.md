@@ -26,6 +26,16 @@ Preconditions:
 - **Reach Knowledge.** With the Cookie header emulated, navigate to `/knowledge`. Heading `Knowledge` and tree `Tree View` appear. Do not use `/login` in this agent Chrome.
 - **Form path (skip here).** On a GPU browser: fill textbox `Email`, `Password`, click `Sign in`. Unauthenticated `/knowledge` redirects to `/login?next=%2Fknowledge`.
 
+## First-run setup (skip on a shared instance)
+
+`/setup` is the only first-admin path (self-hosted, no org yet). It is not a second login.
+
+- Heading `Set up Context101`. Card title `Create first admin`.
+- Placeholders: `Your name`, `Email`, `Password`, `Organization name`. Button `Create admin and organization`.
+- If an organization already exists, or `APP_MODE` is not `self_hosted`, the page redirects to `/login`.
+- Missing `DATABASE_URL` shows heading `Database not configured`.
+- Do not submit setup on a shared verify instance (it creates a real Better Auth user + org). Doctor already assumes `CONTEXT101_USER` exists.
+
 ## Gotchas
 
 - Hosted `BETTER_AUTH_URL` rejects browser fetches from `http://localhost:3000` (`INVALID_ORIGIN`). Curl without Origin works.
