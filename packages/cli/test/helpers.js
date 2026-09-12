@@ -67,32 +67,7 @@ export function fakeExec(overrides = {}) {
       return ok("");
     }
     if (command === "aws" && args[0] === "bedrock") {
-      return ok(
-        JSON.stringify({
-          modelSummaries: [
-            {
-              modelId: "amazon.titan-embed-text-v2:0",
-              providerName: "Amazon",
-              modelLifecycle: { status: "ACTIVE" },
-            },
-            {
-              modelId: "amazon.titan-embed-text-v1",
-              providerName: "Amazon",
-              modelLifecycle: { status: "ACTIVE" },
-            },
-            {
-              modelId: "cohere.embed-english-v3",
-              providerName: "Cohere",
-              modelLifecycle: { status: "ACTIVE" },
-            },
-            {
-              modelId: "cohere.embed-multilingual-v3:0:512",
-              providerName: "Cohere",
-              modelLifecycle: { status: "ACTIVE" },
-            },
-          ],
-        })
-      );
+      return bedrockReply(args, overrides);
     }
     if (command === "sh" && args[1] === "command -v docker") {
       return ok("/usr/bin/docker");
@@ -113,6 +88,75 @@ export function fakeExec(overrides = {}) {
       return ok("https://github.com/acme/context101.git");
     }
     return { ok: false, code: 1, stdout: "", stderr: `unmocked: ${key}`, error: null };
+  };
+}
+
+function argValue(args, flag) {
+  const index = args.indexOf(flag);
+  return index >= 0 ? args[index + 1] : "";
+}
+
+function bedrockReply(args, overrides = {}) {
+  const sub = args[1];
+  if (sub === "list-foundation-models") {
+    return ok(
+      JSON.stringify({
+        modelSummaries: [
+          {
+            modelId: "amazon.titan-embed-text-v2:0",
+            providerName: "Amazon",
+            modelLifecycle: { status: "ACTIVE" },
+          },
+          {
+            modelId: "amazon.titan-embed-text-v1",
+            providerName: "Amazon",
+            modelLifecycle: { status: "ACTIVE" },
+          },
+          {
+            modelId: "cohere.embed-english-v3",
+            providerName: "Cohere",
+            modelLifecycle: { status: "ACTIVE" },
+          },
+          {
+            modelId: "cohere.embed-multilingual-v3:0:512",
+            providerName: "Cohere",
+            modelLifecycle: { status: "ACTIVE" },
+          },
+        ],
+      })
+    );
+  }
+  if (sub === "get-foundation-model-availability") {
+    const id = argValue(args, "--model-id");
+    const status = overrides.bedrockAvailability?.[id] || "AVAILABLE";
+    return ok(
+      JSON.stringify({
+        agreementAvailability: { status },
+        entitlementAvailability: status,
+      })
+    );
+  }
+  if (sub === "list-foundation-model-agreement-offers") {
+    return ok(
+      JSON.stringify({
+        offers: [
+          {
+            offerType: "PUBLIC",
+            offerToken: "offer-token-must-never-appear",
+          },
+        ],
+      })
+    );
+  }
+  if (sub === "create-foundation-model-agreement") {
+    return ok("");
+  }
+  return {
+    ok: false,
+    code: 1,
+    stdout: "",
+    stderr: `unmocked bedrock: ${sub}`,
+    error: null,
   };
 }
 

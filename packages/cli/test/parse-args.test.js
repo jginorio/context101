@@ -27,6 +27,7 @@ test("parses init flags", () => {
     "https://github.com/acme/context101",
     "--embed-model",
     "amazon.titan-embed-text-v1",
+    "--skip-bedrock-access",
     "--deploy-env",
     "/tmp/deploy-env",
     "--aws-profile",
@@ -45,6 +46,7 @@ test("parses init flags", () => {
   assert.equal(opts.databasePrepare, false);
   assert.equal(opts.repo, "https://github.com/acme/context101");
   assert.equal(opts.embedModel, "amazon.titan-embed-text-v1");
+  assert.equal(opts.skipBedrockAccess, true);
   assert.equal(opts.envFile, "/tmp/deploy-env");
   assert.equal(opts.awsProfile, "findit");
   assert.equal(opts.awsAccessKeyId, "TESTACCESSKEYID12345");
@@ -55,6 +57,7 @@ test("help text says --aws-profile is required with --yes when several exist", (
   assert.match(helpText(), /required with --yes/);
   assert.match(helpText(), /skip Amplify/);
   assert.match(helpText(), /embed-model/);
+  assert.match(helpText(), /skip-bedrock-access/);
   assert.match(helpText(), /create-rds|creates RDS/);
 });
 

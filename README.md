@@ -116,11 +116,7 @@ Before your first deploy, make sure you have:
   ```bash
   npx cdk bootstrap aws://<ACCOUNT_ID>/us-east-1
   ```
-- **Bedrock model access** — enable the models we use in the Bedrock console → *Model access*:
-  - `amazon.titan-embed-text-v2:0` (embeddings for the KB)
-  - `us.anthropic.claude-opus-4-7` (the *Improve with AI* button and the wiki generator — requires a Marketplace subscription, done once via the "Request access" flow)
-
-  Without these, `cdk deploy` will still succeed, but writes to `/improve` and wiki regen will 403.
+- **Bedrock model access** — `context101 init` requests access for every Amazon Titan and Cohere embedding model brains can pick later (Amazon first-party models are auto-enabled; Cohere needs a Marketplace agreement). CDK still defaults the first brain to `amazon.titan-embed-text-v2:0`. Claude (`us.anthropic.claude-opus-4-7`) is optional for Improve; wiki is paused.
 
 **GitHub**
 - Fork this repo to your own account. CDK references the repo by owner/name inside `lib/context101-stack.ts` — update the `repository` URL there if your fork lives elsewhere.

@@ -37,9 +37,11 @@ test("dry-run prints the plan and writes nothing", async () => {
   assert.match(text, /Would write: cdk\/\.deploy-env/);
   assert.match(text, /Would not deploy/);
   assert.match(text, /Amplify: skipped/);
+  assert.match(text, /request access for all/);
   assert.match(text, /amazon\.titan-embed-text-v2:0/);
-  assert.match(text, /available: .*amazon\.titan-embed-text-v1/);
+  assert.match(text, /amazon\.titan-embed-text-v1/);
   assert.match(text, /cohere\.embed-english-v3/);
+  assert.match(text, /cohere\.embed-english-light-v3/);
   assert.equal(text.includes("cohere.embed-multilingual-v3:0:512"), false);
   assert.match(text, /Amplify default domain/);
   assert.match(text, /deploy\.sh --seed/);

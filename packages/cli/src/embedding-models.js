@@ -1,5 +1,3 @@
-import { TITAN_EMBED_MODEL } from "./defaults.js";
-
 // Keep in sync with web/lib/embedding-models.ts — ListFoundationModels
 // does not return vector dimensions, and SKU variants (…:0:512) are not
 // valid Knowledge Base embeddingModelArn values.
@@ -57,14 +55,23 @@ export function embeddingModelMeta(modelId) {
 }
 
 export function fallbackEmbeddingModels() {
-  return [
-    TITAN_EMBED_MODEL,
-    "amazon.titan-embed-text-v1",
-    "cohere.embed-english-v3",
-    "cohere.embed-multilingual-v3",
-  ]
-    .filter((id) => KNOWN_EMBEDDING_DIMENSIONS[id])
-    .map((id) => catalogEntry(id));
+  return Object.keys(KNOWN_EMBEDDING_DIMENSIONS).map((id) => catalogEntry(id));
+}
+
+/** Live Bedrock list plus every curated embedding id brains can pick later. */
+export function allEmbeddingModels(listed = []) {
+  const byId = new Map();
+  for (const id of Object.keys(KNOWN_EMBEDDING_DIMENSIONS)) {
+    byId.set(id, catalogEntry(id));
+  }
+  for (const model of listed) {
+    if (model?.id) byId.set(model.id, model);
+  }
+  return [...byId.values()].sort((a, b) =>
+    a.provider === b.provider
+      ? a.label.localeCompare(b.label)
+      : a.provider.localeCompare(b.provider)
+  );
 }
 
 export function catalogEntry(modelId) {
@@ -137,10 +144,11 @@ export function listEmbeddingModels({ exec, env, region } = {}) {
     };
   }
   try {
-    const models = parseEmbeddingCatalog(JSON.parse(result.stdout || "{}"));
-    if (models.length === 0) {
+    const listed = parseEmbeddingCatalog(JSON.parse(result.stdout || "{}"));
+    const models = allEmbeddingModels(listed);
+    if (listed.length === 0) {
       return {
-        models: fallbackEmbeddingModels(),
+        models,
         source: "fallback",
         warning: "No embedding models returned by Bedrock — showing defaults.",
       };

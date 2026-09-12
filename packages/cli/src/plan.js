@@ -9,10 +9,14 @@ export function deployCommand(seed) {
 }
 
 export function formatDryRun(plan) {
-  const embed =
-    plan.embedModelId || `${TITAN_EMBED_MODEL} (default — skip / pick later in the app)`;
-  const available = plan.embeddingModels?.length
-    ? `     available: ${plan.embeddingModels.map((m) => m.id).join(", ")}`
+  const access = plan.requestBedrockAccess
+    ? "request access for all (users pick later in the app)"
+    : "skip requesting access";
+  const embedDefault = plan.embedModelId
+    ? `${plan.embedModelId} (--embed-model)`
+    : `${TITAN_EMBED_MODEL} (CDK default)`;
+  const models = plan.embeddingModels?.length
+    ? `     ${plan.embeddingModels.map((m) => m.id).join(", ")}`
     : null;
   const lines = [
     "Plan (dry-run — nothing will be written, nothing will be deployed)",
@@ -33,8 +37,9 @@ export function formatDryRun(plan) {
           ? "     using AWS access keys (written to deploy-env)"
           : "     would ask for AWS access key and secret",
     `  3. CDK bootstrap: ${bootstrapLabel(plan)}`,
-    `  4. Bedrock embedding model: ${embed}`,
-    available,
+    `  4. Bedrock embeddings: ${access}`,
+    models,
+    `     default: ${embedDefault}`,
     `     Claude (${CLAUDE_IMPROVE_MODEL}) for Improve — wiki is paused; skip`,
     plan.repository
       ? `  5. Amplify: watch ${plan.repository}`

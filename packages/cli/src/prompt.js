@@ -28,24 +28,21 @@ export async function promptAnswers({ defaults, io, exec, env }) {
   }
 
   io.write("");
-  io.write("Bedrock embedding model (console → Model access):");
-  io.dim(`  Skip keeps ${TITAN_EMBED_MODEL} (CDK default; you can change it later in the app).`);
+  io.write("Bedrock embedding models (console → Model access):");
+  io.dim("  Request access for every embedding model brains can pick later.");
+  io.dim(`  CDK default remains ${TITAN_EMBED_MODEL} unless you pass --embed-model.`);
   io.dim(`  Claude (${CLAUDE_IMPROVE_MODEL}) is optional for Improve. Wiki is paused.`);
   const catalog = listEmbeddingModels({ exec, env, region });
   if (catalog.warning) io.warn(catalog.warning);
-  const embedModelId = await select({
-    message: "Embedding model",
-    default: defaults.embedModelId || "",
-    choices: [
-      {
-        name: `Skip — ${TITAN_EMBED_MODEL} (default)`,
-        value: "",
-      },
-      ...catalog.models.map((model) => ({
-        name: formatEmbeddingChoice(model),
-        value: model.id,
-      })),
-    ],
+  for (const model of catalog.models) {
+    io.dim(`  · ${formatEmbeddingChoice(model)}`);
+  }
+  if (defaults.embedModelId) {
+    io.dim(`  Default brain will use ${defaults.embedModelId} (--embed-model).`);
+  }
+  const requestBedrockAccess = await confirm({
+    message: "Request access for all of these",
+    default: true,
   });
 
   const watchByDefault = Boolean(defaults.repository);
@@ -146,7 +143,8 @@ export async function promptAnswers({ defaults, io, exec, env }) {
   return {
     region,
     repository,
-    embedModelId,
+    embedModelId: defaults.embedModelId || "",
+    requestBedrockAccess,
     createRds,
     embeddingModels: catalog.models,
     databaseUrl,

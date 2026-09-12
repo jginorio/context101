@@ -22,8 +22,9 @@ deploy-env. Does not run cdk deploy. Deploy only via ./cdk/deploy.sh.
                          used when no profile exists (also AWS_SECRET_ACCESS_KEY)
   --repo <url>           watch this GitHub repo with Amplify
                          (default: skip Amplify, unless gh login is jginorio)
-  --embed-model <id>     Bedrock embedding model (Amazon Titan or Cohere)
-                         (default: amazon.titan-embed-text-v2:0; skip in the prompt)
+  --embed-model <id>     optional CDK default embedding model
+                         (brains still pick any Titan/Cohere model in the app)
+  --skip-bedrock-access  do not request Bedrock model access during init
   --seed                 print (or run) ./cdk/deploy.sh --seed
   --deploy               run ./cdk/deploy.sh after writing
                          (still asks unless combined with --yes)
@@ -61,6 +62,7 @@ export function parseArgs(argv) {
     awsSecretAccessKey: null,
     repo: null,
     embedModel: null,
+    skipBedrockAccess: false,
   };
 
   const args = [...argv];
@@ -133,6 +135,9 @@ export function parseArgs(argv) {
         break;
       case "--embed-model":
         opts.embedModel = needValue(arg, args);
+        break;
+      case "--skip-bedrock-access":
+        opts.skipBedrockAccess = true;
         break;
       default: {
         const err = new Error(`unknown flag: ${arg}`);

@@ -10,6 +10,8 @@ import {
 } from "../src/amplify-repo.js";
 import { DEFAULT_AMPLIFY_REPO } from "../src/defaults.js";
 import {
+  allEmbeddingModels,
+  catalogEntry,
   isKnownEmbeddingModel,
   parseEmbeddingCatalog,
 } from "../src/embedding-models.js";
@@ -81,6 +83,19 @@ test("embedding catalog keeps Titan/Cohere base ids and drops SKU variants", () 
   );
   assert.equal(isKnownEmbeddingModel("amazon.titan-embed-text-v1"), true);
   assert.equal(isKnownEmbeddingModel("cohere.embed-multilingual-v3:0:512"), false);
+});
+
+test("allEmbeddingModels unions every curated id brains can pick later", () => {
+  const models = allEmbeddingModels([catalogEntry("cohere.embed-english-v3")]);
+  const ids = models.map((model) => model.id);
+  assert.equal(ids.includes("amazon.titan-embed-text-v2:0"), true);
+  assert.equal(ids.includes("amazon.titan-embed-text-v1"), true);
+  assert.equal(ids.includes("amazon.titan-embed-image-v1"), true);
+  assert.equal(ids.includes("cohere.embed-english-v3"), true);
+  assert.equal(ids.includes("cohere.embed-multilingual-v3"), true);
+  assert.equal(ids.includes("cohere.embed-english-light-v3"), true);
+  assert.equal(ids.includes("cohere.embed-multilingual-light-v3"), true);
+  assert.equal(ids.includes("cohere.embed-multilingual-v3:0:512"), false);
 });
 
 test("writer omits REPOSITORY and records EMBED_MODEL_ID when set", () => {

@@ -16,6 +16,10 @@ import {
   runChecks,
 } from "./checks.js";
 import {
+  formatAccessResult,
+  requestEmbeddingModelAccess,
+} from "./bedrock-access.js";
+import {
   isKnownEmbeddingModel,
   listEmbeddingModels,
 } from "./embedding-models.js";
@@ -173,6 +177,7 @@ export async function runInit(opts, ctx) {
     repository: answers.repository,
     embedModelId: answers.embedModelId || "",
     embeddingModels: answers.embeddingModels || [],
+    requestBedrockAccess: Boolean(answers.requestBedrockAccess),
     hasDatabaseUrl: Boolean(answers.databaseUrl),
     createRds: Boolean(answers.createRds),
     databaseDriver: answers.databaseDriver,
@@ -232,6 +237,17 @@ export async function runInit(opts, ctx) {
   await writeDeployEnv(envPath, values);
 
   io.ok(`wrote ${envDisplay} (chmod 600)`);
+  if (answers.requestBedrockAccess) {
+    printBedrockAccess(
+      requestEmbeddingModelAccess({
+        exec,
+        env: awsEnv,
+        region: answers.region,
+        models: answers.embeddingModels,
+      }),
+      io
+    );
+  }
   if (answers.repository && !githubReadyForAmplify(checks, answers)) {
     io.warn(
       "no Amplify-capable GitHub PAT yet — set CTX_GH_TOKEN to a ghp_ or github_pat_ token before deploy"
@@ -303,6 +319,7 @@ async function collectAnswers(opts, ctx) {
       repository,
       embedModelId: opts.embedModel || "",
       embeddingModels: catalog.models,
+      requestBedrockAccess: !opts.skipBedrockAccess,
       databaseUrl: createRds ? "" : databaseUrl,
       createRds,
       databaseDriver:
@@ -361,6 +378,18 @@ function withAwsAuth(env, { profile, accessKeyId, secretAccessKey } = {}) {
   if (accessKeyId) next.AWS_ACCESS_KEY_ID = accessKeyId;
   if (secretAccessKey) next.AWS_SECRET_ACCESS_KEY = secretAccessKey;
   return next;
+}
+
+function printBedrockAccess(results, io) {
+  io.write("Bedrock embedding access:");
+  for (const result of results) {
+    const line = formatAccessResult(result);
+    if (result.status === "needs-console" || result.status === "failed") {
+      io.warn(line);
+    } else {
+      io.dim(`  ${line}`);
+    }
+  }
 }
 
 function githubReadyForAmplify(checks, answers) {
