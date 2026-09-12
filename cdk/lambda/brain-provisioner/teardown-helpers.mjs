@@ -41,3 +41,15 @@ export async function withConflictRetry(fn, { attempts = 8, delayMs = 2000 } = {
   }
   throw lastErr;
 }
+
+// After DeleteDataSource, Bedrock may land in DELETE_UNSUCCESSFUL if it
+// cannot wipe the vector index (index already gone, or permissions).
+// AWS's documented recovery is: set dataDeletionPolicy=RETAIN, then
+// delete again. Returning "retain" vs "wait" vs "retry" lets the
+// provisioner drive that without baking AWS calls into this module.
+export function nextBedrockDeleteAction(status, { retained = false } = {}) {
+  if (!status) return "gone";
+  if (status === "DELETE_UNSUCCESSFUL") return retained ? "retry" : "retain";
+  if (status === "DELETING") return "wait";
+  return "retry";
+}

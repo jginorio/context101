@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { isConflict, isNotFound, withConflictRetry } from "./teardown-helpers.mjs";
+import {
+  isConflict,
+  isNotFound,
+  nextBedrockDeleteAction,
+  withConflictRetry,
+} from "./teardown-helpers.mjs";
 
 test("isConflict recognizes Bedrock ConflictException", () => {
   assert.equal(isConflict({ name: "ConflictException" }), true);
@@ -52,6 +57,17 @@ test("withConflictRetry rethrows non-conflict errors immediately", async () => {
     /boom/
   );
   assert.equal(calls, 1);
+});
+
+test("nextBedrockDeleteAction drives RETAIN recovery for DELETE_UNSUCCESSFUL", () => {
+  assert.equal(nextBedrockDeleteAction(undefined), "gone");
+  assert.equal(nextBedrockDeleteAction("DELETING"), "wait");
+  assert.equal(nextBedrockDeleteAction("DELETE_UNSUCCESSFUL"), "retain");
+  assert.equal(
+    nextBedrockDeleteAction("DELETE_UNSUCCESSFUL", { retained: true }),
+    "retry"
+  );
+  assert.equal(nextBedrockDeleteAction("AVAILABLE"), "retry");
 });
 
 test("withConflictRetry exhausts attempts on persistent conflict", async () => {

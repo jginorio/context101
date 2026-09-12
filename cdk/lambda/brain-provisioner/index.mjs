@@ -26,7 +26,11 @@
  */
 import { createHash, randomBytes } from "node:crypto";
 import { createRequire } from "node:module";
-import { isNotFound, withConflictRetry } from "./teardown-helpers.mjs";
+import {
+  isNotFound,
+  nextBedrockDeleteAction,
+  withConflictRetry,
+} from "./teardown-helpers.mjs";
 import {
   BedrockAgentClient,
   CreateKnowledgeBaseCommand,
@@ -35,6 +39,7 @@ import {
   DeleteKnowledgeBaseCommand,
   GetKnowledgeBaseCommand,
   GetDataSourceCommand,
+  UpdateDataSourceCommand,
   StartIngestionJobCommand,
 } from "@aws-sdk/client-bedrock-agent";
 import {
@@ -660,6 +665,94 @@ async function startIngestion(kbId, dsId) {
   }
 }
 
+async function deleteDataSourceResilient(kbId, dsId) {
+  let retained = false;
+  for (let i = 0; i < 12; i++) {
+    try {
+      await withConflictRetry(() =>
+        bedrock.send(
+          new DeleteDataSourceCommand({
+            knowledgeBaseId: kbId,
+            dataSourceId: dsId,
+          })
+        )
+      );
+    } catch (err) {
+      if (isNotFound(err)) return;
+      throw err;
+    }
+
+    let status;
+    try {
+      const cur = await bedrock.send(
+        new GetDataSourceCommand({
+          knowledgeBaseId: kbId,
+          dataSourceId: dsId,
+        })
+      );
+      status = cur.dataSource?.status;
+    } catch (err) {
+      if (isNotFound(err)) return;
+      throw err;
+    }
+
+    const action = nextBedrockDeleteAction(status, { retained });
+    if (action === "gone") return;
+    if (action === "retain") {
+      const cur = await bedrock.send(
+        new GetDataSourceCommand({
+          knowledgeBaseId: kbId,
+          dataSourceId: dsId,
+        })
+      );
+      await bedrock.send(
+        new UpdateDataSourceCommand({
+          knowledgeBaseId: kbId,
+          dataSourceId: dsId,
+          name: cur.dataSource?.name || "markdown-docs",
+          dataSourceConfiguration: cur.dataSource?.dataSourceConfiguration,
+          dataDeletionPolicy: "RETAIN",
+        })
+      );
+      retained = true;
+      continue;
+    }
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(
+    `data source ${dsId} did not finish deleting (last status not gone)`
+  );
+}
+
+async function deleteKnowledgeBaseResilient(kbId) {
+  for (let i = 0; i < 12; i++) {
+    try {
+      await withConflictRetry(() =>
+        bedrock.send(new DeleteKnowledgeBaseCommand({ knowledgeBaseId: kbId }))
+      );
+    } catch (err) {
+      if (isNotFound(err)) return;
+      throw err;
+    }
+
+    let status;
+    try {
+      const cur = await bedrock.send(
+        new GetKnowledgeBaseCommand({ knowledgeBaseId: kbId })
+      );
+      status = cur.knowledgeBase?.status;
+    } catch (err) {
+      if (isNotFound(err)) return;
+      throw err;
+    }
+
+    const action = nextBedrockDeleteAction(status, { retained: true });
+    if (action === "gone") return;
+    await new Promise((r) => setTimeout(r, 2000));
+  }
+  throw new Error(`knowledge base ${kbId} did not finish deleting`);
+}
+
 async function clearBucketNotifications(bucket) {
   try {
     await s3.send(
@@ -716,28 +809,9 @@ async function teardownResources({ bucket, kbId, dsId, indexName: idxName }) {
 
   if (kbId) {
     if (dsId) {
-      try {
-        await withConflictRetry(() =>
-          bedrock.send(
-            new DeleteDataSourceCommand({
-              knowledgeBaseId: kbId,
-              dataSourceId: dsId,
-            })
-          )
-        );
-      } catch (err) {
-        if (!isNotFound(err)) throw err;
-      }
+      await deleteDataSourceResilient(kbId, dsId);
     }
-    try {
-      await withConflictRetry(() =>
-        bedrock.send(
-          new DeleteKnowledgeBaseCommand({ knowledgeBaseId: kbId })
-        )
-      );
-    } catch (err) {
-      if (!isNotFound(err)) throw err;
-    }
+    await deleteKnowledgeBaseResilient(kbId);
   }
 
   if (idxName) {
