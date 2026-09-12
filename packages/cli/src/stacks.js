@@ -1,7 +1,7 @@
 import { DEPLOY_CLI, DESTROY_CLI, LIST_CLI, SMOOTH_REGION } from "./defaults.js";
 import { runCdk } from "./cdk-invoke.js";
+import { ensureRepoRoot } from "./clone.js";
 import { createExec } from "./exec.js";
-import { findRepoRoot } from "./repo.js";
 import { banner, writers } from "./style.js";
 
 export function parseStackSummaries(payload) {
@@ -70,12 +70,6 @@ export async function runList(opts, ctx) {
 
   banner(ctx);
 
-  const repoRoot = findRepoRoot(ctx.cwd);
-  if (!repoRoot) {
-    io.err("run this from a Context101 checkout (needs cdk/ and web/).");
-    return 1;
-  }
-
   const env = withAwsAuth(ctx.env ?? {}, {
     profile: opts.awsProfile,
     accessKeyId: opts.awsAccessKeyId,
@@ -99,12 +93,6 @@ export async function runDestroy(opts, ctx) {
   if (opts.dryRun) {
     io.dim("dry-run — destroy nothing");
     io.write("");
-  }
-
-  const repoRoot = findRepoRoot(ctx.cwd);
-  if (!repoRoot) {
-    io.err("run this from a Context101 checkout (needs cdk/ and web/).");
-    return 1;
   }
 
   const stackName = String(opts.stackName || "").trim();
@@ -157,6 +145,25 @@ export async function runDestroy(opts, ctx) {
   io.warn(
     "Non-default brains are not in CloudFormation — delete them from /brains first."
   );
+
+  const checkout = ensureRepoRoot({
+    cwd: ctx.cwd,
+    dir: opts.dir,
+    exec,
+    io,
+    preferHomeClone: true,
+    homeDir: ctx.homeDir,
+  });
+  if (checkout.error) {
+    io.err(checkout.error);
+    return 1;
+  }
+  const repoRoot = checkout.repoRoot;
+  if (!repoRoot) {
+    io.err("could not find or clone a Context101 checkout (needs cdk/ and web/).");
+    return 1;
+  }
+
   io.write(`Destroying ${stackName}…`);
   return (ctx.runDeploy ?? runCdk)({
     repoRoot,

@@ -52,6 +52,7 @@ export async function runConfig(opts, ctx) {
     envFile: opts.envFile,
     home: opts.home,
     cwd: ctx.cwd,
+    homeDir: ctx.homeDir,
   });
 
   if (opts.configAction === "set") {
@@ -85,7 +86,7 @@ async function writeConfig(opts, { io, filePath }) {
     return 1;
   }
   if (!filePath) {
-    io.err("no deploy-env path. Re-run from a checkout or pass --deploy-env.");
+    io.err("no deploy-env path. Pass --home or --deploy-env.");
     return 1;
   }
 

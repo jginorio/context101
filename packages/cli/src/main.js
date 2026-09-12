@@ -19,8 +19,10 @@ export async function main(argv, ctx) {
     throw error;
   }
 
-  if (opts.help) {
-    io.write(helpText());
+  if (opts.help || opts.command === "help") {
+    const topic =
+      opts.helpTopic ?? (opts.command !== "help" ? opts.command : null);
+    io.write(helpText(topic));
     return 0;
   }
 

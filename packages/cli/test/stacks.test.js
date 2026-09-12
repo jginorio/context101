@@ -10,7 +10,8 @@ import {
   isContext101Deployment,
   parseStackSummaries,
 } from "../src/stacks.js";
-import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
+import { homeSrcDir } from "../src/clone.js";
+import { fakeExec, makeRepoFixture, memoryIo, mockCloneCheckout, testEnv } from "./helpers.js";
 
 function listStacksPayload(summaries) {
   return {
@@ -128,6 +129,33 @@ test("context101 list prints Context101 stacks and ignores nested and toolkit", 
   assert.equal(io.stdoutText.includes("Nested-XYZ"), false);
   assert.equal(io.stdoutText.includes("CDKToolkit"), false);
   assert.equal(io.stdoutText.includes("DELETE_COMPLETE"), false);
+});
+
+test("context101 list works without a checkout", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-ls-norepo-"));
+  const io = memoryIo();
+
+  const code = await main(["list", "--aws-profile", "plateapr.com"], {
+    cwd,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec({
+      listStacks: listStacksPayload([
+        {
+          ...LIVE,
+          StackStatus: "UPDATE_COMPLETE",
+        },
+      ]),
+    }),
+  });
+
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /Context101Stack/);
+  assert.match(io.stdoutText, /UPDATE_COMPLETE/);
+  assert.match(io.stdoutText, /2026-09-12T20:00:00/);
+  assert.equal(io.stderrText.includes("checkout"), false);
 });
 
 test("context101 destroy without a name refuses", async () => {
@@ -251,6 +279,95 @@ test("context101 destroy --yes calls cdk destroy with the listed name", async ()
   assert.match(io.stdoutText, /Destroying Context101Stack/);
   assert.match(`${io.stdoutText}\n${io.stderrText}`, /not in CloudFormation/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
+});
+
+test("context101 destroy --dry-run works without a checkout", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-rm-norepo-dry-"));
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(["destroy", "Context101Stack", "--dry-run"], {
+    cwd,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec({ listStacks: listStacksPayload([LIVE]) }),
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.equal(calls.length, 0);
+  assert.match(io.stdoutText, /Would destroy Context101Stack/);
+  assert.equal(io.stderrText.includes("checkout"), false);
+});
+
+test("context101 destroy --yes clones into ~/.context101/src without a checkout", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-rm-norepo-yes-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-rm-home-"));
+  const io = memoryIo();
+  const calls = [];
+  let clonedTo = "";
+
+  const code = await main(["destroy", "Context101Stack", "--yes"], {
+    cwd,
+    homeDir: home,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: (spec) => {
+      if (spec.command === "git" && spec.args?.[0] === "clone") {
+        clonedTo = spec.args[spec.args.length - 1];
+        mockCloneCheckout(clonedTo);
+        return { ok: true, code: 0, stdout: "", stderr: "", error: null };
+      }
+      return fakeExec({ listStacks: listStacksPayload([LIVE]) })(spec);
+    },
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].repoRoot, homeSrcDir(home));
+  assert.equal(calls[0].action, "destroy");
+  assert.equal(clonedTo, homeSrcDir(home));
+  assert.match(io.stdoutText, /Destroying Context101Stack/);
+  assert.equal(io.stderrText.includes("checkout"), false);
+});
+
+test("context101 destroy --yes reuses ~/.context101/src", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-rm-reuse-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-rm-reuse-home-"));
+  const src = homeSrcDir(home);
+  await makeRepoFixture(src);
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(["destroy", "Context101Stack", "--yes"], {
+    cwd,
+    homeDir: home,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec({ listStacks: listStacksPayload([LIVE]) }),
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].repoRoot, src);
+  assert.equal(io.stdoutText.includes("Cloning"), false);
 });
 
 test("context101 destroy confirms on a TTY and cancels when declined", async () => {

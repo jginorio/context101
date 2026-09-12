@@ -1,19 +1,12 @@
 import assert from "node:assert/strict";
-import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { CLONE_URL, ensureRepoRoot } from "../src/clone.js";
+import { CLONE_URL, ensureRepoRoot, homeSrcDir } from "../src/clone.js";
 import { main } from "../src/main.js";
-import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
-
-function mockClone(dest) {
-  mkdirSync(path.join(dest, "cdk"), { recursive: true });
-  mkdirSync(path.join(dest, "web"), { recursive: true });
-  writeFileSync(path.join(dest, "cdk", "cdk.json"), "{}\n");
-  writeFileSync(path.join(dest, "web", "package.json"), '{"name":"web"}\n');
-}
+import { writers } from "../src/style.js";
+import { fakeExec, makeRepoFixture, memoryIo, mockCloneCheckout, testEnv } from "./helpers.js";
 
 test("ensureRepoRoot clones when cwd is not a checkout", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-empty-"));
@@ -25,7 +18,7 @@ test("ensureRepoRoot clones when cwd is not a checkout", async () => {
       assert.equal(args[0], "clone");
       assert.equal(args[1], "--depth");
       assert.equal(args[3], CLONE_URL);
-      mockClone(args[4]);
+      mockCloneCheckout(args[4]);
       return { ok: true, code: 0, stdout: "", stderr: "", error: null };
     },
     io,
@@ -66,7 +59,7 @@ test("init clones then writes deploy-env when mocked", async () => {
     stdin: io.stdin,
     exec: (spec) => {
       if (spec.command === "git" && spec.args?.[0] === "clone") {
-        mockClone(spec.args[spec.args.length - 1]);
+        mockCloneCheckout(spec.args[spec.args.length - 1]);
         return { ok: true, code: 0, stdout: "", stderr: "", error: null };
       }
       return fakeExec()(spec);
@@ -76,4 +69,42 @@ test("init clones then writes deploy-env when mocked", async () => {
   const { existsSync } = await import("node:fs");
   assert.equal(existsSync(path.join(dest, "cdk", ".deploy-env")), true);
   assert.match(io.stdoutText, /cloned into context101/);
+});
+
+test("ensureRepoRoot reuses ~/.context101/src when preferHomeClone", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-empty-home-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-home-src-"));
+  const src = homeSrcDir(home);
+  await makeRepoFixture(src);
+  const result = ensureRepoRoot({
+    cwd,
+    preferHomeClone: true,
+    homeDir: home,
+    exec: () => {
+      throw new Error("should not clone");
+    },
+  });
+  assert.equal(result.cloned, false);
+  assert.equal(result.repoRoot, src);
+});
+
+test("ensureRepoRoot clones into ~/.context101/src when preferHomeClone", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-empty-pref-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-home-clone-"));
+  const raw = memoryIo();
+  const result = ensureRepoRoot({
+    cwd,
+    preferHomeClone: true,
+    homeDir: home,
+    exec: ({ command, args }) => {
+      assert.equal(command, "git");
+      assert.equal(args[args.length - 1], homeSrcDir(home));
+      mockCloneCheckout(args[args.length - 1]);
+      return { ok: true, code: 0, stdout: "", stderr: "", error: null };
+    },
+    io: writers(raw),
+  });
+  assert.equal(result.cloned, true);
+  assert.equal(result.repoRoot, homeSrcDir(home));
+  assert.match(raw.stdoutText, /~\/.context101\/src/);
 });

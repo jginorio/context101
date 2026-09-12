@@ -218,3 +218,26 @@ test("--yes --deploy refuses when the Docker daemon is down", async () => {
   assert.match(io.stderrText, /Docker daemon is not running/);
   assert.match(`${io.stdoutText}\n${io.stderrText}`, /colima start|systemctl start docker/);
 });
+
+test("context101 deploy still requires a checkout", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-dep-norepo-"));
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(["deploy", "--dry-run"], {
+    cwd,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(),
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
+  });
+
+  assert.equal(code, 1);
+  assert.equal(calls.length, 0);
+  assert.match(io.stderrText, /checkout/);
+});
