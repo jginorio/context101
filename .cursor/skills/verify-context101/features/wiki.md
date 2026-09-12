@@ -30,6 +30,7 @@ Preconditions:
 
 ## Gotchas
 
+- Wiki generation is paused/beta; default verification is raw-first retrieve/Ask (`bin/retrieve`, `/wiki/ask`). Do not click Refresh now unless explicitly asked.
 - Refresh now starts a Fargate wiki generator. It is slow and costs inference. Treat as explicit-only.
 - Code wikis are a separate list (`code/` prefix). Team wiki is the default selection.
 - `/wiki/ask` streams Claude after retrieve. Poll `bin/retrieve`, not this page.
