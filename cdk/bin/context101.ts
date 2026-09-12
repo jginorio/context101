@@ -2,8 +2,16 @@
 import "source-map-support/register";
 import * as cdk from "aws-cdk-lib";
 import { Context101Stack } from "../lib/context101-stack";
+import { assertGatedContext, cdkCommandFromArgv } from "../lib/deploy-gate";
 
 const app = new cdk.App();
+
+assertGatedContext({
+  command: cdkCommandFromArgv(process.argv),
+  token: app.node.tryGetContext("token") as string | undefined,
+  githubToken: app.node.tryGetContext("githubToken") as string | undefined,
+  repository: app.node.tryGetContext("REPOSITORY") as string | undefined,
+});
 
 new Context101Stack(app, "Context101Stack", {
   env: {

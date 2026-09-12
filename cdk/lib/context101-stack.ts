@@ -26,6 +26,7 @@ import {
   contextWantsRds,
   provisionRdsPostgres,
 } from "./control-plane-db";
+import { assertGatedContext, cdkCommandFromArgv } from "./deploy-gate";
 
 /** Hosted product zone. Self-host uses an operator domain or Amplify default. */
 function isHostedContext101Url(raw: string | undefined): boolean {
@@ -88,6 +89,15 @@ function embeddingModelMeta(modelId: string): {
 export class Context101Stack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
+
+    // Fail closed before `if (teamToken)` / `if (githubToken)` can
+    // synthesize an empty update and delete live MCP / Amplify.
+    assertGatedContext({
+      command: cdkCommandFromArgv(process.argv),
+      token: this.node.tryGetContext("token") as string | undefined,
+      githubToken: this.node.tryGetContext("githubToken") as string | undefined,
+      repository: this.node.tryGetContext("REPOSITORY") as string | undefined,
+    });
 
     const namePrefix = "context101";
     const embedModelId =
