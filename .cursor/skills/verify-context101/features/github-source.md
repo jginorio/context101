@@ -40,3 +40,4 @@ Preconditions:
 - Hosted `BETTER_AUTH_URL` still rejects browser `fetch` from `http://localhost:3000` (`INVALID_ORIGIN`). Use `bin/auth-cookie`.
 - `GET /api/connectors/github-app/create` is instance-admin manifest setup and is often disabled in production. Do not open it in a default run.
 - Connector rows already on `/sources` are shared tenant data. Do not **Sync now** or delete them in a default run.
+- In the Knowledge sidebar, a path-scoped sync under a repo (e.g. `apps/plateapr.com/docs`) is one joined folder row, not three nested expands. Opening the repo auto-expands that row so files are visible. `data-tree-key` is the deepest prefix. Library (editable) trees do not join paths.
