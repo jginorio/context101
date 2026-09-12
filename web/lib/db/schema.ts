@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import {
   bigint,
   date,
@@ -21,6 +22,12 @@ export const brainStatus = pgEnum("brain_status", [
 ]);
 export const suggestionStatus = pgEnum("suggestion_status", [
   "pending",
+  "accepted",
+  "rejected",
+]);
+export const conflictStatus = pgEnum("conflict_status", [
+  "pending",
+  "applying",
   "accepted",
   "rejected",
 ]);
@@ -244,5 +251,94 @@ export const usageMetrics = pgTable(
   (table) => [
     primaryKey({ columns: [table.orgId, table.date, table.metric] }),
     index("usage_metrics_org_date_idx").on(table.orgId, table.date),
+  ]
+);
+
+export const conflicts = pgTable(
+  "conflicts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orgId: text("org_id").notNull(),
+    brainId: text("brain_id")
+      .notNull()
+      .references(() => brains.id, { onDelete: "cascade" }),
+    status: conflictStatus("status").notNull().default("pending"),
+    fingerprint: text("fingerprint").notNull(),
+    topic: text("topic").notNull(),
+    title: text("title").notNull(),
+    rationale: text("rationale"),
+    leftSide: jsonb("left_side").notNull(),
+    rightSide: jsonb("right_side").notNull(),
+    proposedLoserBody: jsonb("proposed_loser_body").notNull(),
+    resolution: jsonb("resolution"),
+    applyRecord: jsonb("apply_record"),
+    occurrenceCount: integer("occurrence_count").notNull().default(1),
+    lastDetectedVia: text("last_detected_via").notNull(),
+    lastError: text("last_error"),
+    reviewedBy: text("reviewed_by"),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("conflicts_open_fingerprint")
+      .on(table.orgId, table.brainId, table.fingerprint)
+      .where(sql`${table.status} in ('pending', 'applying')`),
+    index("conflicts_brain_status_idx").on(
+      table.brainId,
+      table.status,
+      table.createdAt
+    ),
+    index("conflicts_org_status_idx").on(table.orgId, table.status),
+  ]
+);
+
+export const conflictPins = pgTable(
+  "conflict_pins",
+  {
+    orgId: text("org_id").notNull(),
+    brainId: text("brain_id")
+      .notNull()
+      .references(() => brains.id, { onDelete: "cascade" }),
+    fingerprint: text("fingerprint").notNull(),
+    outcome: text("outcome").notNull(),
+    leftKey: text("left_key").notNull(),
+    rightKey: text("right_key").notNull(),
+    topic: text("topic").notNull(),
+    hashes: jsonb("hashes").notNull(),
+    githubBlobShas: jsonb("github_blob_shas").notNull().default({}),
+    conflictId: uuid("conflict_id")
+      .notNull()
+      .references(() => conflicts.id, { onDelete: "cascade" }),
+    pinnedAt: timestamp("pinned_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.brainId, table.fingerprint] }),
+    index("conflict_pins_org_idx").on(table.orgId),
+  ]
+);
+
+export const conflictDocHashes = pgTable(
+  "conflict_doc_hashes",
+  {
+    orgId: text("org_id").notNull(),
+    brainId: text("brain_id")
+      .notNull()
+      .references(() => brains.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    canonicalHash: text("canonical_hash").notNull(),
+    checkedAt: timestamp("checked_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.brainId, table.key] }),
+    index("conflict_doc_hashes_org_idx").on(table.orgId),
   ]
 );
