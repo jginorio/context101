@@ -61,6 +61,10 @@ export function fakeExec(overrides = {}) {
       );
     }
     if (command === "aws" && args[0] === "cloudformation") {
+      if (args[1] === "list-stacks") {
+        if (overrides.listStacks) return overrides.listStacks;
+        return ok(JSON.stringify({ StackSummaries: [] }));
+      }
       return ok("CREATE_COMPLETE");
     }
     if (command === "aws" && args[0] === "configure" && args[1] === "list-profiles") {

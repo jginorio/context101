@@ -1,6 +1,7 @@
 import { helpText, parseArgs } from "./parse-args.js";
 import { runDeploy } from "./deploy.js";
 import { runInit } from "./init.js";
+import { runDestroy, runList } from "./stacks.js";
 import { writers } from "./style.js";
 
 export async function main(argv, ctx) {
@@ -24,6 +25,12 @@ export async function main(argv, ctx) {
 
   if (opts.command === "deploy") {
     return runDeploy(opts, ctx);
+  }
+  if (opts.command === "list") {
+    return runList(opts, ctx);
+  }
+  if (opts.command === "destroy") {
+    return runDestroy(opts, ctx);
   }
 
   return runInit(opts, ctx);

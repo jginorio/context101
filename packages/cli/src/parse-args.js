@@ -5,6 +5,9 @@ Usage: context101 <command> [options]
 
   init      write a local secrets file (default if you omit the command)
   deploy    deploy the AWS stack
+  list, ls  list Context101 CloudFormation deployments
+  destroy, remove, rm
+            tear down the AWS stack
 
 init walks a trusted-team self-host and writes a gitignored secrets
 file. It does not deploy unless you pass --deploy. When you are ready:
@@ -40,11 +43,29 @@ deploy:
   --home
   --dry-run              print the command; deploy nothing
 
+list:
+  --aws-profile <name>
+  --aws-access-key-id
+  --aws-secret-access-key
+
+destroy:
+  --yes, -y              skip the confirmation prompt
+  --aws-profile <name>
+  --aws-access-key-id
+  --aws-secret-access-key
+  --deploy-env <path>
+  --home
+  --dry-run              print the plan; destroy nothing
+
 From this checkout (after npm install):
   npm run context101 -- init
   npm run context101 -- deploy
+  npm run context101 -- list
+  npm run context101 -- destroy
   npx context101 init
   npx context101 deploy
+  npx context101 list
+  npx context101 destroy
 
 npx context101 without a local install downloads Context7's MCP
 from npm (unrelated) and fails with "too many arguments".
@@ -66,6 +87,30 @@ const INIT_ONLY = new Set([
   "--embed-model",
   "--skip-bedrock-access",
 ]);
+
+const DESTROY_FROM_INIT = new Set([
+  "--yes",
+  "-y",
+  "--aws-profile",
+  "--aws-access-key-id",
+  "--aws-secret-access-key",
+]);
+
+const LIST_FROM_INIT = new Set([
+  "--aws-profile",
+  "--aws-access-key-id",
+  "--aws-secret-access-key",
+]);
+
+const COMMANDS = {
+  init: "init",
+  deploy: "deploy",
+  list: "list",
+  ls: "list",
+  destroy: "destroy",
+  remove: "destroy",
+  rm: "destroy",
+};
 
 export function helpText() {
   return FLAG_HELP;
@@ -98,10 +143,8 @@ export function parseArgs(argv) {
   if (args.length === 0) return opts;
 
   const first = args[0];
-  if (first === "init") {
-    args.shift();
-  } else if (first === "deploy") {
-    opts.command = "deploy";
+  if (COMMANDS[first]) {
+    opts.command = COMMANDS[first];
     args.shift();
   } else if (first === "help" || first === "--help" || first === "-h") {
     opts.help = true;
@@ -114,8 +157,15 @@ export function parseArgs(argv) {
 
   while (args.length) {
     const arg = args.shift();
-    if (opts.command === "deploy" && INIT_ONLY.has(arg)) {
-      const err = new Error(`${arg} is an init option`);
+    if (!flagAllowed(opts.command, arg)) {
+      const err = new Error(
+        opts.command === "init" ? `unknown flag: ${arg}` : `${arg} is an init option`
+      );
+      err.code = "USAGE";
+      throw err;
+    }
+    if (arg === "--seed" && (opts.command === "list" || opts.command === "destroy")) {
+      const err = new Error(`--seed is a deploy option`);
       err.code = "USAGE";
       throw err;
     }
@@ -185,6 +235,14 @@ export function parseArgs(argv) {
   }
 
   return opts;
+}
+
+function flagAllowed(command, arg) {
+  if (!INIT_ONLY.has(arg)) return true;
+  if (command === "init") return true;
+  if (command === "destroy") return DESTROY_FROM_INIT.has(arg);
+  if (command === "list") return LIST_FROM_INIT.has(arg);
+  return false;
 }
 
 function needValue(flag, args) {

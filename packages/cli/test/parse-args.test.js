@@ -77,10 +77,27 @@ test("rejects init flags on deploy", () => {
   assert.throws(() => parseArgs(["deploy", "--yes"]), /init option/);
 });
 
+test("parses list and destroy aliases", () => {
+  assert.equal(parseArgs(["list"]).command, "list");
+  assert.equal(parseArgs(["ls"]).command, "list");
+  assert.equal(parseArgs(["destroy", "--yes"]).command, "destroy");
+  assert.equal(parseArgs(["destroy", "--yes"]).yes, true);
+  assert.equal(parseArgs(["remove", "--dry-run"]).command, "destroy");
+  assert.equal(parseArgs(["rm", "--aws-profile", "findit"]).awsProfile, "findit");
+});
+
+test("rejects init-only flags on list and seed on destroy", () => {
+  assert.throws(() => parseArgs(["list", "--yes"]), /init option/);
+  assert.throws(() => parseArgs(["destroy", "--embed-model", "x"]), /init option/);
+  assert.throws(() => parseArgs(["destroy", "--seed"]), /deploy option/);
+});
+
 test("help text names init and deploy, not site/", () => {
   const text = helpText();
   assert.match(text, /npx context101 init/);
   assert.match(text, /npx context101 deploy/);
+  assert.match(text, /npx context101 list/);
+  assert.match(text, /npx context101 destroy/);
   assert.match(text, /npm run context101 -- init/);
   assert.match(text, /npm run context101 -- deploy/);
   assert.match(text, /Context7/);

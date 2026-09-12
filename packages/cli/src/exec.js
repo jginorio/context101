@@ -27,8 +27,18 @@ export function commandExists(exec, name) {
   return result.ok && Boolean(result.stdout);
 }
 
-export function runDeployWrapper({ repoRoot, seed, env, stdio = "inherit" }) {
-  const args = seed ? ["--seed"] : [];
+export function runDeployWrapper({
+  repoRoot,
+  seed,
+  env,
+  action = "deploy",
+  extraArgs = [],
+  stdio = "inherit",
+}) {
+  const args = [];
+  if (action && action !== "deploy") args.push(action);
+  if (seed) args.push("--seed");
+  args.push(...extraArgs);
   return new Promise((resolve, reject) => {
     const child = spawn(DEPLOY_WRAPPER, args, {
       cwd: repoRoot,
