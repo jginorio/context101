@@ -32,6 +32,7 @@ npx context101-cli@latest <cmd>
 | `context101 config` | show deploy-env keys (values redacted) |
 | `context101 config set KEY=value` | write one key (chmod 600; value is not printed) |
 | `context101 help` | list commands |
+| `context101 version` | print the installed CLI version (`-v`, `--version`) |
 
 `list`, `help`, and `destroy --dry-run` work without a checkout.
 

@@ -61,10 +61,15 @@ function ttyIo() {
   return io;
 }
 
+function stripAnsi(text) {
+  return String(text).replace(/\x1b\[[0-9;]*m/g, "");
+}
+
 function assertQuietCancel(io, code) {
   assert.equal(code, SIGINT_EXIT);
-  assert.match(io.stdoutText, /^cancelled$/m);
-  const err = io.stderrText;
+  // CI has no NO_COLOR; mocked TTYs still color dim("cancelled").
+  assert.match(stripAnsi(io.stdoutText), /^cancelled$/m);
+  const err = stripAnsi(io.stderrText);
   assert.equal(err.includes("ExitPromptError"), false);
   assert.equal(err.includes("SIGINT"), false);
   assert.equal(err.includes("create-prompt"), false);
@@ -106,6 +111,18 @@ test("isExitPromptError matches Inquirer Ctrl+C and ignores other errors", () =>
   assert.equal(isExitPromptError(new Error("boom")), false);
   assert.equal(isExitPromptError({ name: "CancelPromptError" }), false);
   assert.equal(isExitPromptError(null), false);
+});
+
+test("quiet cancel matches a dim cancelled line when CI colors a mocked TTY", () => {
+  const io = ttyIo();
+  withEnv(
+    { NO_COLOR: undefined, FORCE_COLOR: undefined, COLORTERM: undefined, TERM: "xterm-256color" },
+    () => {
+      assert.equal(printCancelled(writers(io)), SIGINT_EXIT);
+    }
+  );
+  assert.match(io.stdoutText, /\x1b\[38;5;139mcancelled\x1b\[0m/);
+  assertQuietCancel(io, SIGINT_EXIT);
 });
 
 test("printCancelled is one dusty-lilac dim line, not red", () => {

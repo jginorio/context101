@@ -68,8 +68,13 @@ export function npmInstallSpec(version) {
   return `${NPM_PACKAGE}@${pin}`;
 }
 
+export function versionLine(ctx = {}) {
+  return `${NPM_PACKAGE} ${runningVersion(ctx)}`;
+}
+
 export function shouldSkipUpdate(opts = {}, ctx = {}) {
   if (ctx.skipUpdate) return true;
+  if (opts.command === "version") return true;
   const env = ctx.env ?? {};
   if (env[SKIP_UPDATE_ENV] || env[UPDATING_ENV]) return true;
   return false;

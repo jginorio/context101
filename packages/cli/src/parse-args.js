@@ -10,6 +10,7 @@ const COMMAND_LINES = [
   ["config", "show deploy-env keys (values redacted)"],
   ["config set", "write one key (chmod 600; value is not printed)"],
   ["help", "list commands"],
+  ["version", "print the installed CLI version"],
 ];
 
 const TOPIC_HELP = {
@@ -85,6 +86,10 @@ const TOPIC_HELP = {
   --home`,
 
   help: `help [command] — list commands, or flags for one command`,
+
+  version: `version - print the installed CLI version
+
+  Also: -v, --version`,
 };
 
 const INIT_ONLY = new Set([
@@ -134,6 +139,7 @@ const COMMANDS = {
   rm: "destroy",
   config: "config",
   help: "help",
+  version: "version",
 };
 
 export function helpText(topic) {
@@ -187,6 +193,9 @@ export function parseArgs(argv) {
   if (first === "--help" || first === "-h") {
     opts.command = "help";
     opts.help = true;
+    args.shift();
+  } else if (first === "--version" || first === "-v") {
+    opts.command = "version";
     args.shift();
   } else if (COMMANDS[first]) {
     opts.command = COMMANDS[first];
@@ -242,6 +251,14 @@ export function parseArgs(argv) {
       case "--help":
       case "-h":
         opts.help = true;
+        break;
+      case "--version":
+      case "-v":
+        if (opts.command !== "version") {
+          const err = new Error(`unknown flag: ${arg}`);
+          err.code = "USAGE";
+          throw err;
+        }
         break;
       case "--dry-run":
         opts.dryRun = true;
