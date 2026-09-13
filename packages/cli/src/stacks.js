@@ -88,16 +88,20 @@ export function formatSpaces(rows, { colors } = {}) {
   }
   const spaceW = Math.max(5, ...rows.map((row) => String(row.name).length));
   const stackW = Math.max(5, ...rows.map((row) => String(row.stackName).length));
+  const profileW = Math.max(
+    7,
+    ...rows.map((row) => String(row.awsProfile || "—").length)
+  );
   const statusW = Math.max(6, ...rows.map((row) => String(row.status || "—").length));
   const lines = [
     `${c.dim}Context101 spaces${c.reset}`,
     "",
-    `${c.dim}${"SPACE".padEnd(spaceW)}  ${"STACK".padEnd(stackW)}  ${"STATUS".padEnd(statusW)}  UPDATED${c.reset}`,
+    `${c.dim}${"SPACE".padEnd(spaceW)}  ${"STACK".padEnd(stackW)}  ${"PROFILE".padEnd(profileW)}  ${"STATUS".padEnd(statusW)}  UPDATED${c.reset}`,
   ];
   for (const row of rows) {
     const tone = statusTone(row.status, c);
     lines.push(
-      `${String(row.name).padEnd(spaceW)}  ${String(row.stackName).padEnd(stackW)}  ${tone}${String(row.status || "—").padEnd(statusW)}${c.reset}  ${c.dim}${row.updated || ""}${c.reset}`
+      `${String(row.name).padEnd(spaceW)}  ${String(row.stackName).padEnd(stackW)}  ${String(row.awsProfile || "—").padEnd(profileW)}  ${tone}${String(row.status || "—").padEnd(statusW)}${c.reset}  ${c.dim}${row.updated || ""}${c.reset}`
     );
   }
   return lines.join("\n");
@@ -127,6 +131,7 @@ export async function runList(opts, ctx) {
       return {
         name: space.name,
         stackName: space.stackName,
+        awsProfile: space.awsProfile || "",
         status: match?.StackStatus || "",
         updated: match?.LastUpdatedTime || match?.CreationTime || "",
       };
@@ -208,6 +213,7 @@ export async function runDestroy(opts, ctx) {
           {
             name: space.name,
             stackName: space.stackName,
+            awsProfile: space.awsProfile || "",
             status:
               listed.stacks.find((stack) => stack.StackName === space.stackName)
                 ?.StackStatus || "",

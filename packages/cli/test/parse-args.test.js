@@ -65,6 +65,7 @@ test("help init names the flags that --yes needs", () => {
   assert.match(text, /Existing deploy-env/);
   assert.match(text, /No continues the wizard \(same secrets\)/);
   assert.match(text, /--force starts over \(new secrets\)/);
+  assert.match(text, /context101 update <space>/);
 });
 
 test("rejects unknown command and flag", () => {
@@ -77,6 +78,20 @@ test("parses deploy command", () => {
   assert.equal(opts.command, "deploy");
   assert.equal(opts.seed, true);
   assert.equal(opts.home, true);
+});
+
+test("parses update as a deploy alias, like url → urls", () => {
+  const named = parseArgs(["update", "testingcontext101", "--dry-run"]);
+  assert.equal(named.command, "deploy");
+  assert.equal(named.space, "testingcontext101");
+  assert.equal(named.dryRun, true);
+  const flagged = parseArgs(["update", "--seed", "--home"]);
+  assert.equal(flagged.command, "deploy");
+  assert.equal(flagged.seed, true);
+  assert.equal(flagged.home, true);
+  assert.throws(() => parseArgs(["update", "--yes"]), /init option/);
+  assert.equal(parseArgs(["help", "update"]).helpTopic, "deploy");
+  assert.equal(parseArgs(["help", "deploy"]).helpTopic, "deploy");
 });
 
 test("allows --dir on deploy / diff / synth", () => {
@@ -143,8 +158,20 @@ test("help text lists commands, not site/", () => {
   const text = helpText();
   assert.match(text, /context101-cli/);
   assert.match(text, /Context7/);
+  assert.match(text, /^ {2}update\s+update a space from this CLI version$/m);
+  assert.match(text, /^ {2}deploy\s+same as update$/m);
   assert.equal(text.includes("deploy.sh"), false);
   assert.equal(text.includes("site/"), false);
+});
+
+test("help update and help deploy share the update-face topic", () => {
+  const update = helpText("update");
+  const deploy = helpText("deploy");
+  assert.equal(update, deploy);
+  assert.match(update, /update \[space\]/);
+  assert.match(update, /Also: deploy/);
+  assert.match(helpText("init"), /context101 update <space>/);
+  assert.equal(helpText("init").includes("context101 deploy <space>"), false);
 });
 
 test("parses help and help <command>", () => {
@@ -155,6 +182,8 @@ test("parses help and help <command>", () => {
   assert.equal(parseArgs(["help", "ls"]).helpTopic, "list");
   assert.equal(parseArgs(["help", "urls"]).helpTopic, "urls");
   assert.equal(parseArgs(["help", "url"]).helpTopic, "urls");
+  assert.equal(parseArgs(["help", "update"]).helpTopic, "deploy");
+  assert.equal(parseArgs(["help", "deploy"]).helpTopic, "deploy");
   assert.equal(parseArgs(["help", "config", "set"]).helpTopic, "config set");
   assert.equal(parseArgs(["help", "version"]).helpTopic, "version");
   assert.equal(parseArgs(["destroy", "--help"]).command, "destroy");
@@ -183,6 +212,7 @@ test("context101 help lists every command and exits 0", async () => {
   assert.equal(code, 0);
   for (const name of [
     "init",
+    "update",
     "deploy",
     "diff",
     "synth",
@@ -273,6 +303,21 @@ test("context101 help list shows list flags", async () => {
   assert.match(io.stdoutText, /no checkout/);
 });
 
+test("context101 help update lists the update face and deploy alias", async () => {
+  const io = memoryIo();
+  const code = await main(["help", "update"], {
+    cwd: "/tmp",
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+  });
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /update \[space\]/);
+  assert.match(io.stdoutText, /Also: deploy/);
+  assert.equal(io.stdoutText.includes("@latest"), false);
+});
+
 test("context101 help urls shows urls flags", async () => {
   const io = memoryIo();
   const code = await main(["help", "urls"], {
@@ -323,7 +368,7 @@ test("npm README is on-brand and warns about the Context7 name collision", async
   assert.match(text, /https:\/\/github.com\/jginorio\/context101/);
   assert.match(text, /spaces\/<name>/);
   assert.match(text, /\.cache\/context101/);
-  assert.match(text, /deploy platea/);
+  assert.match(text, /update platea/);
   assert.match(text, /--verbose/);
   assert.match(text, /not a git pull/);
   assert.equal(text.includes("npx context101"), true);

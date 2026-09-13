@@ -2,7 +2,8 @@ import { DRIVER_NEON, DRIVER_POSTGRES } from "./defaults.js";
 
 const COMMAND_LINES = [
   ["init", "name a space and write its deploy-env; TTY asks to deploy"],
-  ["deploy", "update a space from this CLI version"],
+  ["update", "update a space from this CLI version"],
+  ["deploy", "same as update"],
   ["diff", "cdk diff for a space"],
   ["synth", "cdk synth for a space"],
   ["list", "list spaces"],
@@ -17,7 +18,7 @@ const COMMAND_LINES = [
 const TOPIC_HELP = {
   init: `init [space] — name a space and write its deploy-env; TTY asks to deploy.
   Existing deploy-env: TTY asks to keep it. No continues the wizard (same secrets). --force starts over (new secrets).
-  Update later: install the new CLI, then context101 deploy <space>.
+  Update later: pin the new CLI, then context101 update <space>.
 
   --dry-run
   --yes, -y              accept defaults (creates RDS if no --database-url);
@@ -39,8 +40,9 @@ const TOPIC_HELP = {
   --deploy               deploy after writing without asking
   --verbose              dump cdk / npm / docker (default is a quiet spinner)`,
 
-  deploy: `deploy [space] — update that space from this CLI version.
-  One space: deploys it. Several: TTY pick, or pass a name. Update the CLI first.
+  deploy: `update [space] — update that space from this CLI version.
+  One space: updates it. Several: TTY pick, or pass a name. Pin a new CLI first.
+  Also: deploy.
 
   --seed
   --deploy-env <path>
@@ -146,6 +148,7 @@ const TARGET_COMMANDS = new Set(["init", "deploy", "diff", "synth", "destroy", "
 
 const COMMANDS = {
   init: "init",
+  update: "deploy",
   deploy: "deploy",
   diff: "diff",
   synth: "synth",
