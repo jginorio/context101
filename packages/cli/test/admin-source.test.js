@@ -172,7 +172,7 @@ test("empty helper then --add keeps the reset in .git/config", async () => {
     assert.equal(result.ok, true, result.stderr || result.error?.message);
   }
   const cfg = await readFile(path.join(dest, ".git", "config"), "utf8");
-  assert.match(cfg, /helper =\n\thelper = !aws --region us-west-2 codecommit credential-helper \$@/);
+  assert.match(cfg, /helper =\s*\n\thelper = !aws --region us-west-2 codecommit credential-helper \$@/);
 
   const replaceDest = await mkdtemp(path.join(tmpdir(), "ctx101-git-replace-"));
   assert.equal(exec({ command: "git", args: ["init", "-b", "main"], cwd: replaceDest }).ok, true);
@@ -194,7 +194,7 @@ test("empty helper then --add keeps the reset in .git/config", async () => {
     true
   );
   const replaced = await readFile(path.join(replaceDest, ".git", "config"), "utf8");
-  assert.equal(/\thelper =\n/.test(replaced), false);
+  assert.equal(/\thelper =\s*\n/.test(replaced), false);
 });
 
 test("sanitizeAdminGitDetail strips passwords and env secrets", () => {
