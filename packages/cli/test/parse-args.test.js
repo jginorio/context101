@@ -62,6 +62,8 @@ test("help init names the flags that --yes needs", () => {
   assert.match(text, /embed-model/);
   assert.match(text, /skip-bedrock-access/);
   assert.match(text, /create-rds/);
+  assert.match(text, /Existing deploy-env/);
+  assert.match(text, /--force starts over \(new secrets\)/);
 });
 
 test("rejects unknown command and flag", () => {

@@ -13,12 +13,13 @@ const COMMAND_LINES = [
 ];
 
 const TOPIC_HELP = {
-  init: `init — write deploy-env (default); TTY asks to deploy
+  init: `init — write deploy-env (default); TTY asks to deploy.
+  Existing deploy-env: TTY asks to keep it. --force starts over (new secrets).
 
   --dry-run
   --yes, -y              accept defaults (creates RDS if no --database-url);
                          required --aws-profile when several exist
-  --force                overwrite an existing env file
+  --force                overwrite an existing env file (new secrets)
   --dir <path>           clone here when not in a checkout
   --deploy-env <path>    default: <repo>/cdk/.deploy-env
   --home                 ~/.context101/deploy-env

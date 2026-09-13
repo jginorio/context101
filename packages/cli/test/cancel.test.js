@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -260,6 +260,52 @@ test("Ctrl+C on deploy-now does not deploy", async () => {
   assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), true);
   assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
   assert.equal(io.stdoutText.includes("Deploying the stack"), false);
+});
+
+test("Ctrl+C on existing-env continue exits 130 and does not overwrite", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cancel-keep-"));
+  await makeRepoFixture(root);
+  const envPath = path.join(root, "cdk", ".deploy-env");
+  const kept = 'CTX_TOKEN="ctx_keep_existing_token_xx"\nAWS_PROFILE="findit"\n';
+  await writeFile(envPath, kept, "utf8");
+  const io = ttyIo();
+  let askedAnswers = false;
+  let askedDeploy = false;
+  let deployed = false;
+
+  const code = await main(["init"], {
+    cwd: root,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(MULTI_PROFILES),
+    chooseProfile: async () => {
+      throw new Error("chooseProfile should not run");
+    },
+    promptAnswers: async () => {
+      askedAnswers = true;
+      return {};
+    },
+    confirmResume: async () => {
+      throw exitPromptError();
+    },
+    confirmDeploy: async () => {
+      askedDeploy = true;
+      return true;
+    },
+    runDeploy: async () => {
+      deployed = true;
+      return 0;
+    },
+  });
+
+  assertQuietCancel(io, code);
+  assert.equal(askedAnswers, false);
+  assert.equal(askedDeploy, false);
+  assert.equal(deployed, false);
+  const body = await readFile(envPath, "utf8");
+  assert.equal(body, kept);
 });
 
 test("Ctrl+C on destroy confirm does not clone or destroy", async () => {
