@@ -194,6 +194,13 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
+    // Empty catalog (loaded, no error): the selected id cannot exist.
+    // Skip GET /api/brains/<id> so a new stack does not 404 on "default".
+    if (brains.length === 0 && error === null) {
+      setFetchedBrain(null);
+      return;
+    }
+
     let cancelled = false;
     setFetchedBrain(undefined); // mark as "resolving" while we fetch
     (async () => {
@@ -223,10 +230,14 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [currentBrainId, fastMatch, loading]);
+  }, [brains.length, currentBrainId, error, fastMatch, loading]);
 
   const currentBrain: ClientBrain | undefined = fastMatch ?? fetchedBrain ?? undefined;
-  const currentBrainNotFound = !fastMatch && fetchedBrain === null;
+  // Empty catalog is immediately "not found" — do not wait on the by-id
+  // fetch (we skip it) or a render would flash the generic ready-gate.
+  const catalogEmpty = !loading && error === null && brains.length === 0;
+  const currentBrainNotFound =
+    !fastMatch && (fetchedBrain === null || catalogEmpty);
 
   const value: BrainContextValue = React.useMemo(
     () => ({

@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import {
   AlertCircle,
   ArrowLeft,
@@ -550,11 +551,20 @@ function BrainRow({
 }
 
 export default function BrainsPage() {
+  const searchParams = useSearchParams();
   const [items, setItems] = React.useState<ClientBrain[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [createOpen, setCreateOpen] = React.useState(false);
+  const [createOpen, setCreateOpen] = React.useState(
+    () => searchParams.get("new") === "1"
+  );
   const [toDelete, setToDelete] = React.useState<ClientBrain | null>(null);
   const { refreshBrains } = useBrain();
+
+  React.useEffect(() => {
+    if (searchParams.get("new") === "1") {
+      setCreateOpen(true);
+    }
+  }, [searchParams]);
 
   const load = React.useCallback(async () => {
     try {
