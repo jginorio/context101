@@ -55,7 +55,7 @@ test("pushAdminSource runs git push --force to CodeCommit (mocked)", async () =>
   const result = pushAdminSource({
     stackRoot: root,
     cloneUrl: CLONE,
-    version: "0.1.18",
+    version: "0.1.19",
     exec: (spec) => {
       calls.push(spec);
       return { ok: true, code: 0, stdout: "", stderr: "", error: null };
@@ -107,7 +107,7 @@ test("pushAdminSource warns with the failing step and sanitized stderr", async (
   const result = pushAdminSource({
     stackRoot: root,
     cloneUrl: CLONE,
-    version: "0.1.18",
+    version: "0.1.19",
     exec: (spec) => {
       if (spec.args?.[0] === "push") {
         return {
