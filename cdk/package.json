@@ -8,7 +8,7 @@
     "build": "tsc",
     "watch": "tsc -w",
     "cdk": "cdk",
-    "test": "node --require ts-node/register --test test/deploy-gate.test.ts test/pg-http-layer.test.ts test/asset-exclude.test.ts"
+    "test": "node --require ts-node/register --test test/deploy-gate.test.ts test/pg-http-layer.test.ts test/pg-http-ssl.test.ts test/asset-exclude.test.ts lambda/db-migrate/index.test.mjs"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",

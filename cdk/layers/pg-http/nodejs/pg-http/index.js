@@ -36,6 +36,52 @@ function rawTextTypes() {
   return { getTypeParser: () => (val) => val };
 }
 
+/**
+ * libpq `sslmode` on the URL. `pg` parses this *after* Client options
+ * (`Object.assign({}, config, parse(connectionString))`), so an explicit
+ * `ssl: { rejectUnauthorized: false }` is discarded. `sslmode=require`
+ * becomes `ssl: {}`, and Node TLS then defaults to verify — which dies
+ * on public RDS (`self-signed certificate in certificate chain`).
+ */
+function sslmodeFromConnectionString(connectionString) {
+  try {
+    return new URL(connectionString).searchParams.get("sslmode") || "";
+  } catch {
+    const match = String(connectionString).match(/[?&]sslmode=([^&]*)/i);
+    return match ? decodeURIComponent(match[1]) : "";
+  }
+}
+
+function sslOptionForTcp(connectionString) {
+  const mode = sslmodeFromConnectionString(connectionString).toLowerCase();
+  if (mode === "disable") return false;
+  // require / prefer / no-verify / verify-* / unset: encrypt, do not
+  // verify Amazon RDS's CA (not in Node's default trust store).
+  return { rejectUnauthorized: false };
+}
+
+function connectionStringForPgClient(connectionString) {
+  try {
+    const url = new URL(connectionString);
+    if (!url.searchParams.has("sslmode")) return connectionString;
+    url.searchParams.delete("sslmode");
+    return url.toString();
+  } catch {
+    return String(connectionString)
+      .replace(/([?&])sslmode=[^&]*/gi, "$1")
+      .replace(/\?&/, "?")
+      .replace(/[?&]$/, "");
+  }
+}
+
+function tcpClientConfig(connectionString) {
+  return {
+    connectionString: connectionStringForPgClient(connectionString),
+    ssl: sslOptionForTcp(connectionString),
+    types: rawTextTypes(),
+  };
+}
+
 async function pgQueryNeon(connectionString, query, params = []) {
   const res = await fetch(endpointFromConnectionString(connectionString), {
     method: "POST",
@@ -81,13 +127,7 @@ async function pgQueryTcp(connectionString, query, params = []) {
       "pg is not installed in the Lambda layer — cannot open a TCP Postgres connection"
     );
   }
-  const client = new Client({
-    connectionString,
-    ssl: /sslmode=disable/i.test(connectionString)
-      ? false
-      : { rejectUnauthorized: false },
-    types: rawTextTypes(),
-  });
+  const client = new Client(tcpClientConfig(connectionString));
   await client.connect();
   try {
     const result = await client.query(query, params.map(prepareParam));
@@ -120,4 +160,7 @@ module.exports = {
   pgFetchOne,
   pgExecute,
   isNeonConnectionString,
+  sslOptionForTcp,
+  tcpClientConfig,
+  connectionStringForPgClient,
 };
