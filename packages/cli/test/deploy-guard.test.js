@@ -339,7 +339,7 @@ test("context101 deploy demo uses cache, not the published package or leftover c
 
   const io = memoryIo();
   const calls = [];
-  const version = "0.1.12";
+  const version = "0.1.13";
 
   const code = await main(["deploy", "demo"], {
     cwd: home,

@@ -6,8 +6,11 @@ import path from "node:path";
 import { test } from "node:test";
 import { runCdk } from "../src/cdk-invoke.js";
 import { SIGINT_EXIT } from "../src/cancel.js";
+import { startDeploy } from "../src/deploy.js";
 import { parseArgs } from "../src/parse-args.js";
-import { formatQuietFailure, lastUsefulError } from "../src/quiet.js";
+import { createProgress } from "../src/progress.js";
+import { formatQuietFailure, formatQuietSuccess, lastUsefulError } from "../src/quiet.js";
+import { writers } from "../src/style.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv, writeTestDeployEnv } from "./helpers.js";
 
 const CDK_NOISE = [
@@ -155,4 +158,203 @@ test("formatQuietFailure never includes secrets", () => {
   });
   assert.equal(text.includes("ctx_quiet_secret_token_xx"), false);
   assert.match(text, /context101 deploy --verbose/);
+});
+
+test("formatQuietSuccess is deployed/destroyed plus optional stack name", () => {
+  assert.equal(formatQuietSuccess({ action: "deploy", stackName: "Context101Stack" }), "deployed Context101Stack");
+  assert.equal(formatQuietSuccess({ action: "destroy", stackName: "Context101Platea" }), "destroyed Context101Platea");
+  assert.equal(formatQuietSuccess({ action: "deploy" }), "deployed");
+  assert.equal(formatQuietSuccess({ action: "destroy", stackName: "  " }), "destroyed");
+});
+
+async function quietSuccessFixture() {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-quiet-ok-"));
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
+  const mem = memoryIo();
+  mem.stdout.isTTY = true;
+  const io = writers({ stdout: mem.stdout, stderr: mem.stderr, env: testEnv() });
+  const progress = createProgress({
+    stdout: mem.stdout,
+    env: testEnv(),
+    verbose: false,
+    setIntervalFn: () => ({ unref() {} }),
+    clearIntervalFn: () => {},
+  });
+  return { root, mem, io, progress };
+}
+
+test("TTY quiet deploy success prints ok deployed and the stack name", async () => {
+  const { root, mem, io, progress } = await quietSuccessFixture();
+  const dumped = `${CDK_NOISE}\nCREATE_COMPLETE\nOutputs:\nAdminUrl = https://secret.amplify.app`;
+  const { calls, spawnFn } = fakeSpawn(dumped, { code: 0 });
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: fakeExec(),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    io,
+    spawn: spawnFn,
+    verbose: false,
+    progress,
+    stackName: "Context101Stack",
+  });
+
+  assert.equal(code, 0);
+  assert.notEqual(calls[0].stdio, "inherit");
+  assert.match(mem.stdoutText, /\r\x1b\[K/);
+  assert.match(mem.stdoutText, /✓ deployed Context101Stack/);
+  assert.equal(mem.stdoutText.includes("CREATE_COMPLETE"), false);
+  assert.equal(mem.stdoutText.includes("AdminUrl"), false);
+  assert.equal(mem.stdoutText.includes("amplify.app"), false);
+  assert.equal(mem.stdoutText.includes("public.ecr.aws/sam"), false);
+  assert.equal(mem.stderrText.includes("FailedToBundleAsset"), false);
+});
+
+test("TTY quiet destroy success prints ok destroyed and the stack name", async () => {
+  const { root, mem, io, progress } = await quietSuccessFixture();
+  const { spawnFn } = fakeSpawn("DELETE_COMPLETE", { code: 0 });
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "destroy",
+    env: testEnv(),
+    exec: fakeExec(),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    io,
+    spawn: spawnFn,
+    verbose: false,
+    progress,
+    stackName: "Context101Stack",
+  });
+
+  assert.equal(code, 0);
+  assert.match(mem.stdoutText, /\r\x1b\[K/);
+  assert.match(mem.stdoutText, /✓ destroyed Context101Stack/);
+  assert.equal(mem.stdoutText.includes("DELETE_COMPLETE"), false);
+});
+
+test("quiet deploy success without a stack name prints ok deployed", async () => {
+  const { root, mem, io } = await quietSuccessFixture();
+  const { spawnFn } = fakeSpawn("", { code: 0 });
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: fakeExec(),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    io,
+    spawn: spawnFn,
+    verbose: false,
+  });
+
+  assert.equal(code, 0);
+  assert.match(mem.stdoutText, /✓ deployed$/m);
+  assert.equal(/✓ deployed \S/.test(mem.stdoutText), false);
+});
+
+test("quiet deploy success uses STACK_NAME from the env file", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-quiet-stack-"));
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(root, 'STACK_NAME="Context101Platea"');
+  const mem = memoryIo();
+  const io = writers({ stdout: mem.stdout, stderr: mem.stderr, env: testEnv() });
+  const { spawnFn } = fakeSpawn("", { code: 0 });
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: fakeExec(),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    io,
+    spawn: spawnFn,
+    verbose: false,
+  });
+
+  assert.equal(code, 0);
+  assert.match(mem.stdoutText, /✓ deployed Context101Platea/);
+});
+
+test("verbose deploy success still prints ok deployed", async () => {
+  const { root, mem, io } = await quietSuccessFixture();
+  const { calls, spawnFn } = fakeSpawn(CDK_NOISE, { code: 0 });
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: fakeExec(),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    io,
+    spawn: spawnFn,
+    verbose: true,
+    stackName: "Context101Stack",
+  });
+
+  assert.equal(code, 0);
+  assert.equal(calls[0].stdio, "inherit");
+  assert.match(mem.stdoutText, /✓ deployed Context101Stack/);
+});
+
+test("startDeploy TTY quiet success prints ok deployed after the spinner clears", async () => {
+  const { root, mem, io } = await quietSuccessFixture();
+  const dumped = `${CDK_NOISE}\nCREATE_COMPLETE`;
+  const { spawnFn } = fakeSpawn(dumped, { code: 0 });
+
+  const code = await startDeploy({
+    io,
+    ctx: {
+      stdout: mem.stdout,
+      stderr: mem.stderr,
+      env: testEnv(),
+      cwd: root,
+      exec: fakeExec(),
+      runDeploy: (opts) => runCdk({ ...opts, spawn: spawnFn }),
+    },
+    stackRoot: root,
+    space: { stackName: "Context101Stack" },
+    env: testEnv(),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    exec: fakeExec(),
+    verbose: false,
+    dockerDaemon: true,
+  });
+
+  assert.equal(code, 0);
+  assert.match(mem.stdoutText, /\r\x1b\[K/);
+  assert.match(mem.stdoutText, /✓ deployed Context101Stack/);
+  assert.equal(mem.stdoutText.includes("CREATE_COMPLETE"), false);
+});
+
+test("quiet deploy failure still prints the useful error and not deployed", async () => {
+  const { root, mem, io, progress } = await quietSuccessFixture();
+  const { spawnFn } = fakeSpawn(CDK_NOISE, { code: 1 });
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: fakeExec(),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    io,
+    spawn: spawnFn,
+    verbose: false,
+    progress,
+    stackName: "Context101Stack",
+  });
+
+  assert.equal(code, 1);
+  assert.match(mem.stdoutText, /\r\x1b\[K/);
+  assert.equal(mem.stdoutText.includes("✓ deployed"), false);
+  assert.match(mem.stderrText, /FailedToBundleAsset|context101 deploy --verbose/);
 });
