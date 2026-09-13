@@ -7,7 +7,7 @@ The self-host CLI (`packages/cli`, npm `context101-cli`, bin `context101`) is th
 - `cli-doctor` resolves `context101` on PATH, or `npx -y context101-cli@0.1.2`. `context101 help` exits 0.
 - `cli-help` runs `context101 help` (command list + Context7 name-collision note), `context101 help list` (list topic help), and `context101 help urls` (urls topic help).
 - `cli-list` runs `context101 list [--aws-profile <name>]` with no checkout. Expect a Context101 spaces table (`SPACE` / `STACK` / `STATUS` when local spaces exist, or `NAME` / `STATUS` / `UPDATED` from CloudFormation).
-- `cli-urls` (optional) runs `context101 urls <space> [--aws-profile <name>]`. Expect `admin` plus `mcp` (or `mcp (legacy)`). Amplify-skipped spaces print `admin  skipped` — do not invent an admin URL. Never print `CTX_TOKEN` or a bearer hint. Skip if `list` has no space or describe-stacks fails.
+- `cli-urls` (optional) runs `context101 urls <space> [--aws-profile <name>]`. Expect `admin` plus `mcp` (or `mcp (legacy)`). Spaces deployed with CLI ≥ 0.1.15 print `admin  https://main.…`. Older Amplify-skipped stacks still print `admin  skipped` — do not invent an admin URL. Never print `CTX_TOKEN` or a bearer hint. Skip if `list` has no space or describe-stacks fails.
 - `cli-destroy-dry-run` runs `context101 destroy <space-or-stack> --dry-run [--aws-profile <name>]`. Must print `dry-run — destroy nothing` and `Would destroy <name>`. Must not destroy.
 - `cli-init-deploy` exists (`init`, `deploy`, `diff`, `synth`, real `destroy`). Out of a default run — document only.
 

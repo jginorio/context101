@@ -37,7 +37,7 @@ npx -y context101-cli@0.1.15 <cmd>
 | `context101 help` | list commands |
 | `context101 version` | print the installed CLI version (`-v`, `--version`) |
 
-`list`, `urls`, `help`, `version`, and `destroy --dry-run` work without a product clone. Amplify-skipped spaces print `admin  skipped` — there is no invented admin URL.
+`list`, `urls`, `help`, `version`, and `destroy --dry-run` work without a product clone. New deploys always create Amplify (`admin  https://main.…`). Stacks that have not been updated yet still print `admin  skipped` — there is no invented admin URL.
 
 Deploy is quiet on a TTY (`deploying…`). `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose.
 

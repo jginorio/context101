@@ -43,12 +43,19 @@ export function describeStackOutputs({
   return parseStackOutputs(result.stdout);
 }
 
+export function asOutputMap(described = {}) {
+  if (!described || typeof described !== "object") return {};
+  if (Array.isArray(described)) return parseStackOutputs(described);
+  if (Array.isArray(described.outputs)) return parseStackOutputs(described.outputs);
+  return described;
+}
+
 export function pickAdminUrl(outputs = {}) {
-  return String(outputs.WebAppDefaultDomain || "").trim();
+  return String(asOutputMap(outputs).WebAppDefaultDomain || "").trim();
 }
 
 export function pickAdminRepoCloneUrl(outputs = {}) {
-  return String(outputs.AdminRepoCloneUrl || "").trim();
+  return String(asOutputMap(outputs).AdminRepoCloneUrl || "").trim();
 }
 
 export function formatAdminUrl(url) {

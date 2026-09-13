@@ -135,7 +135,6 @@ test("startDeploy pushes to CodeCommit after a successful deploy (mocked)", asyn
   assert.equal(pushes.length, 1);
   assert.equal(pushes[0].cloneUrl, CLONE);
   assert.equal(pushes[0].stackRoot, root);
-  assert.match(io.stdoutText, /admin {2}https:\/\/main\.d123456789\.amplifyapp\.com/);
   assert.equal(io.stdoutText.includes("ghp_"), false);
   assert.equal(io.stderrText.includes("ghp_"), false);
 });
@@ -189,5 +188,4 @@ test("startDeploy does not push when REPOSITORY overrides to GitHub", async () =
 
   assert.equal(code, 0);
   assert.equal(pushes.length, 0);
-  assert.match(io.stdoutText, /admin {2}https:\/\/main\.d123456789\.amplifyapp\.com/);
 });

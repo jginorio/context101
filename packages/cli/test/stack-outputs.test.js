@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
+  asOutputMap,
   formatAdminUrl,
   parseStackOutputs,
   pickAdminRepoCloneUrl,
@@ -33,4 +34,20 @@ test("formatAdminUrl does not print secrets", () => {
   assert.equal(line.includes("ghp_"), false);
   assert.equal(line.includes("CTX_TOKEN"), false);
   assert.equal(line.includes("DATABASE_URL"), false);
+});
+
+test("pickAdminRepoCloneUrl accepts urls.js describe shape", () => {
+  const described = {
+    ok: true,
+    outputs: [
+      { OutputKey: "AdminRepoCloneUrl", OutputValue: "https://git-codecommit.us-west-2.amazonaws.com/v1/repos/x" },
+      { OutputKey: "WebAppDefaultDomain", OutputValue: "https://main.d123.amplifyapp.com" },
+    ],
+  };
+  assert.equal(
+    pickAdminRepoCloneUrl(described),
+    "https://git-codecommit.us-west-2.amazonaws.com/v1/repos/x"
+  );
+  assert.equal(pickAdminUrl(described), "https://main.d123.amplifyapp.com");
+  assert.equal(asOutputMap(described).DocsBucketName, undefined);
 });
