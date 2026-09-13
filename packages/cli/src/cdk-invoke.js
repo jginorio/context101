@@ -8,7 +8,7 @@ import {
 import { printCancelled, SIGINT_EXIT } from "./cancel.js";
 import { ensureCheckoutDeps, resolveCdkBin } from "./checkout-deps.js";
 import { actionLabel } from "./progress.js";
-import { formatQuietFailure, secretsFromContext } from "./quiet.js";
+import { formatQuietFailure, formatQuietSuccess, secretsFromContext } from "./quiet.js";
 import { findDeployEnvPath, readDeployEnvFile } from "./deploy-env-load.js";
 import { displaySpaceEnv } from "./spaces.js";
 import { isHostedContext101Url } from "./hosted-url.js";
@@ -235,12 +235,13 @@ export function runCdk({
   assertDeployTokens(context, { action });
   const resolvedHome = homeDir ?? homedir();
   const outputDir = cdkOutputDir(sourceRoot, { homeDir: resolvedHome, version });
+  const resolvedStackName = stackName || context.values.STACK_NAME || "";
   const args = buildCdkArgs({
     action,
     seed,
     context,
     extraArgs,
-    stackName: stackName || context.values.STACK_NAME || null,
+    stackName: resolvedStackName || null,
     namePrefix: namePrefix || context.values.NAME_PREFIX || null,
     env,
     outputDir,
@@ -320,6 +321,8 @@ export function runCdk({
       const status = code ?? 1;
       if (status !== 0 && !inherit && io?.err) {
         io.err(formatQuietFailure({ action, output, secrets: secretsFromContext(context) }));
+      } else if (status === 0 && (action === "deploy" || action === "destroy") && typeof io?.ok === "function") {
+        io.ok(formatQuietSuccess({ action, stackName: resolvedStackName }));
       }
       resolve(status);
     });

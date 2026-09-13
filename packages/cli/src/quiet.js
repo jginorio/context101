@@ -60,3 +60,9 @@ export function formatQuietFailure({ action = "deploy", output = "", secrets = [
   if (!useful) return hint;
   return `${useful}\n\n${hint}`;
 }
+
+export function formatQuietSuccess({ action = "deploy", stackName = "" } = {}) {
+  const verb = action === "destroy" ? "destroyed" : "deployed";
+  const name = String(stackName ?? "").trim();
+  return name ? `${verb} ${name}` : verb;
+}
