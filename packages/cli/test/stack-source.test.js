@@ -240,12 +240,13 @@ test("monorepo checkout is the last resort when developing the CLI", async () =>
 
 test("pack-stack ships cdk lockfile, web/, and the Amplify monorepo files", async () => {
   const src = await readFile(fileURLToPath(new URL("../scripts/pack-stack.js", import.meta.url)), "utf8");
-  assert.match(src, /copyRel\("cdk"\)/);
+  assert.match(src, /copyRel\("cdk"/);
   assert.match(src, /cdk\/package-lock\.json/);
   assert.match(src, /"cdk\.out"/);
-  assert.match(src, /copyRel\("web"\)/);
-  assert.match(src, /copyRel\("amplify.yml"\)/);
-  assert.match(src, /copyRel\("package-lock.json"\)/);
+  assert.match(src, /copyRel\("web"/);
+  assert.match(src, /copyRel\("amplify.yml"/);
+  assert.match(src, /copyRel\("package-lock.json"/);
+  assert.match(src, /copyRel\("packages\/cli"/);
   assert.match(src, /"stack"/);
 
   const cdkLock = fileURLToPath(new URL("../../../cdk/package-lock.json", import.meta.url));
