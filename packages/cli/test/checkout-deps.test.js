@@ -432,7 +432,7 @@ test("refuses npm ci inside the published CLI package", async () => {
 
 test("packaged cache deploy uses --output outside the stack source", async () => {
   const home = await mkdtemp(path.join(tmpdir(), "ctx101-cache-out-"));
-  const version = "0.1.11";
+  const version = "0.1.12";
   const cache = writableCacheDest(version, home);
   await makePackedStackFixture(cache, { deps: false });
   await writeTestDeployEnv(cache);
