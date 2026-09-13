@@ -8,6 +8,7 @@ import { SMOOTH_REGION } from "../src/defaults.js";
 import { main } from "./run-main.js";
 import { existingEnvContinueMessage } from "../src/prompt.js";
 import { collectSecrets } from "../src/redact.js";
+import { monorepoStackRoot } from "../src/stack-source.js";
 import {
   fakeExec,
   keepDefaultSpace,
@@ -446,7 +447,7 @@ test("existing env + TTY continue then deploy uses loaded AWS auth", async () =>
   assertNoWizard(io, hooks);
   assert.equal(await existingEnvBody(root), before);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, root);
+  assert.equal(calls[0].repoRoot, monorepoStackRoot());
   assert.equal(calls[0].env.AWS_PROFILE, "findit");
   assert.match(io.stdoutText, /postgres  RDS/);
   assert.match(io.stdoutText, /[Dd]eploying/);

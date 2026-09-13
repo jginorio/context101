@@ -16,13 +16,13 @@ export function packageDir() {
   return path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 }
 
-export function embeddedStackRoot(exists = existsSync) {
-  const packed = path.join(packageDir(), "stack");
+export function embeddedStackRoot(exists = existsSync, pkgDir = packageDir()) {
+  const packed = path.join(pkgDir, "stack");
   return isStackRoot(packed, exists) ? packed : null;
 }
 
-export function monorepoStackRoot(exists = existsSync) {
-  let dir = packageDir();
+export function monorepoStackRoot(exists = existsSync, pkgDir = packageDir()) {
+  let dir = pkgDir;
   for (let i = 0; i < 6; i += 1) {
     if (isStackRoot(dir, exists) && exists(path.join(dir, "packages", "cli", "package.json"))) {
       return dir;
@@ -41,28 +41,25 @@ export function cacheStackRoot(version, homeDir = homedir(), exists = existsSync
   return isStackRoot(root, exists) ? root : null;
 }
 
+// Published CLI: explicit override, packaged stack/, version cache, then
+// monorepo-dev. Never cwd, ~/context101, or cwd/context101.
 export function resolveStackRoot({
   stackRoot,
   env = {},
   homeDir = homedir(),
   exists = existsSync,
   version,
-  cwd,
+  packageDir: pkgDir = packageDir(),
 } = {}) {
   if (stackRoot && isStackRoot(stackRoot, exists)) return stackRoot;
   const fromEnv = String(env.CONTEXT101_STACK_ROOT || "").trim();
   if (fromEnv && isStackRoot(fromEnv, exists)) return fromEnv;
-  if (cwd && isStackRoot(cwd, exists)) return cwd;
-  if (cwd) {
-    const nested = path.join(cwd, "context101");
-    if (isStackRoot(nested, exists)) return nested;
-  }
-  const embedded = embeddedStackRoot(exists);
+  const embedded = embeddedStackRoot(exists, pkgDir);
   if (embedded) return embedded;
-  const monorepo = monorepoStackRoot(exists);
-  if (monorepo) return monorepo;
   const cached = cacheStackRoot(version || runningVersion(), homeDir, exists);
   if (cached) return cached;
+  const monorepo = monorepoStackRoot(exists, pkgDir);
+  if (monorepo) return monorepo;
   return null;
 }
 
@@ -74,10 +71,17 @@ export async function ensureStackRoot({
   mkdir = mkdirSync,
   fetchStack,
   version,
-  cwd,
+  packageDir: pkgDir = packageDir(),
   io,
 } = {}) {
-  const current = resolveStackRoot({ stackRoot, env, homeDir, exists, version, cwd });
+  const current = resolveStackRoot({
+    stackRoot,
+    env,
+    homeDir,
+    exists,
+    version,
+    packageDir: pkgDir,
+  });
   if (current) return { ok: true, stackRoot: current, fetched: false };
 
   const pin = version || runningVersion();

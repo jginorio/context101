@@ -33,6 +33,9 @@ rmSync(dest, { recursive: true, force: true });
 mkdirSync(dest, { recursive: true });
 
 copyRel("cdk");
+if (!existsSync(path.join(dest, "cdk", "package-lock.json"))) {
+  throw new Error("pack-stack: cdk/package-lock.json is required for npm ci");
+}
 copyRel("wiki-generator-ts");
 copyRel("knowledge");
 copyRel("web/drizzle");

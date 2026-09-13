@@ -8,6 +8,7 @@ import { main } from "./run-main.js";
 import { nextSteps } from "../src/plan.js";
 import { deployNowMessage, existingEnvContinueMessage } from "../src/prompt.js";
 import { DEFAULT_SPACE, defaultSpaceEnvPath } from "../src/spaces.js";
+import { monorepoStackRoot } from "../src/stack-source.js";
 import {
   fakeExec,
   keepDefaultSpace,
@@ -132,7 +133,7 @@ test("interactive init asks to deploy and respects yes", async () => {
   assert.equal(code, 0);
   assert.equal(asked.length, 1);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, root);
+  assert.equal(calls[0].repoRoot, monorepoStackRoot());
   assert.equal(calls[0].seed, false);
   assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   assert.match(io.stdoutText, /[Dd]eploying/);
@@ -181,7 +182,7 @@ test("interactive --deploy deploys without asking", async () => {
   assert.equal(code, 0);
   assert.equal(asked, false);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, root);
+  assert.equal(calls[0].repoRoot, monorepoStackRoot());
   assert.match(io.stdoutText, /[Dd]eploying/);
 });
 
