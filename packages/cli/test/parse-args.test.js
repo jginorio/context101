@@ -194,7 +194,7 @@ test("workspace package is context101-cli with bin context101", async () => {
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.4");
+  assert.equal(pkg.version, "0.1.5");
   assert.equal(pkg.private, false);
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.bin.context101, "./bin/context101.js");
