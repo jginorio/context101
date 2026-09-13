@@ -5,6 +5,7 @@ import { runDeploy } from "./deploy.js";
 import { runInit } from "./init.js";
 import { runDestroy, runList } from "./stacks.js";
 import { banner, writers } from "./style.js";
+import { maybeOfferUpdate } from "./update.js";
 
 export async function main(argv, ctx) {
   const io = writers(ctx);
@@ -22,10 +23,13 @@ export async function main(argv, ctx) {
 
   try {
     // await so Inquirer ExitPromptError is caught; a bare return leaks the rejection
+    banner(ctx);
+    const updateCode = await maybeOfferUpdate(opts, ctx);
+    if (updateCode !== null) return updateCode;
+
     if (opts.help || opts.command === "help") {
       const topic =
         opts.helpTopic ?? (opts.command !== "help" ? opts.command : null);
-      banner(ctx);
       io.write(helpText(topic));
       return 0;
     }

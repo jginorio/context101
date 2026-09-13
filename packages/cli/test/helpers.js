@@ -4,6 +4,9 @@ import path from "node:path";
 
 export function testEnv(extra = {}) {
   const env = { ...process.env, NO_COLOR: "1", ...extra };
+  if (!Object.hasOwn(extra, "CONTEXT101_SKIP_UPDATE")) {
+    env.CONTEXT101_SKIP_UPDATE = "1";
+  }
   if (!Object.hasOwn(extra, "AWS_PROFILE")) delete env.AWS_PROFILE;
   if (!Object.hasOwn(extra, "AWS_ACCESS_KEY_ID")) delete env.AWS_ACCESS_KEY_ID;
   if (!Object.hasOwn(extra, "AWS_SECRET_ACCESS_KEY")) delete env.AWS_SECRET_ACCESS_KEY;

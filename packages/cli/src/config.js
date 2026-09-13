@@ -7,7 +7,7 @@ import { quoteShell } from "./env-file.js";
 import { isHostedContext101Url } from "./hosted-url.js";
 import { mask } from "./redact.js";
 import { findRepoRoot } from "./repo.js";
-import { banner, writers } from "./style.js";
+import { writers } from "./style.js";
 
 const SECRET_NAME = /TOKEN|SECRET|PASSWORD|PEPPER|KEY/i;
 const HOSTED_KEYS = new Set([
@@ -33,6 +33,24 @@ export function formatConfig(values) {
     .join("\n");
 }
 
+export function formatExistingEnvSummary(values = {}) {
+  const profile = String(values.AWS_PROFILE || "").trim();
+  const region = String(values.AWS_REGION || "").trim();
+  const createRds = String(values.CREATE_RDS || "").toLowerCase() === "true";
+  const hasDatabaseUrl = Boolean(values.DATABASE_URL);
+  const auth = profile
+    ? profile
+    : values.AWS_ACCESS_KEY_ID || values.AWS_SECRET_ACCESS_KEY
+      ? "access keys"
+      : "unset";
+  const postgres = createRds ? "RDS" : hasDatabaseUrl ? "DATABASE_URL" : "unset";
+  return [
+    `profile   ${auth}`,
+    `region    ${region || "unset"}`,
+    `postgres  ${postgres}`,
+  ].join("\n");
+}
+
 export function upsertEnvLine(text, key, value) {
   const line = `${key}=${quoteShell(value)}`;
   const re = new RegExp(`^(\\s*(?:export\\s+)?${key}=).*`, "m");
@@ -44,7 +62,6 @@ export function upsertEnvLine(text, key, value) {
 
 export async function runConfig(opts, ctx) {
   const io = writers(ctx);
-  banner(ctx);
 
   const repoRoot = findRepoRoot(ctx.cwd);
   const filePath = findDeployEnvPath({

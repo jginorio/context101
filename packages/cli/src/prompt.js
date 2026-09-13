@@ -6,10 +6,22 @@ import {
 import { inferDriver, inferPrepare } from "./env-file.js";
 import { normalizeRepoUrl } from "./repo.js";
 
+export function existingEnvContinueMessage() {
+  return "Continue with these values?";
+}
+
 export function deployNowMessage({ createRds = false } = {}) {
   return createRds
     ? "Deploy the stack now? (CDK + Docker; creates RDS)"
     : "Deploy the stack now?";
+}
+
+export async function promptExistingEnvContinue() {
+  const { confirm } = await import("@inquirer/prompts");
+  return confirm({
+    message: existingEnvContinueMessage(),
+    default: true,
+  });
 }
 
 export async function promptDeployNow(details = {}) {

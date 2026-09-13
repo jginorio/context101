@@ -3,9 +3,9 @@ import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { formatConfig, upsertEnvLine } from "../src/config.js";
+import { formatConfig, formatExistingEnvSummary, upsertEnvLine } from "../src/config.js";
 import { findDeployEnvPath } from "../src/deploy-env-load.js";
-import { HOME_ENV_REL } from "../src/defaults.js";
+import { HOME_ENV_REL, SMOOTH_REGION } from "../src/defaults.js";
 import { main } from "../src/main.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv, writeTestDeployEnv } from "./helpers.js";
 
@@ -20,6 +20,43 @@ test("formatConfig redacts secrets and leaves profile names", () => {
   assert.match(text, /APP_MODE=self_hosted/);
   assert.equal(text.includes(secret), false);
   assert.match(text, /CTX_TOKEN=/);
+});
+
+test("formatExistingEnvSummary is profile, region, postgres only", () => {
+  const secret = "ctx_testtoken_must-never-appear";
+  const key = "TESTACCESSKEYID12345";
+  const db = "postgresql://user:summary-secret-db@localhost/app";
+  const text = formatExistingEnvSummary({
+    CTX_TOKEN: secret,
+    BETTER_AUTH_SECRET: "auth-secret-must-never-appear",
+    AWS_PROFILE: "findit",
+    AWS_REGION: SMOOTH_REGION,
+    AWS_ACCESS_KEY_ID: key,
+    CREATE_RDS: "true",
+    DATABASE_URL: db,
+  });
+  assert.match(text, /profile   findit/);
+  assert.match(text, new RegExp(`region    ${SMOOTH_REGION}`));
+  assert.match(text, /postgres  RDS/);
+  assert.equal(text.includes(secret), false);
+  assert.equal(text.includes(key), false);
+  assert.equal(text.includes(db), false);
+  assert.equal(text.includes("CTX_TOKEN"), false);
+});
+
+test("formatExistingEnvSummary names DATABASE_URL without printing it", () => {
+  const db = "postgresql://user:summary-secret-db@localhost/app";
+  const text = formatExistingEnvSummary({
+    AWS_ACCESS_KEY_ID: "TESTACCESSKEYID12345",
+    AWS_SECRET_ACCESS_KEY: "test-secret-access-key-must-never-appear",
+    AWS_REGION: "us-west-2",
+    DATABASE_URL: db,
+  });
+  assert.match(text, /profile   access keys/);
+  assert.match(text, /region    us-west-2/);
+  assert.match(text, /postgres  DATABASE_URL/);
+  assert.equal(text.includes(db), false);
+  assert.equal(text.includes("TESTACCESSKEYID12345"), false);
 });
 
 test("upsertEnvLine replaces or appends a key", () => {

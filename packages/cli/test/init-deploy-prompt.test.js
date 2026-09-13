@@ -6,7 +6,7 @@ import path from "node:path";
 import { test } from "node:test";
 import { main } from "../src/main.js";
 import { nextSteps } from "../src/plan.js";
-import { deployNowMessage } from "../src/prompt.js";
+import { deployNowMessage, existingEnvContinueMessage } from "../src/prompt.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
 
 function mockClone(dest) {
@@ -39,6 +39,8 @@ test("nextSteps is a one-liner and --seed only when asked", () => {
   assert.equal(nextSteps({ seed: true }), "context101 deploy --seed");
   assert.equal(deployNowMessage(), "Deploy the stack now?");
   assert.match(deployNowMessage({ createRds: true }), /creates RDS/);
+  assert.equal(existingEnvContinueMessage(), "Continue with these values?");
+  assert.equal(existingEnvContinueMessage().includes("—"), false);
 });
 
 test("interactive init asks to deploy and respects no", async () => {

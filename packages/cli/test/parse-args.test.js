@@ -62,6 +62,8 @@ test("help init names the flags that --yes needs", () => {
   assert.match(text, /embed-model/);
   assert.match(text, /skip-bedrock-access/);
   assert.match(text, /create-rds/);
+  assert.match(text, /Existing deploy-env/);
+  assert.match(text, /--force starts over \(new secrets\)/);
 });
 
 test("rejects unknown command and flag", () => {
@@ -192,7 +194,7 @@ test("workspace package is context101-cli with bin context101", async () => {
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.4");
+  assert.equal(pkg.version, "0.1.5");
   assert.equal(pkg.private, false);
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.bin.context101, "./bin/context101.js");

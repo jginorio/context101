@@ -106,6 +106,8 @@ test("--yes refuses to overwrite without --force", async () => {
   const { writeFile } = await import("node:fs/promises");
   await writeFile(envPath, "CTX_TOKEN=keep-me\n", "utf8");
   const io = memoryIo();
+  let askedAnswers = false;
+  let askedProfile = false;
 
   const code = await main(
     ["init", "--yes", "--database-url", "postgresql://localhost/db"],
@@ -115,12 +117,33 @@ test("--yes refuses to overwrite without --force", async () => {
       stdout: io.stdout,
       stderr: io.stderr,
       stdin: io.stdin,
-      exec: fakeExec(),
+      exec: fakeExec({
+        "aws configure list-profiles": {
+          ok: true,
+          code: 0,
+          stdout: "findit\nplateapr\n",
+          stderr: "",
+          error: null,
+        },
+      }),
+      chooseProfile: async () => {
+        askedProfile = true;
+        return "findit";
+      },
+      promptAnswers: async () => {
+        askedAnswers = true;
+        return {};
+      },
     }
   );
 
   assert.equal(code, 1);
+  assert.equal(askedAnswers, false);
+  assert.equal(askedProfile, false);
   assert.match(io.stderrText, /already exists/);
+  assert.match(io.stderrText, /--force/);
+  assert.equal(io.stdoutText.includes("AWS region"), false);
+  assert.equal(io.stdoutText.includes("Amplify frontend"), false);
   const body = await readFile(envPath, "utf8");
   assert.equal(body, "CTX_TOKEN=keep-me\n");
 });
