@@ -1,4 +1,6 @@
 .venv/
+cdk.out
+**/cdk.out
 **/node_modules/
 **/.next/
 **/out/

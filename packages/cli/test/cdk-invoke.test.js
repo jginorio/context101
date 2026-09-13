@@ -131,3 +131,15 @@ test("env CTX_TOKEN wins over the file", async () => {
   );
   assert.equal(context.token, "ctx_envtoken_xx");
 });
+
+test("buildCdkArgs can send --output outside the stack tree", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-outarg-"));
+  await makeRepoFixture(root);
+  const context = await contextFromFile(root, ['CTX_TOKEN="ctx_testtoken_xx"']);
+  const outputDir = `${root}.cdk.out`;
+  const args = buildCdkArgs({ action: "deploy", context, outputDir });
+  const idx = args.indexOf("--output");
+  assert.notEqual(idx, -1);
+  assert.equal(args[idx + 1], outputDir);
+  assert.equal(outputDir.startsWith(root + "/"), false);
+});

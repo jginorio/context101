@@ -45,7 +45,7 @@ import {
   registerSpaceEnv,
   stackNameForSpace,
 } from "./spaces.js";
-import { ensureStackRoot, resolveStackRoot } from "./stack-source.js";
+import { ensureStackRoot, resolveStackRoot, resolveStackSource } from "./stack-source.js";
 import { writers } from "./style.js";
 import { listAwsProfiles, resolveAwsAuth } from "./aws-profiles.js";
 import { homedir } from "node:os";
@@ -63,12 +63,14 @@ export async function runInit(opts, ctx) {
   const env = ctx.env ?? {};
   const tty = Boolean(ctx.stdin && ctx.stdin.isTTY && ctx.stdout && ctx.stdout.isTTY);
   const repoRoot = findRepoRoot(ctx.cwd) || ctx.cwd;
-  const stackRoot =
-    resolveStackRoot({
+  const stackSource =
+    resolveStackSource({
       stackRoot: ctx.stackRoot,
       env,
       homeDir,
       cwd: ctx.cwd,
+      version: ctx.cliVersion,
+      packageDir: ctx.packageDir,
     }) || ctx.stackRoot;
 
   let spaceName;
@@ -263,7 +265,7 @@ export async function runInit(opts, ctx) {
   else if (reuseSecrets?.CTX_GH_TOKEN) secrets.CTX_GH_TOKEN = reuseSecrets.CTX_GH_TOKEN;
 
   const exampleToken = await readExampleToken(
-    path.join(stackRoot || repoRoot, ...EXAMPLE_ENV_REL.split("/"))
+    path.join(stackSource || repoRoot, ...EXAMPLE_ENV_REL.split("/"))
   );
   if (exampleToken && secrets.CTX_TOKEN === exampleToken) {
     io.err("refusing to write the example CTX_TOKEN — generated a collision; re-run.");
@@ -327,7 +329,14 @@ export async function runInit(opts, ctx) {
     envFile: answers.envFile ?? opts.envFile ?? envPath,
     deployFlag: Boolean(answers.deploy),
     spaceName,
-    stackRoot,
+    stackRoot: resolveStackRoot({
+      stackRoot: ctx.stackRoot,
+      env,
+      homeDir,
+      cwd: ctx.cwd,
+      version: ctx.cliVersion,
+      packageDir: ctx.packageDir,
+    }),
   });
 }
 
@@ -428,6 +437,8 @@ async function resumeExistingInit({
       env,
       homeDir: ctx.homeDir,
       cwd: ctx.cwd,
+      version: ctx.cliVersion,
+      packageDir: ctx.packageDir,
     }),
   });
   return { done: true, code };
@@ -479,6 +490,8 @@ async function finishAfterEnv({
     homeDir,
     cwd: ctx.cwd,
     fetchStack: ctx.fetchStack,
+    version: ctx.cliVersion,
+    packageDir: ctx.packageDir,
     io,
   });
   if (!readyStack.ok && deployFlag) {
@@ -491,6 +504,7 @@ async function finishAfterEnv({
       repoRoot: sourceRoot,
       exec: exec ?? ctx.exec,
       io,
+      packageDir: ctx.packageDir,
     });
     if (!ready.ok && (deployFlag || existsSync(path.join(sourceRoot, "package-lock.json")))) {
       io.err(ready.error);

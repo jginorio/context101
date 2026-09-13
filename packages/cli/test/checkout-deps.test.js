@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCdk } from "../src/cdk-invoke.js";
 import { INSTALLING_DEPS, checkoutNeededMessage, ensureCheckoutDeps } from "../src/checkout-deps.js";
+import { cdkOutputDir, writableCacheDest } from "../src/stack-source.js";
 import { UPDATING_CHECKOUT } from "../src/clone.js";
 import { main } from "./run-main.js";
 import { STACK_NAME } from "../src/defaults.js";
@@ -410,6 +411,99 @@ test("runCdk accepts a packaged stack without web/package.json", async () => {
   assert.equal(spawnCalls.length, 1);
   assert.equal(spawnCalls[0].command, path.join(root, "cdk", "node_modules", ".bin", "cdk"));
   assert.equal(spawnCalls[0].cwd, path.join(root, "cdk"));
+});
+
+test("refuses npm ci inside the published CLI package", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-pub-ci-"));
+  const pkg = path.join(home, "lib", "node_modules", "context101-cli");
+  const packed = path.join(pkg, "stack");
+  await makePackedStackFixture(packed, { deps: false });
+  const execCalls = [];
+  const ready = ensureCheckoutDeps({
+    repoRoot: packed,
+    packageDir: pkg,
+    exec: recordingExec(fakeExec(), execCalls),
+  });
+
+  assert.equal(ready.ok, false);
+  assert.match(ready.error, /published CLI package/);
+  assert.equal(npmCiCalls(execCalls).length, 0);
+});
+
+test("packaged cache deploy uses --output outside the stack source", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-cache-out-"));
+  const version = "0.1.11";
+  const cache = writableCacheDest(version, home);
+  await makePackedStackFixture(cache, { deps: false });
+  await writeTestDeployEnv(cache);
+  const io = memoryIo();
+  const execCalls = [];
+  const { calls: spawnCalls, spawnFn } = fakeSpawnRecorder();
+
+  const code = await runCdk({
+    repoRoot: cache,
+    stackRoot: cache,
+    action: "deploy",
+    env: testEnv(),
+    homeDir: home,
+    version,
+    exec: recordingExec(fakeExec(), execCalls),
+    io: {
+      dim(msg) {
+        io.stdout.write(`${msg}\n`);
+      },
+      err(msg) {
+        io.stderr.write(`${msg}\n`);
+      },
+    },
+    spawn: spawnFn,
+    stdio: "ignore",
+  });
+
+  assert.equal(code, 0);
+  assert.equal(spawnCalls.length, 1);
+  const output = cdkOutputDir(cache, { homeDir: home, version });
+  assert.ok(output);
+  assert.equal(output.startsWith(cache + path.sep), false);
+  const idx = spawnCalls[0].args.indexOf("--output");
+  assert.notEqual(idx, -1);
+  assert.equal(spawnCalls[0].args[idx + 1], output);
+  assert.equal(spawnCalls[0].cwd, path.join(cache, "cdk"));
+  const ci = npmCiCalls(execCalls);
+  assert.equal(ci.length, 1);
+  assert.equal(ci[0].cwd, path.join(cache, "cdk"));
+});
+
+test("runCdk refuses to synth inside the published CLI package", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-pub-synth-"));
+  const pkg = path.join(home, "lib", "node_modules", "context101-cli");
+  const packed = path.join(pkg, "stack");
+  await makePackedStackFixture(packed, { deps: false });
+  await writeTestDeployEnv(packed);
+  const io = memoryIo();
+  const { calls: spawnCalls, spawnFn } = fakeSpawnRecorder();
+
+  const code = await runCdk({
+    repoRoot: packed,
+    stackRoot: packed,
+    action: "deploy",
+    env: testEnv(),
+    homeDir: home,
+    packageDir: pkg,
+    exec: fakeExec(),
+    io: {
+      dim() {},
+      err(msg) {
+        io.stderr.write(`${msg}\n`);
+      },
+    },
+    spawn: spawnFn,
+    stdio: "ignore",
+  });
+
+  assert.equal(code, 1);
+  assert.equal(spawnCalls.length, 0);
+  assert.match(io.stderrText, /published CLI package/);
 });
 
 test("cdk.json app cannot download a bare ts-node", async () => {
