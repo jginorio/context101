@@ -14,6 +14,14 @@ export function testEnv(extra = {}) {
   return env;
 }
 
+export function exitPromptError(
+  message = "User force closed the prompt with SIGINT"
+) {
+  const error = new Error(message);
+  error.name = "ExitPromptError";
+  return error;
+}
+
 export function memoryIo() {
   let out = "";
   let err = "";
