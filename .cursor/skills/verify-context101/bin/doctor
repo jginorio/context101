@@ -38,13 +38,21 @@ if [[ -n "$cookie" ]]; then
   fi
 fi
 
-# S3 via the app (not a raw AWS call) — proves Next has AWS creds
+# S3 via the app (not a raw AWS call) — proves Next has AWS creds.
+# Empty catalog is a healthy new stack (no implicit default brain).
 if [[ -n "$cookie" ]]; then
-  list=$(curl -sS -H "Cookie: $cookie" "$BASE/api/files/list?prefix=" || true)
-  if echo "$list" | grep -q '"folders"'; then
-    ok "GET /api/files/list returns folders/files"
+  brains=$(curl -sS -H "Cookie: $cookie" "$BASE/api/brains/list?status=all" || true)
+  if echo "$brains" | python3 -c 'import json,sys; d=json.load(sys.stdin); raise SystemExit(0 if d.get("items") else 1)' 2>/dev/null; then
+    list=$(curl -sS -H "Cookie: $cookie" "$BASE/api/files/list?prefix=" || true)
+    if echo "$list" | grep -q '"folders"'; then
+      ok "GET /api/files/list returns folders/files"
+    else
+      bad "GET /api/files/list failed — Next likely lacks AWS credentials. Restart next with aws-env sourced. Body: $(echo "$list" | head -c 160)"
+    fi
+  elif echo "$brains" | grep -q '"items"'; then
+    ok "brains catalog is empty (no implicit default; create a brain)"
   else
-    bad "GET /api/files/list failed — Next likely lacks AWS credentials. Restart next with aws-env sourced. Body: $(echo "$list" | head -c 160)"
+    bad "GET /api/brains/list failed. Body: $(echo "$brains" | head -c 160)"
   fi
 fi
 

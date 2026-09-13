@@ -7,6 +7,7 @@ import {
   COOKIE_NAME,
   HEADER_NAME,
   QUERY_PARAM,
+  resolveActiveBrainId,
   resolveRequestedBrainId,
 } from "@/lib/brain-id";
 import { db } from "@/lib/db/client";
@@ -238,7 +239,11 @@ export async function resolveBrainFromRequest(
   if (!auth) {
     return { ok: false, status: 401, error: "not authenticated" };
   }
-  const brainId = await readRequestedBrainId(request);
+  const requested = await readRequestedBrainId(request);
+  const ready = requested
+    ? []
+    : (await listReadyBrainsForOrg(auth.orgId)).map((b) => b.brain_id);
+  const brainId = resolveActiveBrainId(requested, ready);
   if (!brainId) {
     return { ok: false, status: 404, error: "no brain selected" };
   }

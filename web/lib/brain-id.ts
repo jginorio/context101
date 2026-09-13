@@ -21,3 +21,16 @@ export function resolveRequestedBrainId(input: {
   }
   return null;
 }
+
+/**
+ * Turn a requested id (or none) into the id routes should load.
+ * An explicit request wins. Otherwise the newest ready brain — never
+ * an invented `default`.
+ */
+export function resolveActiveBrainId(
+  requested: string | null,
+  readyBrainIds: readonly string[]
+): string | null {
+  if (requested) return requested;
+  return readyBrainIds[0] ?? null;
+}
