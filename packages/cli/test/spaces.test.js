@@ -10,6 +10,7 @@ import {
   matchSpaces,
   namePrefixForSpace,
   parseSpaceName,
+  spaceChoiceLabel,
   stackNameForSpace,
 } from "../src/spaces.js";
 import { makeRepoFixture, writeTestDeployEnv } from "./helpers.js";
@@ -99,6 +100,25 @@ test("legacy default stays visible when another named space exists", async () =>
     ["default", "platea"]
   );
   assert.equal(spaces[0].envPath, path.join(cwd, "cdk", ".deploy-env"));
+});
+
+test("space picker label shows AWS_PROFILE so multi-account is visible", () => {
+  assert.equal(
+    spaceChoiceLabel({
+      name: "platea",
+      stackName: "Context101Platea",
+      awsProfile: "plateapr.com",
+    }),
+    "platea  Context101Platea  plateapr.com"
+  );
+  assert.equal(
+    spaceChoiceLabel({
+      name: "findit",
+      stackName: "Context101Findit",
+      awsProfile: "",
+    }),
+    "findit  Context101Findit  —"
+  );
 });
 
 test("several spaces in a non-TTY require a name", async () => {

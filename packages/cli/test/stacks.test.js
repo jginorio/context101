@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -7,6 +7,7 @@ import { STACK_NAME } from "../src/defaults.js";
 import { main } from "./run-main.js";
 import {
   formatDeployments,
+  formatSpaces,
   isContext101Deployment,
   parseStackSummaries,
   statusTone,
@@ -70,6 +71,32 @@ test("formatDeployments prints an empty next-step and a table", () => {
   assert.match(table, /UPDATED/);
   assert.equal(table.includes("│"), false);
   assert.equal(table.includes("┌"), false);
+});
+
+test("formatSpaces shows AWS_PROFILE so multi-account is visible", () => {
+  const table = formatSpaces([
+    {
+      name: "platea",
+      stackName: "Context101Platea",
+      awsProfile: "plateapr.com",
+      status: "UPDATE_COMPLETE",
+      updated: "2026-09-12T20:00:00+00:00",
+    },
+    {
+      name: "findit",
+      stackName: "Context101Findit",
+      awsProfile: "",
+      status: "",
+      updated: "",
+    },
+  ]);
+  assert.match(table, /SPACE/);
+  assert.match(table, /STACK/);
+  assert.match(table, /PROFILE/);
+  assert.match(table, /plateapr\.com/);
+  assert.match(table, /findit/);
+  assert.match(table, /—/);
+  assert.equal(table.includes("AWS_SECRET"), false);
 });
 
 test("statusTone is brand for complete, violet for in-flight, red for failed", () => {
@@ -145,6 +172,42 @@ test("context101 list prints Context101 stacks and ignores nested and toolkit", 
   assert.equal(io.stdoutText.includes("Nested-XYZ"), false);
   assert.equal(io.stdoutText.includes("CDKToolkit"), false);
   assert.equal(io.stdoutText.includes("DELETE_COMPLETE"), false);
+});
+
+test("context101 list of local spaces prints each AWS_PROFILE", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-ls-spaces-cwd-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-ls-spaces-home-"));
+  for (const [name, profile] of [
+    ["platea", "plateapr.com"],
+    ["findit", "findit"],
+  ]) {
+    const dir = path.join(home, ".context101", "spaces", name);
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      path.join(dir, "deploy-env"),
+      `CTX_TOKEN="ctx_testtoken_xx"\nSTACK_NAME="Context101${name[0].toUpperCase()}${name.slice(1)}"\nAWS_PROFILE="${profile}"\n`,
+      { mode: 0o600 }
+    );
+  }
+  const io = memoryIo();
+  const code = await main(["list"], {
+    cwd,
+    homeDir: home,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec({
+      listStacks: listStacksPayload([]),
+    }),
+  });
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /SPACE/);
+  assert.match(io.stdoutText, /PROFILE/);
+  assert.match(io.stdoutText, /plateapr\.com/);
+  assert.match(io.stdoutText, /findit/);
+  assert.equal(io.stdoutText.includes("ctx_testtoken"), false);
+  assert.equal(io.stdoutText.includes("AWS_SECRET"), false);
 });
 
 test("context101 list works without a checkout", async () => {

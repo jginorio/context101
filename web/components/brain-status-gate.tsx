@@ -6,6 +6,7 @@ import {
   AlertCircle,
   Brain,
   Loader2,
+  Plus,
   RefreshCw,
   Trash2,
 } from "lucide-react";
@@ -13,6 +14,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { useBrain } from "@/lib/brain-context";
+import { brainNotFoundCopy } from "@/lib/brain-not-found";
 
 /**
  * Renders `children` only when the active brain is fully `ready`.
@@ -28,9 +30,11 @@ import { useBrain } from "@/lib/brain-context";
  */
 export function BrainStatusGate({ children }: { children: React.ReactNode }) {
   const {
+    brains,
     currentBrain,
     currentBrainId,
     currentBrainNotFound,
+    error,
     loading,
     refreshBrains,
   } = useBrain();
@@ -50,8 +54,7 @@ export function BrainStatusGate({ children }: { children: React.ReactNode }) {
 
   // Fast path — render children. Includes the initial render before
   // the provider has finished loading anything, to avoid a flash of
-  // the "Resolving…" state during a fresh page mount where the
-  // brain is likely the (already-known-good) "default".
+  // the "Resolving…" state during a fresh page mount.
   if (status === "ready") return <>{children}</>;
 
   // Still resolving (no fast-path match, no slow-path response yet,
@@ -67,22 +70,43 @@ export function BrainStatusGate({ children }: { children: React.ReactNode }) {
   }
 
   if (currentBrainNotFound) {
+    const copy = brainNotFoundCopy({
+      loading,
+      error,
+      brainsCount: brains.length,
+      currentBrainId,
+    });
+    const empty = copy.kind === "empty-stack";
     return (
       <StatusCard
-        icon={<AlertCircle className="h-5 w-5 text-destructive" />}
-        title="Brain not found"
+        icon={
+          empty ? (
+            <Brain className="h-5 w-5" />
+          ) : (
+            <AlertCircle className="h-5 w-5 text-destructive" />
+          )
+        }
+        title={copy.title}
         body={
-          <>
-            No brain registered under{" "}
-            <code className="font-mono">{currentBrainId}</code>. It may have
-            been deleted, or the link may be stale.
-          </>
+          empty ? (
+            copy.body
+          ) : (
+            <>
+              No brain registered under{" "}
+              <code className="font-mono">{currentBrainId}</code>. It may have
+              been deleted, or the link may be stale.
+            </>
+          )
         }
         actions={
-          <Link href="/brains">
-            <Button size="sm" variant="outline">
-              <Brain className="mr-1 h-3.5 w-3.5" />
-              Pick another brain
+          <Link href={copy.href}>
+            <Button size="sm" variant={copy.ctaVariant}>
+              {empty ? (
+                <Plus className="mr-1 h-3.5 w-3.5" />
+              ) : (
+                <Brain className="mr-1 h-3.5 w-3.5" />
+              )}
+              {copy.ctaLabel}
             </Button>
           </Link>
         }

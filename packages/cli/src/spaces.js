@@ -226,12 +226,17 @@ export async function resolveSelectedSpace(opts, ctx) {
   });
 }
 
+export function spaceChoiceLabel(space) {
+  const profile = String(space?.awsProfile || "").trim() || "—";
+  return `${space.name}  ${space.stackName}  ${profile}`;
+}
+
 async function chooseSpacePrompt(spaces) {
   const { select } = await import("@inquirer/prompts");
   return select({
     message: "Space",
     choices: spaces.map((space) => ({
-      name: `${space.name}  ${space.stackName}`,
+      name: spaceChoiceLabel(space),
       value: space.name,
     })),
   });
