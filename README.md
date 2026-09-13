@@ -1,54 +1,44 @@
 # Context101
 
-your context. every agent.
+**your context. every agent.**
 
-A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases (S3 + S3 Vectors, FastMCP per-brain, Better Auth + Postgres control plane, Next admin in `web/`, marketing in `site/`). Self-host now, paid hosting later (not shipped). Alpha, trusted-team only ([ALPHA.md](./ALPHA.md)). This is not a wiki app. Retrieval is raw-first, and wiki generation is paused / optional beta.
+A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases — S3 + S3 Vectors, FastMCP per-brain, Better Auth + Postgres. Self-host in your AWS. Paid hosting later is not shipped.
 
-## Front door
+Alpha / trusted-team only. Not a wiki app. Retrieval is raw-first.
 
-The CLI is the only user-facing door. Package `context101-cli`, bin `context101`. Unscoped `npx context101` is Context7's MCP, unrelated.
+## context101
 
 ```bash
-npx context101-cli@latest init
-context101 deploy
+npm i -g context101-cli@0.1.11
+```
+
+Package `context101-cli`, bin `context101`. Pin the version — `@latest` is a no-op on some machines. Unscoped `npx context101` is Context7's MCP, unrelated.
+
+```bash
+context101 init acme
+context101 deploy acme
 context101 list
-context101 destroy <name>
-context101 help
+context101 destroy acme --dry-run
 ```
 
-`list`, `help`, and `destroy --dry-run` need no checkout. CDK fails closed without `CTX_TOKEN` (plus `CTX_GH_TOKEN` when Amplify watches a repo). `cdk/deploy.sh` is a shim. Never run bare `cdk deploy`. Never print deploy-env, `CTX_TOKEN`, or MCP bearers.
+`init [space]` writes `~/.context101/spaces/<name>/`. `deploy`, `destroy`, and `list` are space-aware. An existing `cdk/.deploy-env` is the `default` space.
 
-Install and the rest of the commands are in [packages/cli/README.md](./packages/cli/README.md).
+Default deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose.
 
-## What you get
+`list`, `help`, `version`, and `destroy --dry-run` need no checkout.
 
-- Next admin in `web/`
-- Per-brain Bedrock Knowledge Base, S3 docs bucket, and FastMCP at `/brain/<id>/mcp`
-- Marketing site in `site/`
-- Postgres control plane (Better Auth, brains, connectors, suggestions)
+The stack is this CLI version — packaged source copied to `~/.cache/context101/<version>/`, CDK `--output` beside it. Next time: update the CLI, then `context101 deploy [space]`. Not `git pull` on `~/context101`.
 
-```
-cdk/                  AWS CDK
-packages/cli/         context101-cli, bin context101
-web/                  Next admin
-site/                 marketing
-wiki-generator-ts/    wiki Fargate image (optional beta)
-server.py             FastMCP
-```
+CDK fails closed without `CTX_TOKEN` (plus `CTX_GH_TOKEN` when Amplify watches a repo). `cdk/deploy.sh` is a shim. Never run bare `cdk deploy`. Never print deploy-env or MCP bearers.
 
-## Alpha
+Commands and flags: [packages/cli/README.md](./packages/cli/README.md).
 
-Trusted-team only. There is no per-brain RBAC. `BILLING_ENABLED` stays false. This is not public multi-tenant SaaS. Caveats, intended use, and AWS notes are in [ALPHA.md](./ALPHA.md).
+## Brains
 
-## Wiki
+Each brain is a sealed knowledge base — its own S3 bucket, Bedrock KB, vector index, suggestions queue, and MCP token — created in the admin (`web/`) and served at `/brain/<id>/mcp`.
 
-Wiki generation is paused, optional beta. Leave the EventBridge `WikiGenSchedule` disabled. Do not set `AUTO_TRIGGER_CODE_WIKI`. Retrieval does not wait on a wiki. Operator docs live in [wiki-generator-ts/README.md](./wiki-generator-ts/README.md).
+Wiki generation is paused / optional beta.
 
-## More
+Trusted-team alpha. No per-brain RBAC. Not public multi-tenant SaaS. [ALPHA.md](./ALPHA.md)
 
-- [ALPHA.md](./ALPHA.md)
-- [packages/cli/README.md](./packages/cli/README.md)
-- [wiki-generator-ts/README.md](./wiki-generator-ts/README.md)
-- [WIKI_PYTHON_REMOVED.md](./WIKI_PYTHON_REMOVED.md)
-- [SECURITY.md](./SECURITY.md)
-- [CONTRIBUTING.md](./CONTRIBUTING.md)
+[wiki-generator-ts/README.md](./wiki-generator-ts/README.md) · [SECURITY.md](./SECURITY.md) · [CONTRIBUTING.md](./CONTRIBUTING.md)

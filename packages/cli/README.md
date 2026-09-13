@@ -10,15 +10,17 @@ This is the AWS front door: init, deploy, list, destroy, config. Not a wiki app.
 
 ## Install
 
+Pin the version. `@latest` is a no-op on some machines.
+
 ```bash
-npm i -g context101-cli
+npm i -g context101-cli@0.1.11
 context101 <cmd>
 ```
 
 or
 
 ```bash
-npx context101-cli@latest <cmd>
+npx -y context101-cli@0.1.11 <cmd>
 ```
 
 ## Commands
@@ -40,7 +42,7 @@ Deploy is quiet on a TTY (`deploying…`). `--verbose` dumps cdk / npm / docker.
 
 Spaces live in `~/.context101/spaces/<name>/`. Each has its own AWS profile, region, secrets, and CloudFormation stack name. An existing `cdk/.deploy-env` or `~/.context101/deploy-env` is the `default` space.
 
-The next day: update the CLI (`context101` offers a pin-install, or `npm i -g context101-cli@latest`), then `context101 deploy` / `context101 deploy platea`. The stack source is this CLI version — not a git pull of your clone. `--dry-run` is preview only.
+The next day: update the CLI (`context101` offers a pin-install, or `npm i -g context101-cli@0.1.11`), then `context101 deploy` / `context101 deploy platea`. The stack source is this CLI version — packaged stack copied to `~/.cache/context101/<version>/`, CDK `--output` beside it. Not a git pull of your clone. `--dry-run` is preview only.
 
 ```bash
 context101 list
