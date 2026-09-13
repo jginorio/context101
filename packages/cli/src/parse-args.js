@@ -6,6 +6,7 @@ const COMMAND_LINES = [
   ["diff", "cdk diff for a space"],
   ["synth", "cdk synth for a space"],
   ["list", "list spaces"],
+  ["urls", "print public admin and MCP URLs"],
   ["destroy", "tear down a space"],
   ["config", "show deploy-env keys (values redacted)"],
   ["config set", "write one key (chmod 600; value is not printed)"],
@@ -64,6 +65,14 @@ const TOPIC_HELP = {
   --verbose`,
 
   list: `list — list Context101 spaces (no checkout)
+
+  --aws-profile <name>
+  --aws-access-key-id
+  --aws-secret-access-key`,
+
+  urls: `urls [space] — print public admin and MCP URLs for a space
+  One space: prints it. Several: TTY pick, or pass a name.
+  Also: url.
 
   --aws-profile <name>
   --aws-access-key-id
@@ -133,7 +142,7 @@ const LIST_FROM_INIT = new Set([
 const CDK_FROM_INIT = new Set(["--dir"]);
 
 const CDK_COMMANDS = new Set(["deploy", "diff", "synth"]);
-const TARGET_COMMANDS = new Set(["init", "deploy", "diff", "synth", "destroy"]);
+const TARGET_COMMANDS = new Set(["init", "deploy", "diff", "synth", "destroy", "urls"]);
 
 const COMMANDS = {
   init: "init",
@@ -142,6 +151,8 @@ const COMMANDS = {
   synth: "synth",
   list: "list",
   ls: "list",
+  urls: "urls",
+  url: "urls",
   destroy: "destroy",
   remove: "destroy",
   rm: "destroy",
@@ -372,7 +383,7 @@ function flagAllowed(command, arg) {
   if (command === "init") return true;
   if (command === "destroy") return DESTROY_FROM_INIT.has(arg);
   if (CDK_COMMANDS.has(command)) return CDK_FROM_INIT.has(arg);
-  if (command === "list") return LIST_FROM_INIT.has(arg);
+  if (command === "list" || command === "urls") return LIST_FROM_INIT.has(arg);
   if (command === "config") return arg === "--home";
   return false;
 }

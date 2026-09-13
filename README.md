@@ -9,7 +9,7 @@ Alpha / trusted-team only. Not a wiki app. Retrieval is raw-first.
 ## context101
 
 ```bash
-npm i -g context101-cli@0.1.13
+npm i -g context101-cli@0.1.14
 ```
 
 Package `context101-cli`, bin `context101`. Pin the version — `@latest` is a no-op on some machines. Unscoped `npx context101` is Context7's MCP, unrelated.
@@ -18,14 +18,15 @@ Package `context101-cli`, bin `context101`. Pin the version — `@latest` is a n
 context101 init acme
 context101 deploy acme
 context101 list
+context101 urls acme
 context101 destroy acme --dry-run
 ```
 
-`init [space]` writes `~/.context101/spaces/<name>/`. `deploy`, `destroy`, and `list` are space-aware. An existing `cdk/.deploy-env` is the `default` space.
+`init [space]` writes `~/.context101/spaces/<name>/`. `deploy`, `destroy`, `list`, and `urls` are space-aware. An existing `cdk/.deploy-env` is the `default` space.
 
-Default deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose.
+Default deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose. A successful deploy prints `✓ deployed <stack>` then the same public URL block as `urls`.
 
-`list`, `help`, `version`, and `destroy --dry-run` need no checkout.
+`list`, `urls`, `help`, `version`, and `destroy --dry-run` need no checkout.
 
 The stack is this CLI version — packaged source copied to `~/.cache/context101/<version>/`, CDK `--output` beside it. Next time: update the CLI, then `context101 deploy [space]`. Not `git pull` on `~/context101`.
 

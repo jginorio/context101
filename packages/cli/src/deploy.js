@@ -203,6 +203,7 @@ export async function startDeploy({
 function withSpaceAws(env, space) {
   const next = { ...env };
   if (space?.awsProfile && !next.AWS_PROFILE) next.AWS_PROFILE = space.awsProfile;
+  if (space?.region && !next.AWS_REGION) next.AWS_REGION = space.region;
   if (space?.values?.AWS_ACCESS_KEY_ID && !next.AWS_ACCESS_KEY_ID) {
     next.AWS_ACCESS_KEY_ID = space.values.AWS_ACCESS_KEY_ID;
   }

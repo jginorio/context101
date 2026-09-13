@@ -13,6 +13,16 @@ import { formatQuietFailure, formatQuietSuccess, lastUsefulError } from "../src/
 import { writers } from "../src/style.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv, writeTestDeployEnv } from "./helpers.js";
 
+const MCP_LAMBDA = "https://d111111abcdef8.cloudfront.net/mcp";
+const LEAKY_AFTER_DEPLOY = [
+  { OutputKey: "DocsBucketName", OutputValue: "context101-docs-secret-bucket" },
+  { OutputKey: "KnowledgeBaseId", OutputValue: "KBIDSECRET" },
+  { OutputKey: "ControlPlaneDbSecretArn", OutputValue: "arn:aws:secretsmanager:xx-test-1:1:secret:db" },
+  { OutputKey: "WebAppId", OutputValue: "dwebappidsecret" },
+  { OutputKey: "CTX_TOKEN", OutputValue: "ctx_must_never_appear_token" },
+  { OutputKey: "McpLambdaUrl", OutputValue: MCP_LAMBDA },
+];
+
 const CDK_NOISE = [
   "Bundling asset Context101Stack/PgHttpLayer/Code/Stage...",
   "Unable to find image 'public.ecr.aws/sam/build-nodejs20.x:latest' locally",
@@ -333,6 +343,109 @@ test("startDeploy TTY quiet success prints ok deployed after the spinner clears"
   assert.match(mem.stdoutText, /\r\x1b\[K/);
   assert.match(mem.stdoutText, /✓ deployed Context101Stack/);
   assert.equal(mem.stdoutText.includes("CREATE_COMPLETE"), false);
+});
+
+test("TTY quiet deploy success prints urls after ok deployed", async () => {
+  const { root, mem, io, progress } = await quietSuccessFixture();
+  const { spawnFn } = fakeSpawn("", { code: 0 });
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: fakeExec({
+      describeStacks: {
+        ok: true,
+        code: 0,
+        stdout: JSON.stringify(LEAKY_AFTER_DEPLOY),
+        stderr: "",
+        error: null,
+      },
+    }),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    io,
+    spawn: spawnFn,
+    verbose: false,
+    progress,
+    stackName: "Context101Testingcontext101",
+  });
+
+  assert.equal(code, 0);
+  assert.match(mem.stdoutText, /✓ deployed Context101Testingcontext101/);
+  assert.match(mem.stdoutText, /admin\s+skipped/);
+  assert.match(mem.stdoutText, /mcp\s+https:\/\/d111111abcdef8\.cloudfront\.net\/mcp/);
+  assert.equal(mem.stdoutText.includes("amplifyapp.com"), false);
+  assert.equal(mem.stdoutText.includes("ctx_must_never_appear_token"), false);
+  assert.equal(mem.stdoutText.includes("KBIDSECRET"), false);
+  assert.equal(mem.stdoutText.includes("secretsmanager"), false);
+  assert.equal(mem.stdoutText.includes("CTX_TOKEN"), false);
+  assert.equal(mem.stdoutText.includes("bearer"), false);
+});
+
+test("quiet deploy still prints ok deployed when describe-stacks fails", async () => {
+  const { root, mem, io } = await quietSuccessFixture();
+  const { spawnFn } = fakeSpawn("", { code: 0 });
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: fakeExec({
+      describeStacks: {
+        ok: false,
+        code: 1,
+        stdout: "",
+        stderr: "An error occurred (ValidationError) when calling the DescribeStacks operation: Stack with id Context101Stack does not exist",
+        error: null,
+      },
+    }),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    io,
+    spawn: spawnFn,
+    verbose: false,
+    stackName: "Context101Stack",
+  });
+
+  assert.equal(code, 0);
+  assert.match(mem.stdoutText, /✓ deployed Context101Stack/);
+  assert.equal(mem.stdoutText.includes("admin"), false);
+  assert.equal(mem.stdoutText.includes("mcp"), false);
+  assert.equal(mem.stderrText.includes("does not exist"), false);
+});
+
+test("quiet destroy success does not print urls", async () => {
+  const { root, mem, io, progress } = await quietSuccessFixture();
+  const { spawnFn } = fakeSpawn("DELETE_COMPLETE", { code: 0 });
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "destroy",
+    env: testEnv(),
+    exec: fakeExec({
+      describeStacks: {
+        ok: true,
+        code: 0,
+        stdout: JSON.stringify(LEAKY_AFTER_DEPLOY),
+        stderr: "",
+        error: null,
+      },
+    }),
+    envFile: path.join(root, "cdk", ".deploy-env"),
+    io,
+    spawn: spawnFn,
+    verbose: false,
+    progress,
+    stackName: "Context101Stack",
+  });
+
+  assert.equal(code, 0);
+  assert.match(mem.stdoutText, /✓ destroyed Context101Stack/);
+  assert.equal(mem.stdoutText.includes("admin"), false);
+  assert.equal(mem.stdoutText.includes("mcp"), false);
+  assert.equal(mem.stdoutText.includes(MCP_LAMBDA), false);
 });
 
 test("quiet deploy failure still prints the useful error and not deployed", async () => {

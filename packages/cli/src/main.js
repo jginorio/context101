@@ -4,6 +4,7 @@ import { runConfig } from "./config.js";
 import { runDeploy } from "./deploy.js";
 import { runInit } from "./init.js";
 import { runDestroy, runList } from "./stacks.js";
+import { runUrls } from "./urls.js";
 import { banner, writers } from "./style.js";
 import { maybeOfferUpdate, versionLine } from "./update.js";
 
@@ -44,6 +45,9 @@ export async function main(argv, ctx) {
     }
     if (opts.command === "list") {
       return await runList(opts, ctx);
+    }
+    if (opts.command === "urls") {
+      return await runUrls(opts, ctx);
     }
     if (opts.command === "destroy") {
       return await runDestroy(opts, ctx);

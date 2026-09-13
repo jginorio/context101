@@ -65,7 +65,7 @@ export function memoryIo() {
 }
 
 export function fakeExec(overrides = {}) {
-  return ({ command, args = [], cwd } = {}) => {
+  return ({ command, args = [], cwd, env } = {}) => {
     const key = [command, ...args].join(" ");
     if (overrides[key]) return overrides[key];
 
@@ -92,6 +92,13 @@ export function fakeExec(overrides = {}) {
       if (args[1] === "list-stacks") {
         if (overrides.listStacks) return overrides.listStacks;
         return ok(JSON.stringify({ StackSummaries: [] }));
+      }
+      if (args[1] === "describe-stacks") {
+        if (typeof overrides.describeStacks === "function") {
+          return overrides.describeStacks({ command, args, env });
+        }
+        if (overrides.describeStacks) return overrides.describeStacks;
+        return ok(JSON.stringify([]));
       }
       return ok("CREATE_COMPLETE");
     }

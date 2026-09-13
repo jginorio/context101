@@ -99,6 +99,28 @@ test("parses list and destroy aliases", () => {
   assert.equal(parseArgs(["rm", "--aws-profile", "findit"]).awsProfile, "findit");
 });
 
+test("parses urls / url with list AWS flags and a space name", () => {
+  const named = parseArgs(["urls", "testingcontext101", "--aws-profile", "findit"]);
+  assert.equal(named.command, "urls");
+  assert.equal(named.space, "testingcontext101");
+  assert.equal(named.stackName, "testingcontext101");
+  assert.equal(named.awsProfile, "findit");
+  const alias = parseArgs([
+    "url",
+    "testingcontext101",
+    "--aws-access-key-id",
+    "TESTACCESSKEYID12345",
+    "--aws-secret-access-key",
+    "test-secret-access-key-must-never-appear",
+  ]);
+  assert.equal(alias.command, "urls");
+  assert.equal(alias.space, "testingcontext101");
+  assert.equal(alias.awsAccessKeyId, "TESTACCESSKEYID12345");
+  assert.equal(alias.awsSecretAccessKey, "test-secret-access-key-must-never-appear");
+  assert.throws(() => parseArgs(["urls", "a", "b"]), /one space name/);
+  assert.throws(() => parseArgs(["urls", "--yes"]), /init option/);
+});
+
 test("parses config and diff/synth", () => {
   assert.equal(parseArgs(["diff"]).command, "diff");
   assert.equal(parseArgs(["synth"]).command, "synth");
@@ -112,6 +134,7 @@ test("parses config and diff/synth", () => {
 
 test("rejects init-only flags on list and seed on destroy", () => {
   assert.throws(() => parseArgs(["list", "--yes"]), /init option/);
+  assert.throws(() => parseArgs(["urls", "--yes"]), /init option/);
   assert.throws(() => parseArgs(["destroy", "--embed-model", "x"]), /init option/);
   assert.throws(() => parseArgs(["destroy", "--seed"]), /deploy option/);
 });
@@ -130,6 +153,8 @@ test("parses help and help <command>", () => {
   assert.equal(parseArgs(["-h"]).command, "help");
   assert.equal(parseArgs(["help", "list"]).helpTopic, "list");
   assert.equal(parseArgs(["help", "ls"]).helpTopic, "list");
+  assert.equal(parseArgs(["help", "urls"]).helpTopic, "urls");
+  assert.equal(parseArgs(["help", "url"]).helpTopic, "urls");
   assert.equal(parseArgs(["help", "config", "set"]).helpTopic, "config set");
   assert.equal(parseArgs(["help", "version"]).helpTopic, "version");
   assert.equal(parseArgs(["destroy", "--help"]).command, "destroy");
@@ -162,6 +187,7 @@ test("context101 help lists every command and exits 0", async () => {
     "diff",
     "synth",
     "list",
+    "urls",
     "destroy",
     "config",
     "config set",
@@ -247,13 +273,32 @@ test("context101 help list shows list flags", async () => {
   assert.match(io.stdoutText, /no checkout/);
 });
 
+test("context101 help urls shows urls flags", async () => {
+  const io = memoryIo();
+  const code = await main(["help", "urls"], {
+    cwd: "/tmp",
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+  });
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /urls \[space\]/);
+  assert.match(io.stdoutText, /public admin and MCP URLs/);
+  assert.match(io.stdoutText, /--aws-profile/);
+  assert.match(io.stdoutText, /--aws-access-key-id/);
+  assert.match(io.stdoutText, /--aws-secret-access-key/);
+  assert.equal(io.stdoutText.includes("CTX_TOKEN"), false);
+  assert.equal(io.stdoutText.includes("bearer"), false);
+});
+
 test("workspace package is context101-cli with bin context101", async () => {
   const { readFile } = await import("node:fs/promises");
   const { fileURLToPath } = await import("node:url");
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.13");
+  assert.equal(pkg.version, "0.1.14");
   assert.equal(pkg.private, false);
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.bin.context101, "./bin/context101.js");
@@ -271,8 +316,8 @@ test("npm README is on-brand and warns about the Context7 name collision", async
   const text = await readFile(readmePath, "utf8");
   assert.match(text, /^# context101-cli/m);
   assert.match(text, /your context\. every agent\./);
-  assert.match(text, /npx -y context101-cli@0\.1\.13/);
-  assert.match(text, /npm i -g context101-cli@0\.1\.13/);
+  assert.match(text, /npx -y context101-cli@0\.1\.14/);
+  assert.match(text, /npm i -g context101-cli@0\.1\.14/);
   assert.equal(text.includes("context101-cli@latest"), false);
   assert.match(text, /Context7/);
   assert.match(text, /https:\/\/github.com\/jginorio\/context101/);
