@@ -1,6 +1,6 @@
 {
   "name": "context101-cli",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "private": false,
   "description": "Context101 self-host CLI — your context. every agent. Use `npx context101-cli` or the `context101` bin. Unscoped `npx context101` is Context7's MCP, not this tool.",
   "license": "MIT",
@@ -10,7 +10,8 @@
   },
   "files": [
     "bin",
-    "src"
+    "src",
+    "stack"
   ],
   "repository": {
     "type": "git",
@@ -29,6 +30,7 @@
     "self-host"
   ],
   "scripts": {
+    "prepublishOnly": "node scripts/pack-stack.js",
     "test": "node --test test/*.test.js"
   },
   "engines": {

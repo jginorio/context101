@@ -1,8 +1,14 @@
-import { DEPLOY_CLI, DESTROY_CLI, LIST_CLI, SMOOTH_REGION } from "./defaults.js";
+import { homedir } from "node:os";
+import { DESTROY_CLI, LIST_CLI, SMOOTH_REGION } from "./defaults.js";
 import { runCdk } from "./cdk-invoke.js";
-import { checkoutNeededMessage } from "./checkout-deps.js";
-import { ensureRepoRoot } from "./clone.js";
 import { createExec } from "./exec.js";
+import { createProgress, LABEL_DESTROYING } from "./progress.js";
+import {
+  findSpaceByTarget,
+  listSpaces,
+  resolveSelectedSpace,
+} from "./spaces.js";
+import { ensureStackRoot } from "./stack-source.js";
 import { writers } from "./style.js";
 
 export function parseStackSummaries(payload) {
@@ -56,12 +62,12 @@ export function statusTone(status, colors = {}) {
 export function formatDeployments(stacks, { region = SMOOTH_REGION, colors } = {}) {
   const c = colors ?? { magenta: "", violet: "", dim: "", red: "", bold: "", reset: "" };
   if (!stacks.length) {
-    return [`No Context101 deployments in ${region}.`, `Next: ${DEPLOY_CLI}`].join("\n");
+    return [`No Context101 spaces in ${region}.`, `Next: context101 init`].join("\n");
   }
   const nameW = Math.max(4, ...stacks.map((s) => String(s.StackName).length));
   const statusW = Math.max(6, ...stacks.map((s) => String(s.StackStatus).length));
   const lines = [
-    `${c.dim}Context101 deployments in ${region}${c.reset}`,
+    `${c.dim}Context101 spaces in ${region}${c.reset}`,
     "",
     `${c.dim}${"NAME".padEnd(nameW)}  ${"STATUS".padEnd(statusW)}  UPDATED${c.reset}`,
   ];
@@ -75,9 +81,60 @@ export function formatDeployments(stacks, { region = SMOOTH_REGION, colors } = {
   return lines.join("\n");
 }
 
+export function formatSpaces(rows, { colors } = {}) {
+  const c = colors ?? { magenta: "", violet: "", dim: "", red: "", bold: "", reset: "" };
+  if (!rows.length) {
+    return [`No Context101 spaces.`, `Next: context101 init`].join("\n");
+  }
+  const spaceW = Math.max(5, ...rows.map((row) => String(row.name).length));
+  const stackW = Math.max(5, ...rows.map((row) => String(row.stackName).length));
+  const statusW = Math.max(6, ...rows.map((row) => String(row.status || "—").length));
+  const lines = [
+    `${c.dim}Context101 spaces${c.reset}`,
+    "",
+    `${c.dim}${"SPACE".padEnd(spaceW)}  ${"STACK".padEnd(stackW)}  ${"STATUS".padEnd(statusW)}  UPDATED${c.reset}`,
+  ];
+  for (const row of rows) {
+    const tone = statusTone(row.status, c);
+    lines.push(
+      `${String(row.name).padEnd(spaceW)}  ${String(row.stackName).padEnd(stackW)}  ${tone}${String(row.status || "—").padEnd(statusW)}${c.reset}  ${c.dim}${row.updated || ""}${c.reset}`
+    );
+  }
+  return lines.join("\n");
+}
+
 export async function runList(opts, ctx) {
   const io = writers(ctx);
   const exec = ctx.exec ?? createExec(ctx.env);
+  const homeDir = ctx.homeDir ?? homedir();
+  const spaces = listSpaces({ homeDir, cwd: ctx.cwd });
+
+  if (spaces.length) {
+    const rows = spaces.map((space) => {
+      const env = withAwsAuth(ctx.env ?? {}, {
+        profile: opts.awsProfile || space.awsProfile,
+        accessKeyId: opts.awsAccessKeyId || space.values.AWS_ACCESS_KEY_ID,
+        secretAccessKey: opts.awsSecretAccessKey || space.values.AWS_SECRET_ACCESS_KEY,
+      });
+      const listed = listDeployments({
+        exec,
+        env,
+        region: space.region || SMOOTH_REGION,
+      });
+      const match = listed.ok
+        ? listed.stacks.find((stack) => stack.StackName === space.stackName)
+        : null;
+      return {
+        name: space.name,
+        stackName: space.stackName,
+        status: match?.StackStatus || "",
+        updated: match?.LastUpdatedTime || match?.CreationTime || "",
+      };
+    });
+    io.write(formatSpaces(rows, { colors: io.c }));
+    io.write("");
+    return 0;
+  }
 
   const env = withAwsAuth(ctx.env ?? {}, {
     profile: opts.awsProfile,
@@ -97,42 +154,83 @@ export async function runList(opts, ctx) {
 export async function runDestroy(opts, ctx) {
   const io = writers(ctx);
   const exec = ctx.exec ?? createExec(ctx.env);
+  const homeDir = ctx.homeDir ?? homedir();
 
   if (opts.dryRun) {
     io.dim("dry-run — destroy nothing");
     io.write("");
   }
 
-  const stackName = String(opts.stackName || "").trim();
+  let space = null;
+  let stackName = "";
+  try {
+    const target = opts.space || opts.stackName;
+    if (target) {
+      space = findSpaceByTarget(target, { homeDir, cwd: ctx.cwd });
+      stackName = space?.stackName || target;
+    } else {
+      space = await resolveSelectedSpace(opts, { ...ctx, homeDir });
+      stackName = space.stackName;
+    }
+  } catch (error) {
+    if (error && error.code === "USAGE") {
+      io.err(error.message);
+      return 1;
+    }
+    throw error;
+  }
+
   if (!stackName) {
-    io.err(`destroy needs a stack name from \`${LIST_CLI}\`.`);
+    io.err(`destroy needs a space name from \`${LIST_CLI}\`.`);
     io.write(`Next: ${LIST_CLI}`);
     return 1;
   }
 
   const env = withAwsAuth(ctx.env ?? {}, {
-    profile: opts.awsProfile,
-    accessKeyId: opts.awsAccessKeyId,
-    secretAccessKey: opts.awsSecretAccessKey,
+    profile: opts.awsProfile || space?.awsProfile,
+    accessKeyId: opts.awsAccessKeyId || space?.values?.AWS_ACCESS_KEY_ID,
+    secretAccessKey: opts.awsSecretAccessKey || space?.values?.AWS_SECRET_ACCESS_KEY,
   });
-  const listed = listDeployments({ exec, env, region: SMOOTH_REGION });
+  const listed = listDeployments({
+    exec,
+    env,
+    region: space?.region || SMOOTH_REGION,
+  });
   if (!listed.ok) {
     io.err(listed.error);
     return 1;
   }
 
-  io.write(formatDeployments(listed.stacks, { region: SMOOTH_REGION, colors: io.c }));
+  if (space) {
+    io.write(
+      formatSpaces(
+        [
+          {
+            name: space.name,
+            stackName: space.stackName,
+            status:
+              listed.stacks.find((stack) => stack.StackName === space.stackName)
+                ?.StackStatus || "",
+            updated: "",
+          },
+        ],
+        { colors: io.c }
+      )
+    );
+  } else {
+    io.write(formatDeployments(listed.stacks, { region: SMOOTH_REGION, colors: io.c }));
+  }
   io.write("");
 
   const known = listed.stacks.some((stack) => stack.StackName === stackName);
   if (!known) {
-    io.err(`unknown stack ${stackName}. Use a name from \`${LIST_CLI}\`.`);
+    io.err(`unknown space ${opts.space || stackName}. Use a name from \`${LIST_CLI}\`.`);
     return 1;
   }
 
   if (opts.dryRun) {
-    io.write(`Would destroy ${stackName}`);
-    io.write(`Next: ${DESTROY_CLI} ${stackName} --yes`);
+    io.write(`Would destroy ${space?.name || stackName}`);
+    io.write(`Next: ${DESTROY_CLI} ${space?.name || stackName} --yes`);
     return 0;
   }
 
@@ -143,7 +241,7 @@ export async function runDestroy(opts, ctx) {
       return 1;
     }
     const confirm = ctx.confirmDestroy ?? confirmDestroyPrompt;
-    const ok = await confirm(stackName);
+    const ok = await confirm(space?.name || stackName);
     if (!ok) {
       io.write("Cancelled.");
       return 1;
@@ -154,35 +252,40 @@ export async function runDestroy(opts, ctx) {
     "Non-default brains are not in CloudFormation — delete them from /brains first."
   );
 
-  const checkout = ensureRepoRoot({
+  const readyStack = await ensureStackRoot({
+    stackRoot: ctx.stackRoot,
+    env: ctx.env ?? {},
+    homeDir,
     cwd: ctx.cwd,
-    dir: opts.dir,
-    exec,
-    io,
-    preferHomeClone: true,
-    homeDir: ctx.homeDir,
+    fetchStack: ctx.fetchStack,
   });
-  if (checkout.error) {
-    io.err(checkout.error);
-    return 1;
-  }
-  const repoRoot = checkout.repoRoot;
-  if (!repoRoot) {
-    io.err(checkoutNeededMessage("could not find or clone a Context101 checkout"));
+  if (!readyStack.ok) {
+    io.err(readyStack.error);
     return 1;
   }
 
-  io.write(`Destroying ${stackName}…`);
+  const progress = createProgress({
+    stdout: ctx.stdout,
+    env: ctx.env,
+    verbose: opts.verbose,
+  });
+  if (opts.verbose) io.write(`Destroying ${space?.name || stackName}…`);
+  else if (!ctx.stdout?.isTTY) io.write(LABEL_DESTROYING);
+  else progress.start(LABEL_DESTROYING);
   return (ctx.runDeploy ?? runCdk)({
-    repoRoot,
+    repoRoot: readyStack.stackRoot,
+    stackRoot: readyStack.stackRoot,
     action: "destroy",
     stackName,
+    namePrefix: space?.namePrefix,
     env,
     home: opts.home,
-    envFile: opts.envFile,
+    envFile: opts.envFile || space?.envPath,
     cwd: ctx.cwd,
     exec,
     io,
+    verbose: opts.verbose,
+    progress,
   });
 }
 

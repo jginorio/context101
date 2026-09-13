@@ -13,10 +13,15 @@ assertGatedContext({
   repository: app.node.tryGetContext("REPOSITORY") as string | undefined,
 });
 
-new Context101Stack(app, "Context101Stack", {
+const stackName =
+  String(app.node.tryGetContext("STACK_NAME") || "Context101Stack").trim() ||
+  "Context101Stack";
+
+new Context101Stack(app, stackName, {
+  stackName,
   env: {
     account: process.env.CDK_DEFAULT_ACCOUNT,
-    region: process.env.CDK_DEFAULT_REGION ?? "us-east-1",
+    region: process.env.CDK_DEFAULT_REGION ?? "us-east-1", // pragma: allowlist secret
   },
   description:
     "Context101 — shared team knowledge base (Bedrock KB + S3 + S3 Vectors + App Runner MCP)",

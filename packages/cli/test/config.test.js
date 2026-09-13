@@ -6,7 +6,7 @@ import { test } from "node:test";
 import { formatConfig, formatExistingEnvSummary, upsertEnvLine } from "../src/config.js";
 import { findDeployEnvPath } from "../src/deploy-env-load.js";
 import { HOME_ENV_REL, SMOOTH_REGION } from "../src/defaults.js";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv, writeTestDeployEnv } from "./helpers.js";
 
 test("formatConfig redacts secrets and leaves profile names", () => {
@@ -89,6 +89,7 @@ test("context101 config shows redacted keys", async () => {
 test("context101 config set writes chmod 600 and never echoes the value", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-cfgset-"));
   await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
   const secret = "ctx_newtoken_must-never-appear";
   const io = memoryIo();
   const code = await main([`config`, "set", `CTX_TOKEN=${secret}`], {

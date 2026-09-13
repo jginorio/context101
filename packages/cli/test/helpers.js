@@ -1,6 +1,15 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
+
+export async function tempHome(prefix = "ctx101-home-") {
+  return mkdtemp(path.join(tmpdir(), prefix));
+}
+
+export async function keepDefaultSpace() {
+  return "default";
+}
 
 export function testEnv(extra = {}) {
   const env = { ...process.env, NO_COLOR: "1", ...extra };

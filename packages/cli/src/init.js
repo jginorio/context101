@@ -28,21 +28,27 @@ import {
   readExampleToken,
   writeDeployEnv,
 } from "./env-file.js";
-import { checkoutNeededMessage, ensureCheckoutDeps } from "./checkout-deps.js";
+import { ensureCheckoutDeps } from "./checkout-deps.js";
 import { startDeploy } from "./deploy.js";
 import { createExec } from "./exec.js";
 import { formatDryRun, nextSteps } from "./plan.js";
-import { ensureRepoRoot } from "./clone.js";
-import {
-  detectGitRemote,
-  displayEnvPath,
-  findRepoRoot,
-  normalizeRepoUrl,
-  resolveEnvPath,
-} from "./repo.js";
+import { detectGitRemote, findRepoRoot, normalizeRepoUrl } from "./repo.js";
 import { generateCtxToken, generateSecret } from "./secrets.js";
+import {
+  DEFAULT_SPACE,
+  defaultSpaceEnvPath,
+  displaySpaceEnv,
+  findSpaceByTarget,
+  loadSpace,
+  namePrefixForSpace,
+  parseSpaceName,
+  registerSpaceEnv,
+  stackNameForSpace,
+} from "./spaces.js";
+import { ensureStackRoot, resolveStackRoot } from "./stack-source.js";
 import { writers } from "./style.js";
 import { listAwsProfiles, resolveAwsAuth } from "./aws-profiles.js";
+import { homedir } from "node:os";
 
 export async function runInit(opts, ctx) {
   const io = writers(ctx);
@@ -53,34 +59,38 @@ export async function runInit(opts, ctx) {
     io.write("");
   }
 
-  const checkout = ensureRepoRoot({
-    cwd: ctx.cwd,
-    dir: opts.dir,
-    exec,
-    io,
-    dryRun: opts.dryRun,
-  });
-  if (checkout.error) {
-    io.err(checkout.error);
-    return 1;
-  }
-  const repoRoot = checkout.repoRoot;
-  if (!repoRoot || (!opts.dryRun && !findRepoRoot(repoRoot))) {
-    io.err(checkoutNeededMessage());
-    return 1;
-  }
-  if (checkout.wouldClone && opts.dryRun) {
-    io.write("");
-  }
-
+  const homeDir = ctx.homeDir ?? homedir();
   const env = ctx.env ?? {};
   const tty = Boolean(ctx.stdin && ctx.stdin.isTTY && ctx.stdout && ctx.stdout.isTTY);
-  const envPath = resolveEnvPath(repoRoot, {
-    envFile: opts.envFile,
-    home: opts.home,
-    cwd: ctx.cwd,
-  });
-  const envDisplay = displayEnvPath(envPath, repoRoot);
+  const repoRoot = findRepoRoot(ctx.cwd) || ctx.cwd;
+  const stackRoot =
+    resolveStackRoot({
+      stackRoot: ctx.stackRoot,
+      env,
+      homeDir,
+      cwd: ctx.cwd,
+    }) || ctx.stackRoot;
+
+  let spaceName;
+  try {
+    spaceName = await resolveInitSpaceName(opts, ctx, { tty, io });
+  } catch (error) {
+    if (error && error.code === "USAGE") {
+      io.err(error.message);
+      return 1;
+    }
+    throw error;
+  }
+
+  const existingSpace = findSpaceByTarget(spaceName, { homeDir, cwd: ctx.cwd });
+  const envPath = opts.envFile
+    ? path.isAbsolute(opts.envFile)
+      ? opts.envFile
+      : path.resolve(ctx.cwd ?? ".", opts.envFile)
+    : opts.home
+      ? path.join(homeDir, ".context101", "deploy-env")
+      : existingSpace?.envPath || defaultSpaceEnvPath(spaceName, homeDir);
+  const envDisplay = displaySpaceEnv(envPath, homeDir);
   const envExists = existsSync(envPath);
 
   let seedFromEnv = null;
@@ -253,7 +263,7 @@ export async function runInit(opts, ctx) {
   else if (reuseSecrets?.CTX_GH_TOKEN) secrets.CTX_GH_TOKEN = reuseSecrets.CTX_GH_TOKEN;
 
   const exampleToken = await readExampleToken(
-    path.join(repoRoot, ...EXAMPLE_ENV_REL.split("/"))
+    path.join(stackRoot || repoRoot, ...EXAMPLE_ENV_REL.split("/"))
   );
   if (exampleToken && secrets.CTX_TOKEN === exampleToken) {
     io.err("refusing to write the example CTX_TOKEN — generated a collision; re-run.");
@@ -274,9 +284,13 @@ export async function runInit(opts, ctx) {
     BILLING_ENABLED,
     REPOSITORY: answers.repository || "",
     EMBED_MODEL_ID: answers.embedModelId || "",
+    SPACE: spaceName,
+    STACK_NAME: existingSpace?.values.STACK_NAME || stackNameForSpace(spaceName),
+    NAME_PREFIX: existingSpace?.values.NAME_PREFIX || namePrefixForSpace(spaceName),
   };
 
   await writeDeployEnv(envPath, values);
+  registerSpaceEnv(spaceName, envPath, { homeDir });
 
   io.ok(`wrote ${envDisplay} (chmod 600)`);
   if (answers.requestBedrockAccess) {
@@ -310,8 +324,10 @@ export async function runInit(opts, ctx) {
     repository: answers.repository || "",
     ghToken: answers.ghToken,
     home: answers.home ?? opts.home,
-    envFile: answers.envFile ?? opts.envFile,
+    envFile: answers.envFile ?? opts.envFile ?? envPath,
     deployFlag: Boolean(answers.deploy),
+    spaceName,
+    stackRoot,
   });
 }
 
@@ -404,8 +420,15 @@ async function resumeExistingInit({
     repository: values.REPOSITORY || "",
     ghToken: values.CTX_GH_TOKEN || null,
     home: opts.home,
-    envFile: opts.envFile,
+    envFile: opts.envFile || envPath,
     deployFlag: Boolean(opts.deploy),
+    spaceName: parseSpaceName(opts.space || DEFAULT_SPACE, { required: false }) || DEFAULT_SPACE,
+    stackRoot: resolveStackRoot({
+      stackRoot: ctx.stackRoot,
+      env,
+      homeDir: ctx.homeDir,
+      cwd: ctx.cwd,
+    }),
   });
   return { done: true, code };
 }
@@ -446,15 +469,33 @@ async function finishAfterEnv({
   home,
   envFile,
   deployFlag,
+  spaceName,
+  stackRoot,
 }) {
-  const ready = ensureCheckoutDeps({
-    repoRoot,
-    exec: exec ?? ctx.exec,
+  const homeDir = ctx.homeDir ?? homedir();
+  const readyStack = await ensureStackRoot({
+    stackRoot: stackRoot || ctx.stackRoot,
+    env: awsEnv,
+    homeDir,
+    cwd: ctx.cwd,
+    fetchStack: ctx.fetchStack,
     io,
   });
-  if (!ready.ok) {
-    io.err(ready.error);
+  if (!readyStack.ok && deployFlag) {
+    io.err(readyStack.error);
     return 1;
+  }
+  const sourceRoot = readyStack.stackRoot || repoRoot;
+  if (sourceRoot) {
+    const ready = ensureCheckoutDeps({
+      repoRoot: sourceRoot,
+      exec: exec ?? ctx.exec,
+      io,
+    });
+    if (!ready.ok && (deployFlag || existsSync(path.join(sourceRoot, "package-lock.json")))) {
+      io.err(ready.error);
+      return 1;
+    }
   }
 
   let deploy = Boolean(deployFlag);
@@ -483,15 +524,44 @@ async function finishAfterEnv({
   return startDeploy({
     io,
     ctx,
-    repoRoot,
+    repoRoot: sourceRoot,
+    stackRoot: sourceRoot,
+    space: spaceName
+      ? loadSpace(spaceName, { homeDir: ctx.homeDir ?? homedir() })
+      : undefined,
     seed,
     env: awsEnv,
     home,
     envFile,
     exec: exec ?? ctx.exec,
+    verbose: opts.verbose,
     dockerDaemon: Boolean(checks.docker?.daemon),
     dockerHint: checks.docker?.hint,
   });
+}
+
+async function resolveInitSpaceName(opts, ctx, { tty, io }) {
+  if (opts.space) return parseSpaceName(opts.space);
+  if (opts.yes || opts.dryRun) return DEFAULT_SPACE;
+  if (!tty) return DEFAULT_SPACE;
+  if (typeof ctx.promptSpace === "function") {
+    return parseSpaceName(await ctx.promptSpace(DEFAULT_SPACE));
+  }
+  const { input } = await import("@inquirer/prompts");
+  const name = await input({
+    message: "Space name",
+    default: DEFAULT_SPACE,
+    validate: (value) => {
+      try {
+        parseSpaceName(value);
+        return true;
+      } catch (error) {
+        return error.message;
+      }
+    },
+  });
+  io.write("");
+  return parseSpaceName(name);
 }
 
 async function collectAnswers(opts, ctx) {

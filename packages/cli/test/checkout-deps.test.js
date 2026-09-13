@@ -8,7 +8,7 @@ import { fileURLToPath } from "node:url";
 import { runCdk } from "../src/cdk-invoke.js";
 import { INSTALLING_DEPS } from "../src/checkout-deps.js";
 import { UPDATING_CHECKOUT } from "../src/clone.js";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { STACK_NAME } from "../src/defaults.js";
 import {
   fakeExec,
@@ -82,7 +82,6 @@ test("missing node_modules triggers npm ci then local cdk", async () => {
   const ci = npmCiCalls(execCalls);
   assert.equal(ci.length, 1);
   assert.equal(ci[0].cwd, root);
-  assert.match(io.stdoutText, new RegExp(INSTALLING_DEPS));
   assert.equal(spawnCalls.length, 1);
   assert.equal(spawnCalls[0].command, path.join(root, "node_modules", ".bin", "cdk"));
   assert.equal(spawnCalls[0].command.includes("npx"), false);
@@ -126,8 +125,8 @@ test("npm ci failure does not spawn cdk", async () => {
   assert.equal(io.stderrText.includes("ctx_testtoken_xx"), false);
 });
 
-test("deploy pulls ff-only then cdk", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-pull-"));
+test("deploy does not git pull the user checkout", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-nopull-"));
   await makeRepoFixture(root, { deps: false });
   await writeTestDeployEnv(root);
   const io = memoryIo();
@@ -136,6 +135,7 @@ test("deploy pulls ff-only then cdk", async () => {
 
   const code = await runCdk({
     repoRoot: root,
+    stackRoot: root,
     action: "deploy",
     env: testEnv(),
     exec: recordingExec(fakeExec(), execCalls),
@@ -152,67 +152,12 @@ test("deploy pulls ff-only then cdk", async () => {
   });
 
   assert.equal(code, 0);
-  const pulls = gitPullCalls(execCalls);
-  assert.equal(pulls.length, 1);
-  assert.equal(pulls[0].cwd, root);
-  assert.equal(pulls[0].args.includes("--rebase"), false);
-  assert.equal(pulls[0].args.includes("--force"), false);
-  assert.deepEqual(pulls[0].args, ["pull", "--ff-only"]);
+  assert.equal(gitPullCalls(execCalls).length, 0);
   const ci = npmCiCalls(execCalls);
   assert.equal(ci.length, 1);
-  const pullAt = execCalls.indexOf(pulls[0]);
-  const ciAt = execCalls.indexOf(ci[0]);
-  assert.equal(pullAt < ciAt, true);
-  assert.match(io.stdoutText, new RegExp(UPDATING_CHECKOUT));
   assert.equal(spawnCalls.length, 1);
   assert.equal(spawnCalls[0].command, path.join(root, "node_modules", ".bin", "cdk"));
   assert.equal(spawnCalls[0].args[0], "deploy");
-});
-
-test("dirty or diverged checkout fails closed and does not spawn cdk", async () => {
-  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-dirty-"));
-  await makeRepoFixture(root, { deps: false });
-  await writeTestDeployEnv(root);
-  const io = memoryIo();
-  const execCalls = [];
-  const { calls: spawnCalls, spawnFn } = fakeSpawnRecorder();
-
-  const code = await runCdk({
-    repoRoot: root,
-    action: "deploy",
-    env: testEnv(),
-    exec: recordingExec(
-      fakeExec({
-        "git pull --ff-only": {
-          ok: false,
-          code: 1,
-          stdout: "",
-          stderr: "error: Your local changes to the following files would be overwritten by merge",
-          error: null,
-        },
-      }),
-      execCalls
-    ),
-    io: {
-      dim(msg) {
-        io.stdout.write(`${msg}\n`);
-      },
-      err(msg) {
-        io.stderr.write(`${msg}\n`);
-      },
-    },
-    spawn: spawnFn,
-    stdio: "ignore",
-  });
-
-  assert.equal(code, 1);
-  assert.equal(gitPullCalls(execCalls).length, 1);
-  assert.equal(npmCiCalls(execCalls).length, 0);
-  assert.equal(spawnCalls.length, 0);
-  assert.match(io.stderrText, /could not update checkout/);
-  assert.match(io.stderrText, /git pull --ff-only failed/);
-  assert.equal(io.stderrText.includes("ctx_testtoken_xx"), false);
-  assert.equal(io.stderrText.includes("overwritten by merge"), false);
 });
 
 test("deploy --dry-run does not npm ci", async () => {
@@ -305,6 +250,7 @@ test("destroy --dry-run does not npm ci", async () => {
 
 test("init installs once when missing", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-init-ci-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-init-ci-home-"));
   await makeRepoFixture(root, { deps: false });
   const io = memoryIo();
   const execCalls = [];
@@ -320,6 +266,7 @@ test("init installs once when missing", async () => {
     ],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv({
         AWS_ACCESS_KEY_ID: "TESTACCESSKEYID12345",
         AWS_SECRET_ACCESS_KEY: "test-secret-access-key-must-never-appear",
@@ -340,7 +287,7 @@ test("init installs once when missing", async () => {
   assert.equal(npmCiCalls(execCalls).length, 1);
   assert.equal(npmCiCalls(execCalls)[0].cwd, root);
   assert.match(io.stdoutText, new RegExp(INSTALLING_DEPS));
-  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   assert.equal(io.stdoutText.includes("Deploying the stack"), false);
 });
 
@@ -395,6 +342,7 @@ test("resume-yes skips npm ci when checkout deps are already present", async () 
     stderr: io.stderr,
     stdin: io.stdin,
     exec: recordingExec(fakeExec(), execCalls),
+    promptSpace: async () => "default",
     confirmResume: async () => true,
     confirmDeploy: async () => false,
     runDeploy: async () => {

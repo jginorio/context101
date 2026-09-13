@@ -1,12 +1,12 @@
 import { DRIVER_NEON, DRIVER_POSTGRES } from "./defaults.js";
 
 const COMMAND_LINES = [
-  ["init", "write deploy-env (default); TTY asks to deploy"],
-  ["deploy", "pull the checkout and deploy / update the AWS stack"],
-  ["diff", "pull the checkout and cdk diff"],
-  ["synth", "pull the checkout and cdk synth"],
-  ["list", "list Context101 CloudFormation stacks"],
-  ["destroy", "tear down a listed stack (name required)"],
+  ["init", "name a space and write its deploy-env; TTY asks to deploy"],
+  ["deploy", "update a space from this CLI version"],
+  ["diff", "cdk diff for a space"],
+  ["synth", "cdk synth for a space"],
+  ["list", "list spaces"],
+  ["destroy", "tear down a space"],
   ["config", "show deploy-env keys (values redacted)"],
   ["config set", "write one key (chmod 600; value is not printed)"],
   ["help", "list commands"],
@@ -14,16 +14,16 @@ const COMMAND_LINES = [
 ];
 
 const TOPIC_HELP = {
-  init: `init — write deploy-env (default); TTY asks to deploy.
+  init: `init [space] — name a space and write its deploy-env; TTY asks to deploy.
   Existing deploy-env: TTY asks to keep it. No continues the wizard (same secrets). --force starts over (new secrets).
+  Update later: install the new CLI, then context101 deploy <space>.
 
   --dry-run
   --yes, -y              accept defaults (creates RDS if no --database-url);
                          required --aws-profile when several exist
   --force                overwrite an existing env file (new secrets)
-  --dir <path>           clone here when not in a checkout
-  --deploy-env <path>    default: <repo>/cdk/.deploy-env
-  --home                 ~/.context101/deploy-env
+  --deploy-env <path>    default: ~/.context101/spaces/<space>/deploy-env
+  --home                 ~/.context101/deploy-env (legacy; migrates to default)
   --database-url <url>
   --create-rds           default when no URL
   --database-driver      ${DRIVER_NEON} | ${DRIVER_POSTGRES}
@@ -35,49 +35,50 @@ const TOPIC_HELP = {
   --embed-model <id>
   --skip-bedrock-access
   --seed
-  --deploy               deploy after writing without asking`,
+  --deploy               deploy after writing without asking
+  --verbose              dump cdk / npm / docker (default is a quiet spinner)`,
 
-  deploy: `deploy — pull the checkout (ff-only) and deploy / update the AWS stack.
-  Finds cwd, ./context101, or --dir. Does not require cd. Secrets stay.
-
-  --seed
-  --dir <path>           checkout here when not in cwd
-  --deploy-env <path>
-  --home
-  --dry-run`,
-
-  diff: `diff — pull the checkout and cdk diff with the same context as deploy
+  deploy: `deploy [space] — update that space from this CLI version.
+  One space: deploys it. Several: TTY pick, or pass a name. Update the CLI first.
 
   --seed
-  --dir <path>
   --deploy-env <path>
   --home
-  --dry-run`,
+  --dry-run
+  --verbose              dump cdk / npm / docker (default is a quiet spinner)`,
 
-  synth: `synth — pull the checkout and cdk synth with the same context as deploy
+  diff: `diff [space] — cdk diff for a space (same context as deploy)
 
   --seed
-  --dir <path>
   --deploy-env <path>
   --home
-  --dry-run`,
+  --dry-run
+  --verbose`,
 
-  list: `list — list Context101 CloudFormation stacks (no checkout)
+  synth: `synth [space] — cdk synth for a space (same context as deploy)
+
+  --seed
+  --deploy-env <path>
+  --home
+  --dry-run
+  --verbose`,
+
+  list: `list — list Context101 spaces (no checkout)
 
   --aws-profile <name>
   --aws-access-key-id
   --aws-secret-access-key`,
 
-  destroy: `destroy <name> — tear down a listed stack (clones if needed)
+  destroy: `destroy [space] — tear down a space
 
   --yes, -y
   --aws-profile <name>
   --aws-access-key-id
   --aws-secret-access-key
-  --dir <path>
   --deploy-env <path>
   --home
-  --dry-run`,
+  --dry-run
+  --verbose`,
 
   config: `config — show deploy-env keys (values redacted)
 
@@ -93,7 +94,7 @@ const TOPIC_HELP = {
 
   version: `version - print the installed CLI version
 
-  Also: -v, --version`,
+  Also: -v, --version. Child-process dumps use --verbose (not -v).`,
 };
 
 const INIT_ONLY = new Set([
@@ -132,6 +133,7 @@ const LIST_FROM_INIT = new Set([
 const CDK_FROM_INIT = new Set(["--dir"]);
 
 const CDK_COMMANDS = new Set(["deploy", "diff", "synth"]);
+const TARGET_COMMANDS = new Set(["init", "deploy", "diff", "synth", "destroy"]);
 
 const COMMANDS = {
   init: "init",
@@ -185,7 +187,9 @@ export function parseArgs(argv) {
     repo: null,
     embedModel: null,
     skipBedrockAccess: false,
+    space: null,
     stackName: null,
+    verbose: false,
     configAction: "show",
     configKey: null,
     configValue: null,
@@ -232,12 +236,13 @@ export function parseArgs(argv) {
 
   while (args.length) {
     const arg = args.shift();
-    if (opts.command === "destroy" && !arg.startsWith("-")) {
-      if (opts.stackName) {
-        const err = new Error("destroy takes one stack name");
+    if (TARGET_COMMANDS.has(opts.command) && !arg.startsWith("-")) {
+      if (opts.space || opts.stackName) {
+        const err = new Error(`${opts.command} takes one space name`);
         err.code = "USAGE";
         throw err;
       }
+      opts.space = arg;
       opts.stackName = arg;
       continue;
     }
@@ -320,6 +325,9 @@ export function parseArgs(argv) {
         break;
       case "--skip-bedrock-access":
         opts.skipBedrockAccess = true;
+        break;
+      case "--verbose":
+        opts.verbose = true;
         break;
       default: {
         const err = new Error(`unknown flag: ${arg}`);

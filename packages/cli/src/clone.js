@@ -80,23 +80,6 @@ export function ensureRepoRoot({
   return { repoRoot: cloned, cloned: true };
 }
 
-export function pullCheckout({ repoRoot, exec, io } = {}) {
-  if (!repoRoot || !exec) {
-    return { ok: false, error: "could not update checkout (git pull --ff-only failed)." };
-  }
-  io?.dim?.(UPDATING_CHECKOUT);
-  const result = exec({
-    command: "git",
-    args: ["pull", "--ff-only"],
-    cwd: repoRoot,
-    timeout: GIT_PULL_TIMEOUT_MS,
-  });
-  if (!result.ok) {
-    return { ok: false, error: "could not update checkout (git pull --ff-only failed)." };
-  }
-  return { ok: true };
-}
-
 function displayCloneTarget(cwd, target, homeDir) {
   if (homeDir && (target === homeDir || target.startsWith(homeDir + path.sep))) {
     return `~${target.slice(homeDir.length)}`;

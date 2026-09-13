@@ -28,6 +28,7 @@ skills-lock.json
 # Monorepo workspace (anchored so the CDK Lambda-layer node_modules stays tracked)
 /node_modules/
 /packages/*/node_modules/
+/packages/cli/stack/
 # per-app lockfiles regenerate on install/build; only the root lock is canonical
 site/package-lock.json
 web/package-lock.json

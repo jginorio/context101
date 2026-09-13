@@ -10,7 +10,7 @@ import {
   requestEmbeddingModelAccess,
 } from "../src/bedrock-access.js";
 import { fallbackEmbeddingModels } from "../src/embedding-models.js";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
 
 const OFFER_TOKEN = "offer-token-must-never-appear";

@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { isContext101Checkout } from "./repo.js";
 
-export const CHECKOUT_HINT = "needs cdk/, web/, and a root lockfile";
-export const INSTALLING_DEPS = "installing checkout deps";
+export const CHECKOUT_HINT = "needs the CLI stack source (cdk/)";
+export const INSTALLING_DEPS = "installing stack deps";
 export const NPM_CI_TIMEOUT_MS = 600_000;
 
 export function checkoutNeededMessage(prefix = "run this from a Context101 checkout") {
@@ -41,7 +41,7 @@ export function ensureCheckoutDeps({
     return {
       ok: false,
       installed: false,
-      error: "could not install checkout deps (npm ci failed).",
+      error: "could not install stack deps (npm ci failed).",
     };
   }
 
@@ -57,7 +57,7 @@ export function ensureCheckoutDeps({
     return {
       ok: false,
       installed: false,
-      error: "could not install checkout deps (npm ci failed).",
+      error: "could not install stack deps (npm ci failed).",
     };
   }
 
@@ -75,7 +75,7 @@ export function ensureCheckoutDeps({
       return {
         ok: false,
         installed: false,
-        error: "could not install checkout deps (npm ci failed).",
+        error: "could not install stack deps (npm ci failed).",
       };
     }
   }

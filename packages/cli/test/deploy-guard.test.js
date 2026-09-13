@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv, writeTestDeployEnv } from "./helpers.js";
 
 test("--yes --deploy deploys through the CLI runner", async () => {
@@ -42,7 +42,7 @@ test("--yes --deploy deploys through the CLI runner", async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].repoRoot, root);
   assert.equal(calls[0].seed, true);
-  assert.match(io.stdoutText, /Deploying the stack/);
+  assert.match(io.stdoutText, /[Dd]eploying/);
   assert.equal(io.stdoutText.includes("cdk deploy"), false);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
 });
@@ -50,6 +50,9 @@ test("--yes --deploy deploys through the CLI runner", async () => {
 test("context101 deploy refuses to invoke cdk without CTX_TOKEN", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-notoken-"));
   await makeRepoFixture(root);
+  await writeTestDeployEnv(root, 'CTX_TOKEN=""');
+  const { writeFile } = await import("node:fs/promises");
+  await writeFile(path.join(root, "cdk", ".deploy-env"), 'APP_MODE="self_hosted"\n', "utf8");
   const io = memoryIo();
   const calls = [];
 
@@ -97,7 +100,7 @@ test("context101 deploy runs the stack deploy", async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].repoRoot, root);
   assert.equal(calls[0].seed, true);
-  assert.match(io.stdoutText, /Deploying the stack/);
+  assert.match(io.stdoutText, /[Dd]eploying/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
 });
 
@@ -277,13 +280,14 @@ test("context101 deploy --dry-run finds ./context101 and does not pull", async (
   assert.equal(io.stdoutText.includes("updating checkout"), false);
 });
 
-test("context101 deploy still requires a checkout", async () => {
+test("context101 deploy needs a space when none exist", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-dep-norepo-"));
   const io = memoryIo();
   const calls = [];
 
   const code = await main(["deploy", "--dry-run"], {
     cwd,
+    homeDir: cwd,
     env: testEnv(),
     stdout: io.stdout,
     stderr: io.stderr,
@@ -297,5 +301,5 @@ test("context101 deploy still requires a checkout", async () => {
 
   assert.equal(code, 1);
   assert.equal(calls.length, 0);
-  assert.match(io.stderrText, /checkout/);
+  assert.match(io.stderrText, /no spaces yet|space name/);
 });
