@@ -16,7 +16,6 @@ export const STACK_COPY_SKIP = new Set([
   ".git",
   "dist",
   "coverage",
-  "stack",
   ".next",
 ]);
 
