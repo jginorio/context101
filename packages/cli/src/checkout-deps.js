@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { isContext101Checkout } from "./repo.js";
+import { isStackRoot } from "./stack-source.js";
 
 export const CHECKOUT_HINT = "needs the CLI stack source (cdk/)";
 export const INSTALLING_DEPS = "installing stack deps";
 export const NPM_CI_TIMEOUT_MS = 600_000;
 
-export function checkoutNeededMessage(prefix = "run this from a Context101 checkout") {
+export function checkoutNeededMessage(prefix = "could not use this stack source") {
   return `${prefix} (${CHECKOUT_HINT}).`;
 }
 
@@ -31,7 +31,7 @@ export function ensureCheckoutDeps({
   io,
   exists = existsSync,
 } = {}) {
-  if (!repoRoot || !isContext101Checkout(repoRoot, exists)) {
+  if (!repoRoot || !isStackRoot(repoRoot, exists)) {
     return { ok: false, installed: false, error: checkoutNeededMessage() };
   }
   if (hasCheckoutDeps(repoRoot, exists)) {
@@ -45,15 +45,10 @@ export function ensureCheckoutDeps({
     };
   }
 
-  io?.dim?.(INSTALLING_DEPS);
-
-  const root = exec({
-    command: "npm",
-    args: ["ci"],
-    cwd: repoRoot,
-    timeout: NPM_CI_TIMEOUT_MS,
-  });
-  if (!root.ok) {
+  const rootLock = exists(path.join(repoRoot, "package-lock.json"));
+  const cdkDir = path.join(repoRoot, "cdk");
+  const cdkLock = exists(path.join(cdkDir, "package-lock.json"));
+  if (!rootLock && !cdkLock) {
     return {
       ok: false,
       installed: false,
@@ -61,14 +56,29 @@ export function ensureCheckoutDeps({
     };
   }
 
-  if (
-    !hasCheckoutDeps(repoRoot, exists) &&
-    exists(path.join(repoRoot, "cdk", "package-lock.json"))
-  ) {
+  io?.dim?.(INSTALLING_DEPS);
+
+  if (rootLock) {
+    const root = exec({
+      command: "npm",
+      args: ["ci"],
+      cwd: repoRoot,
+      timeout: NPM_CI_TIMEOUT_MS,
+    });
+    if (!root.ok) {
+      return {
+        ok: false,
+        installed: false,
+        error: "could not install stack deps (npm ci failed).",
+      };
+    }
+  }
+
+  if (!hasCheckoutDeps(repoRoot, exists) && cdkLock) {
     const cdk = exec({
       command: "npm",
       args: ["ci"],
-      cwd: path.join(repoRoot, "cdk"),
+      cwd: cdkDir,
       timeout: NPM_CI_TIMEOUT_MS,
     });
     if (!cdk.ok) {

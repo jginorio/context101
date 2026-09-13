@@ -71,7 +71,7 @@ export function fakeExec(overrides = {}) {
 
     if (command === "npm" && args[0] === "ci") {
       if (overrides["npm ci"]) return overrides["npm ci"];
-      if (cwd) stubCheckoutDeps(cwd);
+      if (cwd && String(cwd).startsWith(tmpdir())) stubCheckoutDeps(cwd);
       return ok("");
     }
     if (command === "npm" && args[0] === "-v") {
@@ -220,6 +220,26 @@ export function stubCheckoutDeps(root) {
   writeFileSync(path.join(root, "node_modules", ".bin", "cdk"), "#!/bin/sh\nexit 0\n", {
     mode: 0o755,
   });
+}
+
+export async function makePackedStackFixture(root, { deps = true } = {}) {
+  await mkdir(path.join(root, "cdk", "lib"), { recursive: true });
+  await writeFile(path.join(root, "cdk", "cdk.json"), '{"app":"npx ts-node bin/context101.ts"}\n', {
+    encoding: "utf8",
+  });
+  await writeFile(path.join(root, "cdk", "package.json"), '{"name":"context101-cdk"}\n', "utf8");
+  await writeFile(path.join(root, "cdk", "package-lock.json"), '{"lockfileVersion":3}\n', "utf8");
+  await writeFile(
+    path.join(root, "cdk", ".deploy-env.example"),
+    'CTX_TOKEN="example-do-not-copy"\n',
+    "utf8"
+  );
+  await writeFile(
+    path.join(root, "cdk", "lib", "context101-stack.ts"),
+    'repository: "https://github.com/jginorio/context101",\n',
+    "utf8"
+  );
+  if (deps) stubCheckoutDeps(path.join(root, "cdk"));
 }
 
 export async function makeRepoFixture(root, { deps = true } = {}) {

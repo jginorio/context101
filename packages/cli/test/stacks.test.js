@@ -293,7 +293,7 @@ test("context101 destroy --yes calls cdk destroy with the listed name", async ()
 
   assert.equal(code, 0);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, root);
+  assert.equal(calls[0].repoRoot, monorepoStackRoot());
   assert.equal(calls[0].action, "destroy");
   assert.equal(calls[0].stackName, "Context101Stack");
   assert.match(io.stdoutText, /destroying/);
@@ -358,7 +358,7 @@ test("context101 destroy --yes uses CLI stack source without a checkout", async 
   assert.equal(io.stderrText.includes("checkout"), false);
 });
 
-test("context101 destroy --yes prefers a stack checkout in cwd", async () => {
+test("context101 destroy --yes ignores a leftover checkout in cwd", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-rm-reuse-"));
   const home = await mkdtemp(path.join(tmpdir(), "ctx101-rm-reuse-home-"));
   await makeRepoFixture(cwd);
@@ -381,7 +381,8 @@ test("context101 destroy --yes prefers a stack checkout in cwd", async () => {
 
   assert.equal(code, 0);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, cwd);
+  assert.equal(calls[0].repoRoot, monorepoStackRoot());
+  assert.notEqual(calls[0].repoRoot, cwd);
   assert.equal(io.stdoutText.includes("Cloning"), false);
 });
 

@@ -6,12 +6,13 @@ import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCdk } from "../src/cdk-invoke.js";
-import { INSTALLING_DEPS } from "../src/checkout-deps.js";
+import { INSTALLING_DEPS, checkoutNeededMessage, ensureCheckoutDeps } from "../src/checkout-deps.js";
 import { UPDATING_CHECKOUT } from "../src/clone.js";
 import { main } from "./run-main.js";
 import { STACK_NAME } from "../src/defaults.js";
 import {
   fakeExec,
+  makePackedStackFixture,
   makeRepoFixture,
   memoryIo,
   testEnv,
@@ -268,6 +269,7 @@ test("init installs once when missing", async () => {
       cwd: root,
       homeDir: home,
       env: testEnv({
+        CONTEXT101_STACK_ROOT: root,
         AWS_ACCESS_KEY_ID: "TESTACCESSKEYID12345",
         AWS_SECRET_ACCESS_KEY: "test-secret-access-key-must-never-appear",
       }),
@@ -308,6 +310,7 @@ test("init skips npm ci when checkout deps are already present", async () => {
     {
       cwd: root,
       env: testEnv({
+        CONTEXT101_STACK_ROOT: root,
         AWS_ACCESS_KEY_ID: "TESTACCESSKEYID12345",
         AWS_SECRET_ACCESS_KEY: "test-secret-access-key-must-never-appear",
       }),
@@ -335,6 +338,7 @@ test("resume-yes skips npm ci when checkout deps are already present", async () 
   const code = await main(["init"], {
     cwd: root,
     env: testEnv({
+      CONTEXT101_STACK_ROOT: root,
       AWS_ACCESS_KEY_ID: "TESTACCESSKEYID12345",
       AWS_SECRET_ACCESS_KEY: "test-secret-access-key-must-never-appear",
     }),
@@ -353,6 +357,59 @@ test("resume-yes skips npm ci when checkout deps are already present", async () 
   assert.equal(code, 0);
   assert.equal(npmCiCalls(execCalls).length, 0);
   assert.equal(io.stdoutText.includes(INSTALLING_DEPS), false);
+});
+
+test("packaged stack installs from cdk/ without web/ or a root lockfile", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-packed-ci-"));
+  await makePackedStackFixture(root, { deps: false });
+  const execCalls = [];
+  const ready = ensureCheckoutDeps({
+    repoRoot: root,
+    exec: recordingExec(fakeExec(), execCalls),
+  });
+
+  assert.equal(ready.ok, true);
+  assert.equal(ready.installed, true);
+  const ci = npmCiCalls(execCalls);
+  assert.equal(ci.length, 1);
+  assert.equal(ci[0].cwd, path.join(root, "cdk"));
+});
+
+test("runCdk accepts a packaged stack without web/package.json", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-packed-cdk-"));
+  await makePackedStackFixture(root, { deps: false });
+  await writeTestDeployEnv(root);
+  const io = memoryIo();
+  const execCalls = [];
+  const { calls: spawnCalls, spawnFn } = fakeSpawnRecorder();
+
+  const code = await runCdk({
+    repoRoot: root,
+    stackRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: recordingExec(fakeExec(), execCalls),
+    io: {
+      dim(msg) {
+        io.stdout.write(`${msg}\n`);
+      },
+      err(msg) {
+        io.stderr.write(`${msg}\n`);
+      },
+    },
+    spawn: spawnFn,
+    stdio: "ignore",
+  });
+
+  assert.equal(code, 0);
+  assert.equal(io.stderrText.includes("Context101 checkout"), false);
+  assert.equal(io.stderrText.includes(checkoutNeededMessage()), false);
+  const ci = npmCiCalls(execCalls);
+  assert.equal(ci.length, 1);
+  assert.equal(ci[0].cwd, path.join(root, "cdk"));
+  assert.equal(spawnCalls.length, 1);
+  assert.equal(spawnCalls[0].command, path.join(root, "cdk", "node_modules", ".bin", "cdk"));
+  assert.equal(spawnCalls[0].cwd, path.join(root, "cdk"));
 });
 
 test("cdk.json app cannot download a bare ts-node", async () => {

@@ -4,7 +4,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { main } from "./run-main.js";
-import { fakeExec, makeRepoFixture, memoryIo, testEnv, writeTestDeployEnv } from "./helpers.js";
+import { monorepoStackRoot } from "../src/stack-source.js";
+import {
+  fakeExec,
+  makePackedStackFixture,
+  makeRepoFixture,
+  memoryIo,
+  testEnv,
+  writeTestDeployEnv,
+} from "./helpers.js";
 
 test("--yes --deploy deploys through the CLI runner", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-"));
@@ -40,7 +48,7 @@ test("--yes --deploy deploys through the CLI runner", async () => {
 
   assert.equal(code, 0);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, root);
+  assert.equal(calls[0].repoRoot, monorepoStackRoot());
   assert.equal(calls[0].seed, true);
   assert.match(io.stdoutText, /[Dd]eploying/);
   assert.equal(io.stdoutText.includes("cdk deploy"), false);
@@ -98,7 +106,7 @@ test("context101 deploy runs the stack deploy", async () => {
 
   assert.equal(code, 0);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, root);
+  assert.equal(calls[0].repoRoot, monorepoStackRoot());
   assert.equal(calls[0].seed, true);
   assert.match(io.stdoutText, /[Dd]eploying/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
@@ -222,11 +230,11 @@ test("--yes --deploy refuses when the Docker daemon is down", async () => {
   assert.match(`${io.stdoutText}\n${io.stderrText}`, /colima start|systemctl start docker/);
 });
 
-test("context101 deploy finds ./context101 without cd", async () => {
+test("context101 deploy ignores a leftover ./context101 clone", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-dep-parent-"));
-  const dest = path.join(cwd, "context101");
-  await makeRepoFixture(dest);
-  await writeTestDeployEnv(dest);
+  const leftover = path.join(cwd, "context101");
+  await makeRepoFixture(leftover);
+  await writeTestDeployEnv(leftover);
   const io = memoryIo();
   const calls = [];
 
@@ -245,8 +253,39 @@ test("context101 deploy finds ./context101 without cd", async () => {
 
   assert.equal(code, 0);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, dest);
+  assert.equal(calls[0].repoRoot, monorepoStackRoot());
+  assert.notEqual(calls[0].repoRoot, leftover);
   assert.equal(io.stdoutText.includes("Cloning"), false);
+});
+
+test("CONTEXT101_STACK_ROOT wins over leftover clone and monorepo", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-dep-envroot-"));
+  const leftover = path.join(cwd, "context101");
+  await makeRepoFixture(leftover);
+  await writeTestDeployEnv(leftover);
+  const packed = await mkdtemp(path.join(tmpdir(), "ctx101-dep-packed-"));
+  await makePackedStackFixture(packed);
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(["deploy"], {
+    cwd,
+    env: testEnv({ CONTEXT101_STACK_ROOT: packed }),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(),
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].repoRoot, packed);
+  assert.equal(calls[0].stackRoot, packed);
+  assert.equal(io.stderrText.includes("Context101 checkout"), false);
 });
 
 test("context101 deploy --dry-run finds ./context101 and does not pull", async () => {
