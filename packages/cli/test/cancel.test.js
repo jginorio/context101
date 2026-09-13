@@ -262,6 +262,33 @@ test("Ctrl+C on deploy-now does not deploy", async () => {
   assert.equal(io.stdoutText.includes("Deploying the stack"), false);
 });
 
+test("Ctrl+C on update prompt exits 130 and does not install", async () => {
+  const io = ttyIo();
+  let installed = false;
+
+  const code = await main(["help"], {
+    cwd: "/tmp",
+    env: testEnv({ CONTEXT101_SKIP_UPDATE: "" }),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    packageVersion: "0.1.5",
+    fetchNpmLatest: async () => "0.1.6",
+    confirmUpdate: async () => {
+      throw exitPromptError();
+    },
+    installCli: async () => {
+      installed = true;
+      return true;
+    },
+  });
+
+  assertQuietCancel(io, code);
+  assert.equal(installed, false);
+  assert.equal(io.stdoutText.includes("Usage: context101"), false);
+  assert.equal(io.stdoutText.includes("re-run context101"), false);
+});
+
 test("Ctrl+C on existing-env continue exits 130 and does not overwrite", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-cancel-keep-"));
   await makeRepoFixture(root);

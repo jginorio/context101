@@ -2,7 +2,7 @@ import { DEPLOY_CLI, DESTROY_CLI, LIST_CLI, SMOOTH_REGION } from "./defaults.js"
 import { runCdk } from "./cdk-invoke.js";
 import { ensureRepoRoot } from "./clone.js";
 import { createExec } from "./exec.js";
-import { banner, writers } from "./style.js";
+import { writers } from "./style.js";
 
 export function parseStackSummaries(payload) {
   const rows = payload?.StackSummaries;
@@ -78,8 +78,6 @@ export async function runList(opts, ctx) {
   const io = writers(ctx);
   const exec = ctx.exec ?? createExec(ctx.env);
 
-  banner(ctx);
-
   const env = withAwsAuth(ctx.env ?? {}, {
     profile: opts.awsProfile,
     accessKeyId: opts.awsAccessKeyId,
@@ -99,7 +97,6 @@ export async function runDestroy(opts, ctx) {
   const io = writers(ctx);
   const exec = ctx.exec ?? createExec(ctx.env);
 
-  banner(ctx);
   if (opts.dryRun) {
     io.dim("dry-run — destroy nothing");
     io.write("");

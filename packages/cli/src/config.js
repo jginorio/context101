@@ -7,7 +7,7 @@ import { quoteShell } from "./env-file.js";
 import { isHostedContext101Url } from "./hosted-url.js";
 import { mask } from "./redact.js";
 import { findRepoRoot } from "./repo.js";
-import { banner, writers } from "./style.js";
+import { writers } from "./style.js";
 
 const SECRET_NAME = /TOKEN|SECRET|PASSWORD|PEPPER|KEY/i;
 const HOSTED_KEYS = new Set([
@@ -62,7 +62,6 @@ export function upsertEnvLine(text, key, value) {
 
 export async function runConfig(opts, ctx) {
   const io = writers(ctx);
-  banner(ctx);
 
   const repoRoot = findRepoRoot(ctx.cwd);
   const filePath = findDeployEnvPath({

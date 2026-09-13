@@ -40,14 +40,13 @@ import {
   resolveEnvPath,
 } from "./repo.js";
 import { generateCtxToken, generateSecret } from "./secrets.js";
-import { banner, writers } from "./style.js";
+import { writers } from "./style.js";
 import { listAwsProfiles, resolveAwsAuth } from "./aws-profiles.js";
 
 export async function runInit(opts, ctx) {
   const io = writers(ctx);
   const exec = ctx.exec ?? createExec(ctx.env);
 
-  banner(ctx);
   if (opts.dryRun) {
     io.dim("dry-run — no files, no secrets written, no deploy");
     io.write("");

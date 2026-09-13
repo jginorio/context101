@@ -10,7 +10,7 @@ import { printChecks, runChecks } from "./checks.js";
 import { createExec } from "./exec.js";
 import { deployCommand } from "./plan.js";
 import { findRepoRoot } from "./repo.js";
-import { banner, writers } from "./style.js";
+import { writers } from "./style.js";
 
 export async function runDeploy(opts, ctx) {
   return runCdkCommand(opts, ctx, opts.command || "deploy");
@@ -20,7 +20,6 @@ async function runCdkCommand(opts, ctx, action) {
   const io = writers(ctx);
   const exec = ctx.exec ?? createExec(ctx.env);
 
-  banner(ctx);
   if (opts.dryRun) {
     io.dim(`dry-run — ${action} nothing`);
     io.write("");
