@@ -9,7 +9,7 @@ Alpha / trusted-team only. Not a wiki app. Retrieval is raw-first.
 ## context101
 
 ```bash
-npm i -g context101-cli@0.1.17
+npm i -g context101-cli@0.1.18
 ```
 
 Package `context101-cli`, bin `context101`. Pin the version — `@latest` is a no-op on some machines. Unscoped `npx context101` is Context7's MCP, unrelated.

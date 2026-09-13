@@ -343,7 +343,7 @@ test("workspace package is context101-cli with bin context101", async () => {
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.17");
+  assert.equal(pkg.version, "0.1.18");
   assert.equal(pkg.private, false);
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.bin.context101, "./bin/context101.js");
@@ -361,8 +361,8 @@ test("npm README is on-brand and warns about the Context7 name collision", async
   const text = await readFile(readmePath, "utf8");
   assert.match(text, /^# context101-cli/m);
   assert.match(text, /your context\. every agent\./);
-  assert.match(text, /npx -y context101-cli@0\.1\.17/);
-  assert.match(text, /npm i -g context101-cli@0\.1\.17/);
+  assert.match(text, /npx -y context101-cli@0\.1\.18/);
+  assert.match(text, /npm i -g context101-cli@0\.1\.18/);
   assert.equal(text.includes("context101-cli@latest"), false);
   assert.match(text, /Context7/);
   assert.match(text, /https:\/\/github.com\/jginorio\/context101/);
