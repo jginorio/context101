@@ -1325,6 +1325,9 @@ export class Context101Stack extends cdk.Stack {
             }),
       });
       mainBranch.addDependency(webApp);
+      if (adminSource.seedMain) {
+        mainBranch.node.addDependency(adminSource.seedMain);
+      }
       if (!appUrl) {
         ingestFn.addEnvironment(
           "CONFLICT_EVIDENCE_URL",
