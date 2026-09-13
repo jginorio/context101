@@ -67,6 +67,20 @@ test("matchSpaces picks one space and requires a name when several exist", async
   assert.equal(byStack.space.name, "platea");
 });
 
+test("legacy ~/.context101/deploy-env becomes the default space without orphaning", async () => {
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-home-legacy-"));
+  const envPath = path.join(home, ".context101", "deploy-env");
+  await mkdir(path.dirname(envPath), { recursive: true });
+  await writeFile(envPath, 'CTX_TOKEN="ctx_testtoken_xx"\n', { mode: 0o600 });
+  const found = discoverLegacyEnv({ homeDir: home, cwd: await mkdtemp(path.join(tmpdir(), "ctx101-empty-")) });
+  assert.equal(found, envPath);
+  const spaces = listSpaces({ homeDir: home });
+  assert.equal(spaces.length, 1);
+  assert.equal(spaces[0].name, DEFAULT_SPACE);
+  assert.equal(spaces[0].envPath, envPath);
+  assert.equal(spaces[0].stackName, "Context101Stack");
+});
+
 test("legacy default stays visible when another named space exists", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-overlay-"));
   await makeRepoFixture(cwd);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -76,5 +76,37 @@ test("init platea writes that space's stack id and prefix", async () => {
   assert.match(body, /STACK_NAME="Context101Platea"/);
   assert.match(body, /NAME_PREFIX="context101-platea"/);
   assert.equal(body.includes("CTX_TOKEN="), true);
+  assert.equal(io.stdoutText.includes("test-secret-access-key-must-never-appear"), false);
+});
+
+test("init default reuses ~/.context101/deploy-env and does not copy it", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-init-home-env-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-init-home-env-home-"));
+  const envPath = path.join(home, ".context101", "deploy-env");
+  await mkdir(path.dirname(envPath), { recursive: true });
+  await writeFile(envPath, 'CTX_TOKEN="ctx_testtoken_xx"\nAPP_MODE="self_hosted"\n', {
+    mode: 0o600,
+  });
+  const io = memoryIo();
+  const code = await main(["init", "default", "--yes", "--force"], {
+    cwd,
+    homeDir: home,
+    env: testEnv({
+      AWS_ACCESS_KEY_ID: "TESTACCESSKEYID12345",
+      AWS_SECRET_ACCESS_KEY: "test-secret-access-key-must-never-appear",
+    }),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(),
+  });
+  assert.equal(code, 0);
+  assert.equal(existsSync(envPath), true);
+  assert.equal(existsSync(defaultSpaceEnvPath(DEFAULT_SPACE, home)), false);
+  const pointer = path.join(home, ".context101", "spaces", "default", "env-path");
+  assert.equal((await readFile(pointer, "utf8")).trim(), envPath);
+  const body = await readFile(envPath, "utf8");
+  assert.match(body, /STACK_NAME="Context101Stack"/);
+  assert.match(body, /NAME_PREFIX="context101"/);
   assert.equal(io.stdoutText.includes("test-secret-access-key-must-never-appear"), false);
 });

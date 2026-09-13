@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import path from "node:path";
 import { readDeployEnvFile } from "./deploy-env-load.js";
@@ -156,30 +156,6 @@ export function findSpaceByTarget(
   );
 }
 
-export function adoptLegacySpaces({
-  homeDir = homedir(),
-  cwd,
-  exists = existsSync,
-  copyFile = copyFileSync,
-  mkdir = mkdirSync,
-  writeFile = writeFileSync,
-} = {}) {
-  if (listSpaceNames(homeDir, exists).length) return listSpaces({ homeDir, exists });
-
-  const legacy = discoverLegacyEnv({ homeDir, cwd, exists });
-  if (!legacy) return [];
-
-  const dest = defaultSpaceEnvPath(DEFAULT_SPACE, homeDir);
-  if (!exists(dest)) {
-    mkdir(path.dirname(dest), { recursive: true });
-    copyFile(legacy, dest);
-    const file = readDeployEnvFile(dest, { exists });
-    const next = withSpaceIdentity(file.text, DEFAULT_SPACE, file.values);
-    if (next !== file.text) writeFile(dest, next, { encoding: "utf8", mode: 0o600 });
-  }
-  return listSpaces({ homeDir, exists });
-}
-
 export function discoverLegacyEnv({ homeDir = homedir(), cwd, exists = existsSync } = {}) {
   const homeLegacy = path.join(homeDir, HOME_ENV_REL);
   if (exists(homeLegacy)) return homeLegacy;
@@ -196,27 +172,6 @@ export function discoverLegacyEnv({ homeDir = homedir(), cwd, exists = existsSyn
     if (exists(candidate)) return candidate;
   }
   return null;
-}
-
-export function withSpaceIdentity(text, name, values = {}) {
-  let next = text || "";
-  if (!/^SPACE=/m.test(next)) {
-    next = appendEnvLine(next, "SPACE", name);
-  }
-  if (!values.STACK_NAME && !/^STACK_NAME=/m.test(next)) {
-    next = appendEnvLine(next, "STACK_NAME", stackNameForSpace(name));
-  }
-  if (!values.NAME_PREFIX && !/^NAME_PREFIX=/m.test(next)) {
-    next = appendEnvLine(next, "NAME_PREFIX", namePrefixForSpace(name));
-  }
-  return next.endsWith("\n") ? next : `${next}\n`;
-}
-
-function appendEnvLine(text, key, value) {
-  const line = `${key}="${String(value).replace(/["\\$`]/g, "\\$&")}"`;
-  const base = text || "";
-  const trimmed = base.endsWith("\n") || !base ? base : `${base}\n`;
-  return `${trimmed}${line}\n`;
 }
 
 function resolveRegisteredEnvPath(name, homeDir, exists) {
