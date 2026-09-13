@@ -82,8 +82,12 @@ export async function runInit(opts, ctx) {
   const envDisplay = displayEnvPath(envPath, repoRoot);
   const envExists = existsSync(envPath);
 
+  let seedFromEnv = null;
+  let reuseSecrets = null;
+  let rewriteExisting = false;
+
   if (envExists && !opts.force && !opts.dryRun) {
-    return resumeExistingInit({
+    const resume = await resumeExistingInit({
       opts,
       ctx,
       io,
@@ -94,14 +98,23 @@ export async function runInit(opts, ctx) {
       envPath,
       envDisplay,
     });
+    if (resume.done) return resume.code;
+    seedFromEnv = resume.seed;
+    reuseSecrets = resume.secrets;
+    rewriteExisting = true;
   }
 
   const region = opts.region ?? SMOOTH_REGION;
   const profiles = listAwsProfiles({ exec, env });
   const resolved = resolveAwsAuth({
     explicitProfile: opts.awsProfile || env.AWS_PROFILE || null,
-    accessKeyId: opts.awsAccessKeyId || env.AWS_ACCESS_KEY_ID || null,
-    secretAccessKey: opts.awsSecretAccessKey || env.AWS_SECRET_ACCESS_KEY || null,
+    accessKeyId:
+      opts.awsAccessKeyId || env.AWS_ACCESS_KEY_ID || seedFromEnv?.awsAccessKeyId || null,
+    secretAccessKey:
+      opts.awsSecretAccessKey ||
+      env.AWS_SECRET_ACCESS_KEY ||
+      seedFromEnv?.awsSecretAccessKey ||
+      null,
     profiles,
     yes: opts.yes,
     dryRun: opts.dryRun,
@@ -121,7 +134,7 @@ export async function runInit(opts, ctx) {
       return 1;
     }
     awsProfile = await (ctx.chooseProfile ?? chooseAwsProfile)(profiles, {
-      current: opts.awsProfile || env.AWS_PROFILE || null,
+      current: opts.awsProfile || env.AWS_PROFILE || seedFromEnv?.awsProfile || null,
     });
   }
   if (resolved.source === "ask-keys" && !opts.dryRun) {
@@ -183,6 +196,7 @@ export async function runInit(opts, ctx) {
       awsProfile,
       awsAccessKeyId,
       awsSecretAccessKey,
+      seedFromEnv,
       promptAnswers: ctx.promptAnswers,
     });
   } catch (error) {
@@ -223,18 +237,19 @@ export async function runInit(opts, ctx) {
     return 0;
   }
 
-  if (envExists && !opts.force) {
+  if (envExists && !opts.force && !rewriteExisting) {
     io.err(`${envDisplay} already exists. Re-run with --force to overwrite.`);
     return 1;
   }
 
   const secrets = {
-    CTX_TOKEN: generateCtxToken(),
-    BETTER_AUTH_SECRET: generateSecret(),
-    MCP_TOKEN_PEPPER: generateSecret(),
+    CTX_TOKEN: reuseSecrets?.CTX_TOKEN || generateCtxToken(),
+    BETTER_AUTH_SECRET: reuseSecrets?.BETTER_AUTH_SECRET || generateSecret(),
+    MCP_TOKEN_PEPPER: reuseSecrets?.MCP_TOKEN_PEPPER || generateSecret(),
     ...(answers.createRds ? {} : { DATABASE_URL: answers.databaseUrl }),
   };
   if (answers.ghToken) secrets.CTX_GH_TOKEN = answers.ghToken;
+  else if (reuseSecrets?.CTX_GH_TOKEN) secrets.CTX_GH_TOKEN = reuseSecrets.CTX_GH_TOKEN;
 
   const exampleToken = await readExampleToken(
     path.join(repoRoot, ...EXAMPLE_ENV_REL.split("/"))
@@ -313,7 +328,7 @@ async function resumeExistingInit({
     io.err(
       `${envDisplay} already exists. Re-run with --force to overwrite (new secrets).`
     );
-    return 1;
+    return { done: true, code: 1 };
   }
 
   const loaded = readDeployEnvFile(envPath);
@@ -327,8 +342,11 @@ async function resumeExistingInit({
 
   const keep = await askResumeExisting(ctx);
   if (!keep) {
-    io.write(`Left as-is. Re-run with --force to start over (new secrets).`);
-    return 1;
+    return {
+      done: false,
+      seed: seedFromExistingEnv(values),
+      secrets: pickExistingSecrets(values),
+    };
   }
 
   const region = opts.region || values.AWS_REGION || SMOOTH_REGION;
@@ -370,7 +388,7 @@ async function resumeExistingInit({
   io.write("");
 
   const createRds = String(values.CREATE_RDS || "").toLowerCase() === "true";
-  return finishAfterEnv({
+  const code = await finishAfterEnv({
     opts,
     ctx,
     io,
@@ -386,6 +404,27 @@ async function resumeExistingInit({
     envFile: opts.envFile,
     deployFlag: Boolean(opts.deploy),
   });
+  return { done: true, code };
+}
+
+function seedFromExistingEnv(values = {}) {
+  return {
+    awsProfile: values.AWS_PROFILE || null,
+    awsAccessKeyId: values.AWS_ACCESS_KEY_ID || null,
+    awsSecretAccessKey: values.AWS_SECRET_ACCESS_KEY || null,
+    region: values.AWS_REGION || null,
+    repository: values.REPOSITORY || "",
+    databaseUrl: values.DATABASE_URL || "",
+    createRds: String(values.CREATE_RDS || "").toLowerCase() === "true",
+  };
+}
+
+function pickExistingSecrets(values = {}) {
+  const secrets = {};
+  for (const key of ["CTX_TOKEN", "BETTER_AUTH_SECRET", "MCP_TOKEN_PEPPER", "CTX_GH_TOKEN"]) {
+    if (values[key]) secrets[key] = values[key];
+  }
+  return secrets;
 }
 
 async function finishAfterEnv({
@@ -442,13 +481,18 @@ async function finishAfterEnv({
 
 async function collectAnswers(opts, ctx) {
   const { repoRoot, exec, io, env, awsEnv, tty } = ctx;
+  const seeded = ctx.seedFromEnv;
   const remote = detectGitRemote(exec, repoRoot);
   const ghLogin = detectGithubLogin(exec);
-  const repository = defaultAmplifyRepository({
-    repo: opts.repo ? normalizeRepoUrl(opts.repo) : "",
-    ghLogin,
-  });
-  const databaseUrl = opts.databaseUrl || env.DATABASE_URL || "";
+  const repository = opts.repo
+    ? normalizeRepoUrl(opts.repo)
+    : seeded
+      ? seeded.repository || ""
+      : defaultAmplifyRepository({
+          repo: "",
+          ghLogin,
+        });
+  const databaseUrl = opts.databaseUrl || env.DATABASE_URL || seeded?.databaseUrl || "";
   const awsProfile = ctx.awsProfile ?? null;
   const awsAccessKeyId = ctx.awsAccessKeyId ?? null;
   const awsSecretAccessKey = ctx.awsSecretAccessKey ?? null;
@@ -504,11 +548,12 @@ async function collectAnswers(opts, ctx) {
   const prompted = await prompt({
     defaults: {
       repoRoot,
-      region: SMOOTH_REGION,
+      region: seeded?.region || SMOOTH_REGION,
       repository,
       suggestedRepo: remote,
       embedModelId: opts.embedModel || "",
       databaseUrl,
+      createRds: Boolean(seeded?.createRds),
       awsProfile,
       awsAccessKeyId,
       awsSecretAccessKey,

@@ -73,7 +73,7 @@ export async function promptAnswers({ defaults, io, exec, env }) {
 
   const dbMode = await select({
     message: "Postgres control plane",
-    default: defaults.databaseUrl ? "url" : "rds",
+    default: defaults.createRds ? "rds" : defaults.databaseUrl ? "url" : "rds",
     choices: [
       {
         name: "Create RDS — CDK provisions Postgres (db.t3.micro, public)",
@@ -94,6 +94,7 @@ export async function promptAnswers({ defaults, io, exec, env }) {
     databaseUrl = await password({
       message: "DATABASE_URL",
       mask: true,
+      default: defaults.databaseUrl || undefined,
       validate: (value) =>
         value ? true : "needed unless CDK creates RDS",
     });

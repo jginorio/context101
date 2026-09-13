@@ -15,7 +15,7 @@ const COMMAND_LINES = [
 
 const TOPIC_HELP = {
   init: `init — write deploy-env (default); TTY asks to deploy.
-  Existing deploy-env: TTY asks to keep it. --force starts over (new secrets).
+  Existing deploy-env: TTY asks to keep it. No continues the wizard (same secrets). --force starts over (new secrets).
 
   --dry-run
   --yes, -y              accept defaults (creates RDS if no --database-url);

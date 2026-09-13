@@ -306,6 +306,47 @@ test("Ctrl+C on update prompt exits 130 and does not install", async () => {
   assert.equal(io.stdoutText.includes("re-run context101"), false);
 });
 
+test("Ctrl+C during wizard after declining existing env exits 130 and does not overwrite", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cancel-decline-"));
+  await makeRepoFixture(root);
+  const envPath = path.join(root, "cdk", ".deploy-env");
+  const kept = 'CTX_TOKEN="ctx_keep_existing_token_xx"\nAWS_PROFILE="findit"\n';
+  await writeFile(envPath, kept, "utf8");
+  const io = ttyIo();
+  let askedDeploy = false;
+  let deployed = false;
+
+  const code = await main(["init"], {
+    cwd: root,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(MULTI_PROFILES),
+    chooseProfile: async () => {
+      throw exitPromptError();
+    },
+    promptAnswers: async () => {
+      throw new Error("promptAnswers should not run");
+    },
+    confirmResume: async () => false,
+    confirmDeploy: async () => {
+      askedDeploy = true;
+      return true;
+    },
+    runDeploy: async () => {
+      deployed = true;
+      return 0;
+    },
+  });
+
+  assertQuietCancel(io, code);
+  assert.equal(askedDeploy, false);
+  assert.equal(deployed, false);
+  const body = await readFile(envPath, "utf8");
+  assert.equal(body, kept);
+});
+
 test("Ctrl+C on existing-env continue exits 130 and does not overwrite", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-cancel-keep-"));
   await makeRepoFixture(root);
