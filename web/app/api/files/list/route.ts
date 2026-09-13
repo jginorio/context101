@@ -14,7 +14,7 @@ import { bucketForBrain, s3 } from "@/utils/s3";
  *
  * The auth gate in proxy.ts has already verified the user is signed in.
  * The brain is resolved via `?brain=` query → `x-brain-id` header →
- * `ctx_brain` cookie → "default".
+ * `ctx_brain` cookie. There is no implicit `default` brain.
  */
 export async function GET(request: NextRequest) {
   const r = await resolveBrainFromRequest(request);

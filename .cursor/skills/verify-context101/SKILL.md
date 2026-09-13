@@ -111,7 +111,7 @@ Stable handles:
 | Brain Advanced | button `Advanced` / `aria-label="Advanced settings"` on a ready row (opens `/settings`) |
 | Delete brain | icon button `aria-label="Delete brain"` on a non-default row; while `deleting` the label is `Retry delete`. Dialog title `Delete brain "{name}"?`. Type the display name; footer button `Delete brain`. Never use in a default run |
 | Brain error gate | heading `Brain failed to provision`; button `Delete & retry` goes to `/brains` (do not delete) |
-| Brain empty gate | heading `No brains yet`; primary button `Create a brain` → `/brains?new=1` (opens `Create a brain` dialog; do not submit). New self-host has zero brains — do not expect a `default` row |
+| Brain empty gate | heading `No brains yet`; primary button `Create a brain` → `/brains?new=1` (opens `Create a brain` dialog; do not submit). Header switcher matches: hint `No brains yet`, label `Create a brain`, aria `No brains yet. Create a brain` — never `Active brain: default`. New self-host has zero brains — do not expect a `default` row |
 | Brain stale gate | heading `Brain not found` + “registered under …”; outline button `Pick another brain` → `/brains`. Only when the catalog has other brains but this id 404s |
 | First-run setup | `/setup` — heading `Set up Context101`, card `Create first admin`. Redirects to `/login` when an org already exists. Skip on a shared instance |
 | New file | button `New file` |
@@ -137,7 +137,7 @@ Library files are draggable. Drop onto a folder row to move into that folder, or
 
 Isolation: every mutating run uses a unique prefix `verify/<run-id>/` (example: `verify/20260903-2100/e2e.md`). Never rename or delete existing library files. Do not drive the user's unsaved editor state.
 
-Cookie `ctx_brain` / query `?brain=` empty falls back to id `default`. That id is not auto-seeded — a new stack has no brains, and Knowledge shows the empty gate. Shared verify instances usually already have a ready brain. Stay on that brain unless the feature file says otherwise.
+Cookie `ctx_brain` / query `?brain=` empty means no brain is selected. That id is not auto-seeded — a new stack has no brains. Knowledge shows the empty gate and the header says `No brains yet` / `Create a brain` (never `Active brain: default`). Shared verify instances usually already have a ready brain; with no cookie the client picks the first ready one. Stay on that brain unless the feature file says otherwise.
 
 ### HTTP helper
 

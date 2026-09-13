@@ -16,6 +16,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useBrain } from "@/lib/brain-context";
+import { brainSwitcherCopy } from "@/lib/brain-not-found";
 
 /**
  * Header dropdown for picking the active brain. Lists every brain in
@@ -27,23 +28,19 @@ import { useBrain } from "@/lib/brain-context";
  * shareable via copy/paste of the URL.
  */
 export function BrainSwitcher() {
-  const { currentBrain, currentBrainId, brains, loading, setBrain } = useBrain();
+  const { currentBrain, currentBrainId, brains, error, loading, setBrain } =
+    useBrain();
 
   const ready = brains.filter((b) => b.status === "ready");
   const provisioning = brains.filter((b) => b.status === "provisioning");
-
-  const label = currentBrain?.display_name ?? currentBrainId ?? "Default";
+  const copy = brainSwitcherCopy({
+    loading,
+    error,
+    brainsCount: brains.length,
+    currentBrainId,
+    currentBrain,
+  });
   const status = currentBrain?.status;
-  // The active brain isn't usable yet (deep-linked to a provisioning/errored
-  // one). Surface it so the header always tells the truth about where you are.
-  const statusHint =
-    status === "provisioning"
-      ? "Provisioning…"
-      : status === "error"
-        ? "Needs attention"
-        : status === "deleting"
-          ? "Deleting…"
-          : "Active brain";
 
   return (
     <DropdownMenu>
@@ -52,7 +49,7 @@ export function BrainSwitcher() {
           <Button
             variant="ghost"
             className="h-auto w-full justify-start gap-2.5 px-2 py-2 hover:bg-primary/10"
-            aria-label={`Active brain: ${label}. Switch brain`}
+            aria-label={copy.ariaLabel}
           />
         }
       >
@@ -66,10 +63,10 @@ export function BrainSwitcher() {
         </span>
         <span className="flex min-w-0 flex-1 flex-col items-start text-left leading-tight">
           <span className="text-[11px] font-medium text-muted-foreground">
-            {loading && !currentBrain ? "Loading brains…" : statusHint}
+            {copy.hint}
           </span>
           <span className="w-full truncate text-sm font-semibold text-foreground">
-            {label}
+            {copy.label}
           </span>
         </span>
         <ChevronsUpDown className="h-4 w-4 shrink-0 opacity-50" />
@@ -81,10 +78,21 @@ export function BrainSwitcher() {
             DropdownMenuGroup. */}
         <DropdownMenuGroup>
           <DropdownMenuLabel>
-            {loading ? "Loading brains…" : "Switch brain"}
+            {loading
+              ? "Loading brains…"
+              : copy.kind === "empty-stack"
+                ? "No brains yet"
+                : "Switch brain"}
           </DropdownMenuLabel>
           {ready.length === 0 && !loading ? (
-            <DropdownMenuItem disabled>No brains available</DropdownMenuItem>
+            copy.kind === "empty-stack" ? (
+              <DropdownMenuItem render={<Link href="/brains?new=1" />}>
+                <Plus className="mr-2 h-3.5 w-3.5" />
+                Create a brain
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem disabled>No brains available</DropdownMenuItem>
+            )
           ) : (
             ready.map((b) => (
               <DropdownMenuItem

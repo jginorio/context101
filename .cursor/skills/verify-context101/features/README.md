@@ -7,7 +7,7 @@ This directory is the maintained source for verifying user-facing Context101 beh
 - Admin recipes need `:3000` plus `.cursor/skills/verify-context101/bin/doctor` (`doctor: healthy`). CLI recipes need the `context101` bin (or `npx context101-cli`), an AWS profile/creds, and the `aws` CLI for `list` / `urls` / `destroy --dry-run`; they do not need `:3000`.
 - Admin is healthy at `http://localhost:3000`.
 - `.cursor/skills/verify-context101/bin/doctor` prints `doctor: healthy`.
-- Session is the `CONTEXT101_USER` account; active brain is **Default**.
+- Session is the `CONTEXT101_USER` account. Shared instances usually already have a ready brain; a new stack has none and the header says `No brains yet` / `Create a brain`.
 - Mutating runs use a unique prefix `verify/<run-id>/` and record it in `/tmp/verify-context101-run.id`.
 - Do not start a second Next.js on `:3000`. Reuse the environment instance when doctor passes.
 - Chrome DevTools: inject the session cookie and open `/knowledge`. Skip `/login` if the agent browser cannot render the WebGL login shell.

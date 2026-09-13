@@ -58,8 +58,9 @@ export function BrainStatusGate({ children }: { children: React.ReactNode }) {
   if (status === "ready") return <>{children}</>;
 
   // Still resolving (no fast-path match, no slow-path response yet,
-  // and we haven't confirmed 404 either).
-  if (!currentBrain && !currentBrainNotFound && loading) {
+  // and we haven't confirmed 404 either). Also covers "catalog has
+  // brains, nothing selected yet" while we pick the first ready one.
+  if (!currentBrain && !currentBrainNotFound && (loading || !currentBrainId)) {
     return (
       <StatusCard
         icon={<Loader2 className="h-5 w-5 animate-spin" />}
