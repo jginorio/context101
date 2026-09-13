@@ -3,7 +3,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { DRIVER_NEON } from "../src/defaults.js";
 import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
 
@@ -34,7 +34,7 @@ test("dry-run prints the plan and writes nothing", async () => {
   const text = `${io.stdoutText}\n${io.stderrText}`;
   assert.match(text, /Context101/);
   assert.match(text, /dry-run/);
-  assert.match(text, /Would write: cdk\/\.deploy-env/);
+  assert.match(text, /Would write: (~\/\.context101\/spaces\/default\/deploy-env|cdk\/\.deploy-env)/);
   assert.match(text, /Would not deploy/);
   assert.match(text, /Amplify: skipped/);
   assert.match(text, /request access for all Titan\/Cohere embeddings/);

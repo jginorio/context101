@@ -1,37 +1,20 @@
 import assert from "node:assert/strict";
-import { mkdtemp } from "node:fs/promises";
+import { existsSync } from "node:fs";
+import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { CLONE_URL, ensureRepoRoot, homeSrcDir } from "../src/clone.js";
-import { main } from "../src/main.js";
-import { writers } from "../src/style.js";
-import { fakeExec, makeRepoFixture, memoryIo, mockCloneCheckout, testEnv } from "./helpers.js";
+import { DEFAULT_SPACE, defaultSpaceEnvPath } from "../src/spaces.js";
+import { main } from "./run-main.js";
+import { fakeExec, memoryIo, testEnv } from "./helpers.js";
 
-test("ensureRepoRoot clones when cwd is not a checkout", async () => {
-  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-empty-"));
-  const io = memoryIo();
-  const result = ensureRepoRoot({
-    cwd,
-    exec: ({ command, args }) => {
-      assert.equal(command, "git");
-      assert.equal(args[0], "clone");
-      assert.equal(args[1], "--depth");
-      assert.equal(args[3], CLONE_URL);
-      mockCloneCheckout(args[4]);
-      return { ok: true, code: 0, stdout: "", stderr: "", error: null };
-    },
-    io,
-  });
-  assert.equal(result.cloned, true);
-  assert.equal(result.repoRoot, path.join(cwd, "context101"));
-});
-
-test("init --dry-run clones in the plan when not in a checkout", async () => {
+test("init --dry-run does not clone", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-init-clone-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-init-home-"));
   const io = memoryIo();
-  const code = await main(["init", "--dry-run", "--dir", "my-stack"], {
+  const code = await main(["init", "--dry-run"], {
     cwd,
+    homeDir: home,
     env: testEnv(),
     stdout: io.stdout,
     stderr: io.stderr,
@@ -39,17 +22,18 @@ test("init --dry-run clones in the plan when not in a checkout", async () => {
     exec: fakeExec(),
   });
   assert.equal(code, 0);
-  assert.match(io.stdoutText, /Would clone/);
-  assert.match(io.stdoutText, /my-stack/);
-  assert.equal(io.stdoutText.includes("deploy.sh"), false);
+  assert.equal(io.stdoutText.includes("Would clone"), false);
+  assert.equal(io.stdoutText.includes("git pull"), false);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env|Would write/);
 });
 
-test("init clones then writes deploy-env when mocked", async () => {
+test("init writes a space env without cloning", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-init-git-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-init-home2-"));
   const io = memoryIo();
-  const dest = path.join(cwd, "context101");
   const code = await main(["init", "--yes", "--force"], {
     cwd,
+    homeDir: home,
     env: testEnv({
       AWS_ACCESS_KEY_ID: "TESTACCESSKEYID12345",
       AWS_SECRET_ACCESS_KEY: "test-secret-access-key-must-never-appear",
@@ -59,52 +43,38 @@ test("init clones then writes deploy-env when mocked", async () => {
     stdin: io.stdin,
     exec: (spec) => {
       if (spec.command === "git" && spec.args?.[0] === "clone") {
-        mockCloneCheckout(spec.args[spec.args.length - 1]);
-        return { ok: true, code: 0, stdout: "", stderr: "", error: null };
+        throw new Error("should not clone");
       }
       return fakeExec()(spec);
     },
   });
   assert.equal(code, 0);
-  const { existsSync } = await import("node:fs");
-  assert.equal(existsSync(path.join(dest, "cdk", ".deploy-env")), true);
-  assert.match(io.stdoutText, /cloned into context101/);
+  assert.equal(existsSync(defaultSpaceEnvPath(DEFAULT_SPACE, home)), true);
+  assert.equal(io.stdoutText.includes("cloned into"), false);
+  assert.equal(io.stdoutText.includes("git pull"), false);
 });
 
-test("ensureRepoRoot reuses ~/.context101/src when preferHomeClone", async () => {
-  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-empty-home-"));
-  const home = await mkdtemp(path.join(tmpdir(), "ctx101-home-src-"));
-  const src = homeSrcDir(home);
-  await makeRepoFixture(src);
-  const result = ensureRepoRoot({
+test("init platea writes that space's stack id and prefix", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-init-platea-"));
+  const home = await mkdtemp(path.join(tmpdir(), "ctx101-init-platea-home-"));
+  const io = memoryIo();
+  const code = await main(["init", "platea", "--yes", "--force"], {
     cwd,
-    preferHomeClone: true,
     homeDir: home,
-    exec: () => {
-      throw new Error("should not clone");
-    },
+    env: testEnv({
+      AWS_ACCESS_KEY_ID: "TESTACCESSKEYID12345",
+      AWS_SECRET_ACCESS_KEY: "test-secret-access-key-must-never-appear",
+    }),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(),
   });
-  assert.equal(result.cloned, false);
-  assert.equal(result.repoRoot, src);
-});
-
-test("ensureRepoRoot clones into ~/.context101/src when preferHomeClone", async () => {
-  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-empty-pref-"));
-  const home = await mkdtemp(path.join(tmpdir(), "ctx101-home-clone-"));
-  const raw = memoryIo();
-  const result = ensureRepoRoot({
-    cwd,
-    preferHomeClone: true,
-    homeDir: home,
-    exec: ({ command, args }) => {
-      assert.equal(command, "git");
-      assert.equal(args[args.length - 1], homeSrcDir(home));
-      mockCloneCheckout(args[args.length - 1]);
-      return { ok: true, code: 0, stdout: "", stderr: "", error: null };
-    },
-    io: writers(raw),
-  });
-  assert.equal(result.cloned, true);
-  assert.equal(result.repoRoot, homeSrcDir(home));
-  assert.match(raw.stdoutText, /~\/.context101\/src/);
+  assert.equal(code, 0);
+  const body = await readFile(defaultSpaceEnvPath("platea", home), "utf8");
+  assert.match(body, /SPACE="platea"/);
+  assert.match(body, /STACK_NAME="Context101Platea"/);
+  assert.match(body, /NAME_PREFIX="context101-platea"/);
+  assert.equal(body.includes("CTX_TOKEN="), true);
+  assert.equal(io.stdoutText.includes("test-secret-access-key-must-never-appear"), false);
 });

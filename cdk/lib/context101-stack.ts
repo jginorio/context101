@@ -19,7 +19,6 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as events from "aws-cdk-lib/aws-events";
 import * as events_targets from "aws-cdk-lib/aws-events-targets";
 import * as path from "path";
-import { execSync } from "node:child_process";
 import { BrainShared } from "./brain-shared";
 import {
   applyControlPlaneMigrations,
@@ -27,6 +26,7 @@ import {
   provisionRdsPostgres,
 } from "./control-plane-db";
 import { assertGatedContext, cdkCommandFromArgv } from "./deploy-gate";
+import { pgHttpDockerCommand, tryBundlePgHttp } from "./pg-http-layer";
 
 /** Hosted product zone. Self-host uses an operator domain or Amplify default. */
 function isHostedContext101Url(raw: string | undefined): boolean {
@@ -99,7 +99,9 @@ export class Context101Stack extends cdk.Stack {
       repository: this.node.tryGetContext("REPOSITORY") as string | undefined,
     });
 
-    const namePrefix = "context101";
+    const namePrefix =
+      (this.node.tryGetContext("NAME_PREFIX") as string | undefined)?.trim() ||
+      "context101";
     const embedModelId =
       (this.node.tryGetContext("EMBED_MODEL_ID") as string | undefined)?.trim() ||
       DEFAULT_EMBED_MODEL_ID;
@@ -147,28 +149,10 @@ export class Context101Stack extends cdk.Stack {
             npm_config_cache: "/tmp/.npm",
             npm_config_update_notifier: "false",
           },
-          command: [
-            "bash",
-            "-c",
-            "cp -au . /asset-output && cd /asset-output/nodejs && npm install --omit=dev --no-audit --no-fund --loglevel=error",
-          ],
+          command: ["bash", "-c", pgHttpDockerCommand()],
           local: {
             tryBundle(outputDir: string): boolean {
-              try {
-                execSync(
-                  `cp -a "${pgHttpSrc}/." "${outputDir}/" && cd "${outputDir}/nodejs" && npm install --omit=dev --no-audit --no-fund --loglevel=error`,
-                  {
-                    stdio: "inherit",
-                    env: {
-                      ...process.env,
-                      npm_config_update_notifier: "false",
-                    },
-                  }
-                );
-                return true;
-              } catch {
-                return false;
-              }
+              return tryBundlePgHttp(pgHttpSrc, outputDir);
             },
           },
         },

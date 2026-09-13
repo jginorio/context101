@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { helpText, parseArgs } from "../src/parse-args.js";
 import { memoryIo, testEnv } from "./helpers.js";
 
@@ -253,11 +253,11 @@ test("workspace package is context101-cli with bin context101", async () => {
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.8");
+  assert.equal(pkg.version, "0.1.9");
   assert.equal(pkg.private, false);
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.bin.context101, "./bin/context101.js");
-  assert.deepEqual(pkg.files, ["bin", "src"]);
+  assert.deepEqual(pkg.files, ["bin", "src", "stack"]);
   assert.equal(pkg.homepage, "https://github.com/jginorio/context101");
   assert.equal(pkg.repository?.url, "https://github.com/jginorio/context101.git");
   assert.match(pkg.description, /Context7/);
@@ -275,6 +275,10 @@ test("npm README is on-brand and warns about the Context7 name collision", async
   assert.match(text, /npm i -g context101-cli/);
   assert.match(text, /Context7/);
   assert.match(text, /https:\/\/github.com\/jginorio\/context101/);
+  assert.match(text, /spaces\/<name>/);
+  assert.match(text, /deploy platea/);
+  assert.match(text, /--verbose/);
+  assert.match(text, /not a git pull/);
   assert.equal(text.includes("npx context101"), true);
   assert.equal(text.includes("billing"), false);
   assert.equal(text.includes("SaaS"), false);

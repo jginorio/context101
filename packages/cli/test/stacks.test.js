@@ -4,15 +4,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { STACK_NAME } from "../src/defaults.js";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import {
   formatDeployments,
   isContext101Deployment,
   parseStackSummaries,
   statusTone,
 } from "../src/stacks.js";
-import { homeSrcDir } from "../src/clone.js";
-import { fakeExec, makeRepoFixture, memoryIo, mockCloneCheckout, testEnv } from "./helpers.js";
+import { monorepoStackRoot } from "../src/stack-source.js";
+import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
 
 function listStacksPayload(summaries) {
   return {
@@ -59,8 +59,8 @@ test("isContext101Deployment keeps root stacks and drops nested, deleted, and un
 });
 
 test("formatDeployments prints an empty next-step and a table", () => {
-  assert.match(formatDeployments([], { region: "xx-test-1" }), /No Context101 deployments/);
-  assert.match(formatDeployments([], { region: "xx-test-1" }), /context101 deploy/);
+  assert.match(formatDeployments([], { region: "xx-test-1" }), /No Context101 spaces/);
+  assert.match(formatDeployments([], { region: "xx-test-1" }), /context101 init/);
   const table = formatDeployments([LIVE], { region: "xx-test-1" });
   assert.match(table, /Context101Stack/);
   assert.match(table, /CREATE_COMPLETE/);
@@ -102,8 +102,8 @@ test("context101 list prints no deployments when the account is empty", async ()
   });
 
   assert.equal(code, 0);
-  assert.match(io.stdoutText, /No Context101 deployments/);
-  assert.match(io.stdoutText, /context101 deploy/);
+  assert.match(io.stdoutText, /No Context101 spaces/);
+  assert.match(io.stdoutText, /context101 init/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
 });
 
@@ -193,7 +193,7 @@ test("context101 destroy without a name refuses", async () => {
   });
 
   assert.equal(code, 1);
-  assert.match(io.stderrText, /needs a stack name/);
+  assert.match(io.stderrText, /needs a space name|no spaces yet/);
   assert.equal(io.stdoutText.includes("Would destroy"), false);
 });
 
@@ -218,8 +218,8 @@ test("context101 destroy --dry-run does not call cdk", async () => {
 
   assert.equal(code, 0);
   assert.equal(calls.length, 0);
-  assert.match(io.stdoutText, /Would destroy Context101Stack/);
-  assert.match(io.stdoutText, /context101 destroy Context101Stack --yes/);
+  assert.match(io.stdoutText, /Would destroy (default|Context101Stack)/);
+  assert.match(io.stdoutText, /context101 destroy (default|Context101Stack) --yes/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
 });
 
@@ -244,7 +244,7 @@ test("context101 destroy refuses a name that is not listed", async () => {
 
   assert.equal(code, 1);
   assert.equal(calls.length, 0);
-  assert.match(io.stderrText, /unknown stack OtherStack/);
+  assert.match(io.stderrText, /unknown space OtherStack/);
 });
 
 test("context101 destroy without --yes on a non-TTY refuses", async () => {
@@ -296,7 +296,7 @@ test("context101 destroy --yes calls cdk destroy with the listed name", async ()
   assert.equal(calls[0].repoRoot, root);
   assert.equal(calls[0].action, "destroy");
   assert.equal(calls[0].stackName, "Context101Stack");
-  assert.match(io.stdoutText, /Destroying Context101Stack/);
+  assert.match(io.stdoutText, /destroying/);
   assert.match(`${io.stdoutText}\n${io.stderrText}`, /not in CloudFormation/);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
 });
@@ -321,16 +321,15 @@ test("context101 destroy --dry-run works without a checkout", async () => {
 
   assert.equal(code, 0);
   assert.equal(calls.length, 0);
-  assert.match(io.stdoutText, /Would destroy Context101Stack/);
+  assert.match(io.stdoutText, /Would destroy (default|Context101Stack)/);
   assert.equal(io.stderrText.includes("checkout"), false);
 });
 
-test("context101 destroy --yes clones into ~/.context101/src without a checkout", async () => {
+test("context101 destroy --yes uses CLI stack source without a checkout", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-rm-norepo-yes-"));
   const home = await mkdtemp(path.join(tmpdir(), "ctx101-rm-home-"));
   const io = memoryIo();
   const calls = [];
-  let clonedTo = "";
 
   const code = await main(["destroy", "Context101Stack", "--yes"], {
     cwd,
@@ -341,9 +340,7 @@ test("context101 destroy --yes clones into ~/.context101/src without a checkout"
     stdin: io.stdin,
     exec: (spec) => {
       if (spec.command === "git" && spec.args?.[0] === "clone") {
-        clonedTo = spec.args[spec.args.length - 1];
-        mockCloneCheckout(clonedTo);
-        return { ok: true, code: 0, stdout: "", stderr: "", error: null };
+        throw new Error("should not clone");
       }
       return fakeExec({ listStacks: listStacksPayload([LIVE]) })(spec);
     },
@@ -355,18 +352,16 @@ test("context101 destroy --yes clones into ~/.context101/src without a checkout"
 
   assert.equal(code, 0);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, homeSrcDir(home));
+  assert.equal(calls[0].repoRoot, monorepoStackRoot());
   assert.equal(calls[0].action, "destroy");
-  assert.equal(clonedTo, homeSrcDir(home));
-  assert.match(io.stdoutText, /Destroying Context101Stack/);
+  assert.match(io.stdoutText, /destroying/);
   assert.equal(io.stderrText.includes("checkout"), false);
 });
 
-test("context101 destroy --yes reuses ~/.context101/src", async () => {
+test("context101 destroy --yes prefers a stack checkout in cwd", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-rm-reuse-"));
   const home = await mkdtemp(path.join(tmpdir(), "ctx101-rm-reuse-home-"));
-  const src = homeSrcDir(home);
-  await makeRepoFixture(src);
+  await makeRepoFixture(cwd);
   const io = memoryIo();
   const calls = [];
 
@@ -386,7 +381,7 @@ test("context101 destroy --yes reuses ~/.context101/src", async () => {
 
   assert.equal(code, 0);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, src);
+  assert.equal(calls[0].repoRoot, cwd);
   assert.equal(io.stdoutText.includes("Cloning"), false);
 });
 

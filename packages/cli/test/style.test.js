@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { banner, palette, TAGLINE, writers } from "../src/style.js";
 import { memoryIo, testEnv } from "./helpers.js";
 

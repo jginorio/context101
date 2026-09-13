@@ -17,12 +17,13 @@ import {
 } from "../src/embedding-models.js";
 import { renderDeployEnv } from "../src/env-file.js";
 import { createRequire } from "node:module";
-import { main } from "../src/main.js";
-import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
+import { main } from "./run-main.js";
+import { DEFAULT_SPACE, defaultSpaceEnvPath } from "../src/spaces.js";
+import { fakeExec, makeRepoFixture, memoryIo, tempHome, testEnv } from "./helpers.js";
 
 const require = createRequire(import.meta.url);
 const { isNeonConnectionString } = require(
-  "../../../cdk/layers/pg-http/nodejs/node_modules/pg-http/index.js"
+  "../../../cdk/layers/pg-http/nodejs/pg-http/index.js"
 );
 
 test("pg-http treats Neon hosts as HTTP and RDS as TCP", () => {
@@ -157,14 +158,16 @@ test("writer omits REPOSITORY and records EMBED_MODEL_ID when set", () => {
 
 test("--yes does not watch Amplify for a found-the-repo operator", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-skip-amp-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
-  const envPath = path.join(root, "cdk", ".deploy-env");
+  const envPath = defaultSpaceEnvPath(DEFAULT_SPACE, home);
 
   const code = await main(
     ["init", "--yes", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
@@ -176,20 +179,22 @@ test("--yes does not watch Amplify for a found-the-repo operator", async () => {
   assert.equal(code, 0);
   const body = await readFile(envPath, "utf8");
   assert.equal(body.includes("REPOSITORY="), false);
-  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   assert.match(io.stdoutText, /^context101 deploy$/m);
 });
 
 test("--yes watches the default repo when gh login is the owner", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-owner-amp-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
-  const envPath = path.join(root, "cdk", ".deploy-env");
+  const envPath = defaultSpaceEnvPath(DEFAULT_SPACE, home);
 
   const code = await main(
     ["init", "--yes", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
@@ -209,15 +214,16 @@ test("--yes watches the default repo when gh login is the owner", async () => {
   assert.equal(code, 0);
   const body = await readFile(envPath, "utf8");
   assert.match(body, new RegExp(`REPOSITORY="${DEFAULT_AMPLIFY_REPO}"`));
-  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   assert.match(io.stdoutText, /context101 deploy/);
 });
 
 test("--yes --repo writes that repo and --embed-model writes the id", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-repo-embed-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
-  const envPath = path.join(root, "cdk", ".deploy-env");
+  const envPath = defaultSpaceEnvPath(DEFAULT_SPACE, home);
 
   const code = await main(
     [
@@ -233,6 +239,7 @@ test("--yes --repo writes that repo and --embed-model writes the id", async () =
     ],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,

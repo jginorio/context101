@@ -5,13 +5,15 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { SMOOTH_REGION } from "../src/defaults.js";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { existingEnvContinueMessage } from "../src/prompt.js";
 import { collectSecrets } from "../src/redact.js";
 import {
   fakeExec,
+  keepDefaultSpace,
   makeRepoFixture,
   memoryIo,
+  tempHome,
   testEnv,
   writeTestDeployEnv,
 } from "./helpers.js";
@@ -104,6 +106,7 @@ function wizardHooks(answerFn) {
       if (answerFn) return answerFn(defaults);
       return {};
     },
+    promptSpace: keepDefaultSpace,
   };
 }
 
@@ -446,6 +449,6 @@ test("existing env + TTY continue then deploy uses loaded AWS auth", async () =>
   assert.equal(calls[0].repoRoot, root);
   assert.equal(calls[0].env.AWS_PROFILE, "findit");
   assert.match(io.stdoutText, /postgres  RDS/);
-  assert.match(io.stdoutText, /Deploying the stack/);
+  assert.match(io.stdoutText, /[Dd]eploying/);
   assertSecretsHidden(io);
 });

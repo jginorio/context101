@@ -6,7 +6,8 @@ import { findDeployEnvPath, parseEnvFile } from "./deploy-env-load.js";
 import { quoteShell } from "./env-file.js";
 import { isHostedContext101Url } from "./hosted-url.js";
 import { mask } from "./redact.js";
-import { findRepoRoot } from "./repo.js";
+import { homedir } from "node:os";
+import { listSpaces } from "./spaces.js";
 import { writers } from "./style.js";
 
 const SECRET_NAME = /TOKEN|SECRET|PASSWORD|PEPPER|KEY/i;
@@ -63,13 +64,18 @@ export function upsertEnvLine(text, key, value) {
 export async function runConfig(opts, ctx) {
   const io = writers(ctx);
 
-  const repoRoot = findRepoRoot(ctx.cwd);
+  const homeDir = ctx.homeDir ?? homedir();
+  const spaces = listSpaces({ homeDir, cwd: ctx.cwd });
+  const space = opts.space
+    ? spaces.find((row) => row.name === String(opts.space).toLowerCase())
+    : spaces.length === 1
+      ? spaces[0]
+      : null;
   const filePath = findDeployEnvPath({
-    repoRoot,
-    envFile: opts.envFile,
+    envFile: opts.envFile || space?.envPath,
     home: opts.home,
     cwd: ctx.cwd,
-    homeDir: ctx.homeDir,
+    homeDir,
   });
 
   if (opts.configAction === "set") {

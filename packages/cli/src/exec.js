@@ -2,12 +2,13 @@ import { spawn, spawnSync } from "node:child_process";
 import { runCdk } from "./cdk-invoke.js";
 
 export function createExec(baseEnv = process.env) {
-  return function exec({ command, args = [], env, cwd, timeout = 15_000 }) {
+  return function exec({ command, args = [], env, cwd, timeout = 15_000, stdio }) {
     const result = spawnSync(command, args, {
       encoding: "utf8",
       timeout,
       env: { ...baseEnv, ...env },
       cwd,
+      stdio: stdio || "pipe",
     });
     const stdout = result.stdout ?? "";
     const stderr = result.stderr ?? "";

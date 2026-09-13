@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import {
   compareSemver,
   isNewerVersion,
@@ -179,7 +179,7 @@ test("registry failure does not fail list or help", async () => {
   assert.equal(listCode, 0);
   assert.equal(helpCode, 0);
   assert.equal(asked, false);
-  assert.match(listIo.stdoutText, /No Context101 deployments/);
+  assert.match(listIo.stdoutText, /No Context101 spaces/);
   assert.match(helpIo.stdoutText, /Usage: context101 <command>/);
   assert.equal(listIo.stderrText.includes("ENOTFOUND"), false);
   assert.equal(helpIo.stderrText.includes("timeout"), false);

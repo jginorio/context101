@@ -5,10 +5,18 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
 import { readExampleToken } from "../src/env-file.js";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { collectSecrets } from "../src/redact.js";
 import { findRepoRoot } from "../src/repo.js";
-import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
+import { DEFAULT_SPACE, defaultSpaceEnvPath } from "../src/spaces.js";
+import {
+  fakeExec,
+  keepDefaultSpace,
+  makeRepoFixture,
+  memoryIo,
+  tempHome,
+  testEnv,
+} from "./helpers.js";
 
 test("--yes writes chmod 600 env and never prints secrets", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-yes-"));
@@ -90,7 +98,7 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
     assert.equal(text.includes(secret), false, "stdout leaked a secret");
   }
   assert.equal(text.includes("ghp_test_token_must_never_appear"), false);
-  assert.match(text, /wrote tmp-deploy-env/);
+  assert.match(text, /wrote .*tmp-deploy-env/);
   assert.match(text, /^context101 deploy$/m);
   assert.equal(text.includes("deploy.sh"), false);
   assert.equal(text.includes("Amplify is skipped —"), false);
@@ -150,15 +158,17 @@ test("--yes refuses to overwrite without --force", async () => {
 
 test("--yes with one AWS profile writes it", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-oneprof-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
-  const envPath = path.join(root, "cdk", ".deploy-env");
+  const envPath = defaultSpaceEnvPath(DEFAULT_SPACE, home);
   const env = testEnv();
 
   const code = await main(
     ["init", "--yes", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env,
       stdout: io.stdout,
       stderr: io.stderr,
@@ -215,6 +225,7 @@ test("--yes with several AWS profiles needs --aws-profile", async () => {
 
 test("interactive init asks which AWS profile and writes it", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-askprof-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   io.stdout.isTTY = true;
@@ -237,6 +248,7 @@ test("interactive init asks which AWS profile and writes it", async () => {
     ["init", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env,
       stdout: io.stdout,
       stderr: io.stderr,
@@ -247,6 +259,7 @@ test("interactive init asks which AWS profile and writes it", async () => {
         }
         return exec(opts);
       },
+      promptSpace: keepDefaultSpace,
       chooseProfile: async (profiles) => {
         asked = profiles;
         return "plateapr";
@@ -271,16 +284,17 @@ test("interactive init asks which AWS profile and writes it", async () => {
   assert.equal(code, 0);
   assert.deepEqual(asked, ["findit", "plateapr"]);
   assert.deepEqual(stsProfiles, ["plateapr"]);
-  const body = await readFile(path.join(root, "cdk", ".deploy-env"), "utf8");
+  const body = await readFile(defaultSpaceEnvPath(DEFAULT_SPACE, home), "utf8");
   assert.match(body, /AWS_PROFILE="plateapr"/);
   assert.match(io.stdoutText, /AWS profile plateapr/);
 });
 
 test("--yes with no AWS profile writes access keys and never prints them", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-yes-keys-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
-  const envPath = path.join(root, "cdk", ".deploy-env");
+  const envPath = defaultSpaceEnvPath(DEFAULT_SPACE, home);
   const secret = "test-secret-access-key-must-never-appear";
   const keyId = "TESTACCESSKEYID12345";
 
@@ -288,6 +302,7 @@ test("--yes with no AWS profile writes access keys and never prints them", async
     ["init", "--yes", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv({
         AWS_ACCESS_KEY_ID: keyId,
         AWS_SECRET_ACCESS_KEY: secret,
@@ -312,6 +327,7 @@ test("--yes with no AWS profile writes access keys and never prints them", async
 
 test("interactive init asks for AWS keys when no profiles exist", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-askkeys-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   io.stdout.isTTY = true;
@@ -324,6 +340,7 @@ test("interactive init asks for AWS keys when no profiles exist", async () => {
     ["init", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
@@ -334,6 +351,7 @@ test("interactive init asks for AWS keys when no profiles exist", async () => {
         }
         return fakeExec()(opts);
       },
+      promptSpace: keepDefaultSpace,
       promptAwsKeys: async () => {
         prompted = true;
         return {
@@ -361,7 +379,7 @@ test("interactive init asks for AWS keys when no profiles exist", async () => {
   assert.equal(code, 0);
   assert.equal(prompted, true);
   assert.deepEqual(stsKeys, [secret]);
-  const body = await readFile(path.join(root, "cdk", ".deploy-env"), "utf8");
+  const body = await readFile(defaultSpaceEnvPath(DEFAULT_SPACE, home), "utf8");
   assert.match(body, /AWS_ACCESS_KEY_ID="TESTACCESSKEYID12345"/);
   assert.match(body, /AWS_SECRET_ACCESS_KEY="test-secret-access-key-must-never-appear"/);
   const text = `${io.stdoutText}\n${io.stderrText}`;
@@ -369,8 +387,9 @@ test("interactive init asks for AWS keys when no profiles exist", async () => {
   assert.equal(text.includes("TESTACCESSKEYID12345"), false);
 });
 
-test("interactive init writes cdk/.deploy-env without asking where", async () => {
+test("interactive init writes a space deploy-env without asking where", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-no-envq-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   io.stdout.isTTY = true;
@@ -380,11 +399,13 @@ test("interactive init writes cdk/.deploy-env without asking where", async () =>
     ["init", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
       stdin: io.stdin,
       exec: fakeExec(),
+      promptSpace: keepDefaultSpace,
       promptAwsKeys: async () => ({
         accessKeyId: "TESTACCESSKEYID12345",
         secretAccessKey: "test-secret-access-key-must-never-appear",
@@ -402,8 +423,8 @@ test("interactive init writes cdk/.deploy-env without asking where", async () =>
   );
 
   assert.equal(code, 0);
-  assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), true);
-  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.equal(existsSync(defaultSpaceEnvPath(DEFAULT_SPACE, home)), true);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   const src = await readFile(
     new URL("../src/prompt.js", import.meta.url),
     "utf8"
@@ -442,6 +463,7 @@ test("interactive --deploy-env still honors the flag", async () => {
       stderr: io.stderr,
       stdin: io.stdin,
       exec: fakeExec(),
+      promptSpace: keepDefaultSpace,
       promptAwsKeys: async () => ({
         accessKeyId: "TESTACCESSKEYID12345",
         secretAccessKey: "test-secret-access-key-must-never-appear",
@@ -465,13 +487,15 @@ test("interactive --deploy-env still honors the flag", async () => {
 
 test("--yes without a database URL writes CREATE_RDS", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-nodb-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   const env = testEnv();
-  const envPath = path.join(root, "cdk", ".deploy-env");
+  const envPath = defaultSpaceEnvPath(DEFAULT_SPACE, home);
 
   const code = await main(["init", "--yes", "--force"], {
     cwd: root,
+    homeDir: home,
     env,
     stdout: io.stdout,
     stderr: io.stderr,
@@ -483,7 +507,7 @@ test("--yes without a database URL writes CREATE_RDS", async () => {
   const body = await readFile(envPath, "utf8");
   assert.match(body, /CREATE_RDS="true"/);
   assert.equal(body.includes("DATABASE_URL="), false);
-  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   assert.match(io.stdoutText, /context101 deploy/);
   assert.equal(io.stdoutText.includes("ControlPlaneDbSecretArn"), false);
   assert.equal(io.stdoutText.includes("BETTER_AUTH_URL"), false);

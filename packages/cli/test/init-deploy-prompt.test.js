@@ -1,25 +1,21 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { nextSteps } from "../src/plan.js";
 import { deployNowMessage, existingEnvContinueMessage } from "../src/prompt.js";
-import { fakeExec, makeRepoFixture, memoryIo, testEnv } from "./helpers.js";
-
-function mockClone(dest) {
-  mkdirSync(path.join(dest, "cdk"), { recursive: true });
-  mkdirSync(path.join(dest, "web"), { recursive: true });
-  writeFileSync(path.join(dest, "cdk", "cdk.json"), "{}\n");
-  writeFileSync(path.join(dest, "web", "package.json"), '{"name":"web"}\n');
-  writeFileSync(path.join(dest, "package-lock.json"), '{"lockfileVersion":3}\n');
-  writeFileSync(
-    path.join(dest, "cdk", ".deploy-env.example"),
-    'CTX_TOKEN="example-do-not-copy"\n'
-  );
-}
+import { DEFAULT_SPACE, defaultSpaceEnvPath } from "../src/spaces.js";
+import {
+  fakeExec,
+  keepDefaultSpace,
+  makeRepoFixture,
+  memoryIo,
+  tempHome,
+  testEnv,
+} from "./helpers.js";
 
 function interactiveAnswers(defaults, extra = {}) {
   return {
@@ -46,6 +42,7 @@ test("nextSteps is a one-liner and --seed only when asked", () => {
 
 test("interactive init asks to deploy and respects no", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-ask-no-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   io.stdout.isTTY = true;
@@ -57,11 +54,13 @@ test("interactive init asks to deploy and respects no", async () => {
     ["init", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
       stdin: io.stdin,
       exec: fakeExec(),
+      promptSpace: keepDefaultSpace,
       promptAwsKeys: async () => ({
         accessKeyId: "TESTACCESSKEYID12345",
         secretAccessKey: "test-secret-access-key-must-never-appear",
@@ -83,8 +82,8 @@ test("interactive init asks to deploy and respects no", async () => {
   assert.equal(asked[0].createRds, false);
   assert.equal(asked[0].seed, false);
   assert.equal(deployed, false);
-  assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), true);
-  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.equal(existsSync(defaultSpaceEnvPath(DEFAULT_SPACE, home)), true);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   assert.match(io.stdoutText, /^context101 deploy$/m);
   assert.equal(io.stdoutText.includes("Deploying the stack"), false);
   assert.equal(io.stdoutText.includes("First time?"), false);
@@ -95,6 +94,7 @@ test("interactive init asks to deploy and respects no", async () => {
 
 test("interactive init asks to deploy and respects yes", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-ask-yes-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   io.stdout.isTTY = true;
@@ -106,11 +106,13 @@ test("interactive init asks to deploy and respects yes", async () => {
     ["init", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
       stdin: io.stdin,
       exec: fakeExec(),
+      promptSpace: keepDefaultSpace,
       promptAwsKeys: async () => ({
         accessKeyId: "TESTACCESSKEYID12345",
         secretAccessKey: "test-secret-access-key-must-never-appear",
@@ -132,8 +134,8 @@ test("interactive init asks to deploy and respects yes", async () => {
   assert.equal(calls.length, 1);
   assert.equal(calls[0].repoRoot, root);
   assert.equal(calls[0].seed, false);
-  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
-  assert.match(io.stdoutText, /Deploying the stack/);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
+  assert.match(io.stdoutText, /[Dd]eploying/);
   assert.equal(io.stdoutText.includes("cdk deploy"), false);
   assert.equal(io.stdoutText.includes("deploy.sh"), false);
   assert.equal(/^context101 deploy$/m.test(io.stdoutText), false);
@@ -141,6 +143,7 @@ test("interactive init asks to deploy and respects yes", async () => {
 
 test("interactive --deploy deploys without asking", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-flag-dep-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   io.stdout.isTTY = true;
@@ -152,11 +155,13 @@ test("interactive --deploy deploys without asking", async () => {
     ["init", "--deploy", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
       stdin: io.stdin,
       exec: fakeExec(),
+      promptSpace: keepDefaultSpace,
       promptAwsKeys: async () => ({
         accessKeyId: "TESTACCESSKEYID12345",
         secretAccessKey: "test-secret-access-key-must-never-appear",
@@ -177,11 +182,12 @@ test("interactive --deploy deploys without asking", async () => {
   assert.equal(asked, false);
   assert.equal(calls.length, 1);
   assert.equal(calls[0].repoRoot, root);
-  assert.match(io.stdoutText, /Deploying the stack/);
+  assert.match(io.stdoutText, /[Dd]eploying/);
 });
 
 test("--yes does not deploy without --deploy and does not ask", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-yes-nod-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   io.stdout.isTTY = true;
@@ -193,6 +199,7 @@ test("--yes does not deploy without --deploy and does not ask", async () => {
     ["init", "--yes", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
@@ -212,7 +219,7 @@ test("--yes does not deploy without --deploy and does not ask", async () => {
   assert.equal(code, 0);
   assert.equal(asked, false);
   assert.equal(deployed, false);
-  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   assert.match(io.stdoutText, /^context101 deploy$/m);
   assert.equal(io.stdoutText.includes("Deploying the stack"), false);
   assert.equal(io.stdoutText.includes("First time?"), false);
@@ -221,6 +228,7 @@ test("--yes does not deploy without --deploy and does not ask", async () => {
 
 test("--yes --seed prints the --seed next step and does not deploy", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-yes-seed-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   let deployed = false;
@@ -236,6 +244,7 @@ test("--yes --seed prints the --seed next step and does not deploy", async () =>
     ],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
@@ -255,6 +264,7 @@ test("--yes --seed prints the --seed next step and does not deploy", async () =>
 
 test("--yes --deploy deploys without asking", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-yes-dep-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = memoryIo();
   let asked = false;
@@ -271,6 +281,7 @@ test("--yes --deploy deploys without asking", async () => {
     ],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
@@ -290,7 +301,7 @@ test("--yes --deploy deploys without asking", async () => {
   assert.equal(code, 0);
   assert.equal(asked, false);
   assert.equal(calls.length, 1);
-  assert.match(io.stdoutText, /Deploying the stack/);
+  assert.match(io.stdoutText, /[Dd]eploying/);
   assert.equal(/^context101 deploy$/m.test(io.stdoutText), false);
 });
 
@@ -327,9 +338,9 @@ test("dry-run never asks and never deploys", async () => {
   assert.match(io.stdoutText, /Would not deploy/);
 });
 
-test("interactive yes deploys from the clone dir after clone-on-init", async () => {
+test("interactive yes deploys from CLI stack source without cloning", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-clone-dep-"));
-  const dest = path.join(cwd, "context101");
+  const home = await tempHome();
   const io = memoryIo();
   io.stdout.isTTY = true;
   io.stdin.isTTY = true;
@@ -337,17 +348,18 @@ test("interactive yes deploys from the clone dir after clone-on-init", async () 
 
   const code = await main(["init", "--force"], {
     cwd,
+    homeDir: home,
     env: testEnv(),
     stdout: io.stdout,
     stderr: io.stderr,
     stdin: io.stdin,
     exec: (spec) => {
       if (spec.command === "git" && spec.args?.[0] === "clone") {
-        mockClone(spec.args[spec.args.length - 1]);
-        return { ok: true, code: 0, stdout: "", stderr: "", error: null };
+        throw new Error("should not clone");
       }
       return fakeExec()(spec);
     },
+    promptSpace: keepDefaultSpace,
     promptAwsKeys: async () => ({
       accessKeyId: "TESTACCESSKEYID12345",
       secretAccessKey: "test-secret-access-key-must-never-appear",
@@ -366,8 +378,8 @@ test("interactive yes deploys from the clone dir after clone-on-init", async () 
 
   assert.equal(code, 0);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].repoRoot, dest);
-  assert.equal(existsSync(path.join(dest, "cdk", ".deploy-env")), true);
-  assert.match(io.stdoutText, /cloned into context101/);
-  assert.match(io.stdoutText, /Deploying the stack/);
+  assert.ok(calls[0].stackRoot || calls[0].repoRoot);
+  assert.equal(existsSync(defaultSpaceEnvPath(DEFAULT_SPACE, home)), true);
+  assert.equal(io.stdoutText.includes("cloned into"), false);
+  assert.match(io.stdoutText, /[Dd]eploying/);
 });

@@ -4,9 +4,12 @@ import {
   classifyGithubToken,
   githubTokenWorksForAmplify,
 } from "./checks.js";
+import { printCancelled, SIGINT_EXIT } from "./cancel.js";
 import { ensureCheckoutDeps, resolveCdkBin } from "./checkout-deps.js";
-import { pullCheckout } from "./clone.js";
+import { actionLabel } from "./progress.js";
+import { formatQuietFailure, secretsFromContext } from "./quiet.js";
 import { findDeployEnvPath, readDeployEnvFile } from "./deploy-env-load.js";
+import { displaySpaceEnv } from "./spaces.js";
 import { isHostedContext101Url } from "./hosted-url.js";
 import { mask } from "./redact.js";
 
@@ -31,6 +34,8 @@ export const CONTEXT_KEYS = [
   "REPOSITORY",
   "EMBED_MODEL_ID",
   "CREATE_RDS",
+  "STACK_NAME",
+  "NAME_PREFIX",
 ];
 
 const SECRET_CONTEXT = new Set([
@@ -102,6 +107,7 @@ export function buildCdkArgs({
   context,
   extraArgs = [],
   stackName = null,
+  namePrefix = null,
   env = {},
 } = {}) {
   const args = [action];
@@ -112,7 +118,17 @@ export function buildCdkArgs({
     args.push("-c", `githubToken=${context.githubToken}`);
   }
 
+  const identity = {
+    STACK_NAME: stackName || "",
+    NAME_PREFIX: namePrefix || "",
+  };
+
   for (const key of CONTEXT_KEYS) {
+    const forced = identity[key];
+    if (forced) {
+      args.push("-c", `${key}=${forced}`);
+      continue;
+    }
     if (context.fileExists && !context.declared.has(key)) continue;
     const value = context.fileExists
       ? context.values[key]
@@ -172,23 +188,17 @@ function contextPairs(args) {
 }
 
 function displayEnv(filePath) {
-  if (!filePath) return "";
-  const home = `${process.env.HOME || ""}/.context101/deploy-env`;
-  if (filePath === home || filePath.endsWith("/.context101/deploy-env")) {
-    return "~/.context101/deploy-env";
-  }
-  if (filePath.endsWith("/cdk/.deploy-env") || filePath.endsWith("cdk/.deploy-env")) {
-    return "cdk/.deploy-env";
-  }
-  return filePath;
+  return displaySpaceEnv(filePath);
 }
 
 export function runCdk({
   repoRoot,
+  stackRoot,
   action = "deploy",
   seed = false,
   extraArgs = [],
   stackName = null,
+  namePrefix = null,
   env = {},
   home = false,
   envFile = null,
@@ -197,10 +207,14 @@ export function runCdk({
   io,
   exists,
   spawn: spawnFn = spawn,
-  stdio = "inherit",
+  stdio,
+  verbose = false,
+  progress,
+  listenSignal,
 } = {}) {
+  const sourceRoot = stackRoot || repoRoot;
   const context = resolveDeployContext({
-    repoRoot,
+    repoRoot: sourceRoot,
     env,
     home,
     envFile,
@@ -213,24 +227,27 @@ export function runCdk({
     seed,
     context,
     extraArgs,
-    stackName,
+    stackName: stackName || context.values.STACK_NAME || null,
+    namePrefix: namePrefix || context.values.NAME_PREFIX || null,
     env,
   });
-  const pulled = pullCheckout({ repoRoot, exec, io });
-  if (!pulled.ok) {
-    io?.err?.(pulled.error);
-    return Promise.resolve(1);
-  }
-  const ready = ensureCheckoutDeps({ repoRoot, exec, io, exists });
+  const execForDeps =
+    exec && verbose
+      ? (spec) => exec({ ...spec, stdio: "inherit" })
+      : exec;
+  const ready = ensureCheckoutDeps({
+    repoRoot: sourceRoot,
+    exec: execForDeps,
+    io: verbose ? io : { dim() {}, err: io?.err },
+    exists,
+  });
   if (!ready.ok) {
     io?.err?.(ready.error);
     return Promise.resolve(1);
   }
-  const cdkBin = resolveCdkBin(repoRoot, exists);
+  const cdkBin = resolveCdkBin(sourceRoot, exists);
   if (!cdkBin) {
-    io?.err?.(
-      "local cdk is missing. Install checkout deps with npm ci, then retry."
-    );
+    io?.err?.("local cdk is missing. Reinstall context101-cli, then retry.");
     return Promise.resolve(1);
   }
   const childEnv = { ...env };
@@ -241,13 +258,60 @@ export function runCdk({
   if (context.values.AWS_SECRET_ACCESS_KEY && !childEnv.AWS_SECRET_ACCESS_KEY) {
     childEnv.AWS_SECRET_ACCESS_KEY = context.values.AWS_SECRET_ACCESS_KEY;
   }
+  const inherit = verbose || stdio === "inherit";
+  const childStdio = inherit
+    ? "inherit"
+    : stdio && stdio !== "pipe"
+      ? stdio
+      : ["ignore", "pipe", "pipe"];
+  if (progress && !inherit) progress.start(actionLabel(action));
+
   return new Promise((resolve, reject) => {
     const child = spawnFn(cdkBin, args, {
-      cwd: path.join(repoRoot, "cdk"),
+      cwd: path.join(sourceRoot, "cdk"),
       env: childEnv,
-      stdio,
+      stdio: childStdio,
     });
-    child.on("error", reject);
-    child.on("exit", (code) => resolve(code ?? 1));
+    let output = "";
+    let cancelled = false;
+    if (!inherit) {
+      child.stdout?.on?.("data", (chunk) => {
+        output += String(chunk);
+      });
+      child.stderr?.on?.("data", (chunk) => {
+        output += String(chunk);
+      });
+    }
+    const onSigint = () => {
+      cancelled = true;
+      if (typeof child.kill === "function") child.kill("SIGINT");
+    };
+    const stopListen =
+      typeof listenSignal === "function"
+        ? listenSignal(onSigint)
+        : attachSigint(onSigint);
+    child.on("error", (error) => {
+      progress?.stop();
+      stopListen?.();
+      reject(error);
+    });
+    child.on("exit", (code, signal) => {
+      progress?.stop();
+      stopListen?.();
+      if (cancelled || signal === "SIGINT") {
+        if (io) return resolve(printCancelled(io));
+        return resolve(SIGINT_EXIT);
+      }
+      const status = code ?? 1;
+      if (status !== 0 && !inherit && io?.err) {
+        io.err(formatQuietFailure({ action, output, secrets: secretsFromContext(context) }));
+      }
+      resolve(status);
+    });
   });
+}
+
+function attachSigint(handler) {
+  process.on("SIGINT", handler);
+  return () => process.off("SIGINT", handler);
 }

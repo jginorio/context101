@@ -106,6 +106,16 @@ export function renderDeployEnv(values) {
     lines.push(`EMBED_MODEL_ID=${quoteShell(values.EMBED_MODEL_ID)}`);
   }
 
+  if (values.SPACE) {
+    lines.push(`SPACE=${quoteShell(values.SPACE)}`);
+  }
+  if (values.STACK_NAME) {
+    lines.push(`STACK_NAME=${quoteShell(values.STACK_NAME)}`);
+  }
+  if (values.NAME_PREFIX) {
+    lines.push(`NAME_PREFIX=${quoteShell(values.NAME_PREFIX)}`);
+  }
+
   lines.push("");
   return `${lines.join("\n")}\n`;
 }

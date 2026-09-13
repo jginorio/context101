@@ -7,14 +7,17 @@ import { test } from "node:test";
 import { ExitPromptError } from "@inquirer/core";
 import { isExitPromptError, printCancelled, SIGINT_EXIT } from "../src/cancel.js";
 import { STACK_NAME } from "../src/defaults.js";
-import { main } from "../src/main.js";
+import { main } from "./run-main.js";
 import { palette, writers } from "../src/style.js";
+import { DEFAULT_SPACE, defaultSpaceEnvPath } from "../src/spaces.js";
 import {
   exitPromptError,
   fakeExec,
+  keepDefaultSpace,
   makeRepoFixture,
   memoryIo,
   mockCloneCheckout,
+  tempHome,
   testEnv,
 } from "./helpers.js";
 
@@ -156,6 +159,7 @@ test("Ctrl+C on the AWS profile picker exits 130 and writes nothing", async () =
     stderr: io.stderr,
     stdin: io.stdin,
     exec: fakeExec(MULTI_PROFILES),
+    promptSpace: keepDefaultSpace,
     chooseProfile: async () => {
       throw exitPromptError();
     },
@@ -188,6 +192,7 @@ test("Ctrl+C on AWS keys exits 130 and writes nothing", async () => {
     stderr: io.stderr,
     stdin: io.stdin,
     exec: fakeExec(),
+    promptSpace: keepDefaultSpace,
     promptAwsKeys: async () => {
       throw exitPromptError();
     },
@@ -220,6 +225,7 @@ test("Ctrl+C during promptAnswers exits 130 and writes nothing", async () => {
       stderr: io.stderr,
       stdin: io.stdin,
       exec: fakeExec(),
+      promptSpace: keepDefaultSpace,
       promptAwsKeys: async () => ({
         accessKeyId: "TESTACCESSKEYID12345",
         secretAccessKey: "test-secret-access-key-must-never-appear",
@@ -244,6 +250,7 @@ test("Ctrl+C during promptAnswers exits 130 and writes nothing", async () => {
 
 test("Ctrl+C on deploy-now does not deploy", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-cancel-now-"));
+  const home = await tempHome();
   await makeRepoFixture(root);
   const io = ttyIo();
   let deployed = false;
@@ -252,11 +259,13 @@ test("Ctrl+C on deploy-now does not deploy", async () => {
     ["init", "--database-url", "postgresql://localhost/db", "--force"],
     {
       cwd: root,
+      homeDir: home,
       env: testEnv(),
       stdout: io.stdout,
       stderr: io.stderr,
       stdin: io.stdin,
       exec: fakeExec(),
+      promptSpace: keepDefaultSpace,
       promptAwsKeys: async () => ({
         accessKeyId: "TESTACCESSKEYID12345",
         secretAccessKey: "test-secret-access-key-must-never-appear",
@@ -274,8 +283,8 @@ test("Ctrl+C on deploy-now does not deploy", async () => {
 
   assertQuietCancel(io, code);
   assert.equal(deployed, false);
-  assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), true);
-  assert.match(io.stdoutText, /wrote cdk\/\.deploy-env/);
+  assert.equal(existsSync(defaultSpaceEnvPath(DEFAULT_SPACE, home)), true);
+  assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   assert.equal(io.stdoutText.includes("Deploying the stack"), false);
 });
 
@@ -323,6 +332,7 @@ test("Ctrl+C during wizard after declining existing env exits 130 and does not o
     stderr: io.stderr,
     stdin: io.stdin,
     exec: fakeExec(MULTI_PROFILES),
+    promptSpace: keepDefaultSpace,
     chooseProfile: async () => {
       throw exitPromptError();
     },
@@ -365,6 +375,7 @@ test("Ctrl+C on existing-env continue exits 130 and does not overwrite", async (
     stderr: io.stderr,
     stdin: io.stdin,
     exec: fakeExec(MULTI_PROFILES),
+    promptSpace: keepDefaultSpace,
     chooseProfile: async () => {
       throw new Error("chooseProfile should not run");
     },
@@ -427,15 +438,16 @@ test("Ctrl+C on destroy confirm does not clone or destroy", async () => {
   assert.equal(destroyed, false);
 });
 
-test("Ctrl+C after clone-on-init does not clone again or write deploy-env", async () => {
+test("Ctrl+C after space prompt does not clone or write deploy-env", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-cancel-clone-"));
-  const dest = path.join(cwd, "context101");
+  const home = await tempHome();
   const io = ttyIo();
   let clones = 0;
   let deployed = false;
 
   const code = await main(["init", "--force"], {
     cwd,
+    homeDir: home,
     env: testEnv(),
     stdout: io.stdout,
     stderr: io.stderr,
@@ -443,11 +455,11 @@ test("Ctrl+C after clone-on-init does not clone again or write deploy-env", asyn
     exec: (spec) => {
       if (spec.command === "git" && spec.args?.[0] === "clone") {
         clones += 1;
-        mockCloneCheckout(spec.args[spec.args.length - 1]);
-        return { ok: true, code: 0, stdout: "", stderr: "", error: null };
+        throw new Error("should not clone");
       }
       return fakeExec(MULTI_PROFILES)(spec);
     },
+    promptSpace: keepDefaultSpace,
     chooseProfile: async () => {
       throw exitPromptError();
     },
@@ -458,9 +470,9 @@ test("Ctrl+C after clone-on-init does not clone again or write deploy-env", asyn
   });
 
   assertQuietCancel(io, code);
-  assert.equal(clones, 1);
+  assert.equal(clones, 0);
   assert.equal(deployed, false);
-  assert.equal(existsSync(path.join(dest, "cdk", ".deploy-env")), false);
+  assert.equal(existsSync(defaultSpaceEnvPath(DEFAULT_SPACE, home)), false);
 });
 
 test("non-cancel prompt failures still throw", async () => {
@@ -477,6 +489,7 @@ test("non-cancel prompt failures still throw", async () => {
         stderr: io.stderr,
         stdin: io.stdin,
         exec: fakeExec(MULTI_PROFILES),
+        promptSpace: keepDefaultSpace,
         chooseProfile: async () => {
           throw new Error("sts exploded");
         },
