@@ -157,7 +157,7 @@ test("formatPublicUrls labels App Runner as mcp (legacy)", () => {
     pickPublicUrls(leakyOutputs({ mcpLegacy: MCP_LEGACY }))
   );
   assert.match(legacyOnly, /mcp \(legacy\)\s+https:\/\/abc123\.xx-test-1\.awsapprunner\.com\/mcp/);
-  assert.equal(/^\s+mcp\s+/m.test(legacyOnly), false);
+  assert.equal(/^\s+mcp\s+https/m.test(legacyOnly), false);
   assertNoSecrets(legacyOnly);
 
   const both = formatPublicUrls(
