@@ -9,7 +9,8 @@ export function isContext101Checkout(dir, exists = existsSync) {
     exists(path.join(dir, "cdk", "cdk.json")) ||
     exists(path.join(dir, "cdk", "bin", "context101.ts")) ||
     exists(path.join(dir, "cdk", "deploy.sh"));
-  return web && cdk;
+  const lockfile = exists(path.join(dir, "package-lock.json"));
+  return web && cdk && lockfile;
 }
 
 export function findRepoRoot(startDir, exists = existsSync) {

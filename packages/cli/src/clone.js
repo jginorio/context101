@@ -71,7 +71,7 @@ export function ensureRepoRoot({
     return {
       repoRoot: null,
       cloned: false,
-      error: `cloned ${target} but it is not a Context101 checkout (needs cdk/ and web/)`,
+      error: `cloned ${target} but it is not a Context101 checkout (needs cdk/, web/, and a root lockfile)`,
     };
   }
   io?.ok?.(`cloned into ${displayCloneTarget(cwd, cloned, resolvedHome)}`);

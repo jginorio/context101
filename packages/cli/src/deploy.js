@@ -6,6 +6,7 @@ import {
   resolveDeployContext,
   runCdk,
 } from "./cdk-invoke.js";
+import { checkoutNeededMessage } from "./checkout-deps.js";
 import { printChecks, runChecks } from "./checks.js";
 import { createExec } from "./exec.js";
 import { deployCommand } from "./plan.js";
@@ -27,7 +28,7 @@ async function runCdkCommand(opts, ctx, action) {
 
   const repoRoot = findRepoRoot(ctx.cwd);
   if (!repoRoot) {
-    io.err("run this from a Context101 checkout (needs cdk/ and web/).");
+    io.err(checkoutNeededMessage());
     return 1;
   }
 
@@ -87,6 +88,7 @@ async function runCdkCommand(opts, ctx, action) {
       env,
       home: opts.home,
       envFile: opts.envFile,
+      exec,
       dockerDaemon: Boolean(checks.docker?.daemon),
       dockerHint: checks.docker?.hint,
     });
@@ -101,6 +103,7 @@ async function runCdkCommand(opts, ctx, action) {
     envFile: opts.envFile,
     cwd: ctx.cwd,
     exec,
+    io,
   });
 }
 
@@ -112,6 +115,7 @@ export async function startDeploy({
   env,
   home,
   envFile,
+  exec,
   dockerDaemon,
   dockerHint,
 }) {
@@ -132,6 +136,7 @@ export async function startDeploy({
     home,
     envFile,
     cwd: ctx.cwd,
-    exec: ctx.exec,
+    exec: exec ?? ctx.exec,
+    io,
   });
 }
