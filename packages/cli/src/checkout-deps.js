@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { isStackRoot } from "./stack-source.js";
+import { isPublishedPackageStack, isStackRoot } from "./stack-source.js";
 
 export const CHECKOUT_HINT = "needs the CLI stack source (cdk/)";
 export const INSTALLING_DEPS = "installing stack deps";
@@ -30,9 +30,17 @@ export function ensureCheckoutDeps({
   exec,
   io,
   exists = existsSync,
+  packageDir: pkgDir,
 } = {}) {
   if (!repoRoot || !isStackRoot(repoRoot, exists)) {
     return { ok: false, installed: false, error: checkoutNeededMessage() };
+  }
+  if (isPublishedPackageStack(repoRoot, pkgDir)) {
+    return {
+      ok: false,
+      installed: false,
+      error: "refusing to install stack deps into the published CLI package.",
+    };
   }
   if (hasCheckoutDeps(repoRoot, exists)) {
     return { ok: true, installed: false };

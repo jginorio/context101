@@ -258,6 +258,8 @@ export async function runDestroy(opts, ctx) {
     homeDir,
     cwd: ctx.cwd,
     fetchStack: ctx.fetchStack,
+    version: ctx.cliVersion,
+    packageDir: ctx.packageDir,
   });
   if (!readyStack.ok) {
     io.err(readyStack.error);
@@ -286,6 +288,9 @@ export async function runDestroy(opts, ctx) {
     io,
     verbose: opts.verbose,
     progress,
+    homeDir,
+    version: ctx.cliVersion,
+    packageDir: ctx.packageDir,
   });
 }
 

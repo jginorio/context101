@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { homedir } from "node:os";
 import path from "node:path";
 import {
   classifyGithubToken,
@@ -12,6 +13,7 @@ import { findDeployEnvPath, readDeployEnvFile } from "./deploy-env-load.js";
 import { displaySpaceEnv } from "./spaces.js";
 import { isHostedContext101Url } from "./hosted-url.js";
 import { mask } from "./redact.js";
+import { cdkOutputDir, isPublishedPackageStack } from "./stack-source.js";
 
 export const CONTEXT_KEYS = [
   "DATABASE_URL",
@@ -109,6 +111,7 @@ export function buildCdkArgs({
   stackName = null,
   namePrefix = null,
   env = {},
+  outputDir = null,
 } = {}) {
   const args = [action];
   if (action === "destroy" && stackName) args.push(stackName);
@@ -149,6 +152,7 @@ export function buildCdkArgs({
 
   if (action === "deploy") args.push("--require-approval", "never");
   if (action === "destroy") args.push("--force");
+  if (outputDir) args.push("--output", outputDir);
   args.push(...extraArgs);
   return args;
 }
@@ -211,8 +215,15 @@ export function runCdk({
   verbose = false,
   progress,
   listenSignal,
+  homeDir,
+  version,
+  packageDir: pkgDir,
 } = {}) {
   const sourceRoot = stackRoot || repoRoot;
+  if (isPublishedPackageStack(sourceRoot, pkgDir)) {
+    io?.err?.("refusing to synth into the published CLI package.");
+    return Promise.resolve(1);
+  }
   const context = resolveDeployContext({
     repoRoot: sourceRoot,
     env,
@@ -222,6 +233,8 @@ export function runCdk({
     exec,
   });
   assertDeployTokens(context, { action });
+  const resolvedHome = homeDir ?? homedir();
+  const outputDir = cdkOutputDir(sourceRoot, { homeDir: resolvedHome, version });
   const args = buildCdkArgs({
     action,
     seed,
@@ -230,6 +243,7 @@ export function runCdk({
     stackName: stackName || context.values.STACK_NAME || null,
     namePrefix: namePrefix || context.values.NAME_PREFIX || null,
     env,
+    outputDir,
   });
   const execForDeps =
     exec && verbose
@@ -240,6 +254,7 @@ export function runCdk({
     exec: execForDeps,
     io: verbose ? io : { dim() {}, err: io?.err },
     exists,
+    packageDir: pkgDir,
   });
   if (!ready.ok) {
     io?.err?.(ready.error);

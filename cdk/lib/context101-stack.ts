@@ -26,6 +26,7 @@ import {
   provisionRdsPostgres,
 } from "./control-plane-db";
 import { assertGatedContext, cdkCommandFromArgv } from "./deploy-gate";
+import { CDK_OUT_EXCLUDE } from "./asset-exclude";
 import { pgHttpDockerCommand, tryBundlePgHttp } from "./pg-http-layer";
 
 /** Hosted product zone. Self-host uses an operator domain or Amplify default. */
@@ -416,6 +417,7 @@ export class Context101Stack extends cdk.Stack {
     const wikiImage = new ecr_assets.DockerImageAsset(this, "WikiGenImage", {
       directory: path.resolve(__dirname, "..", "..", "wiki-generator-ts"),
       platform: ecr_assets.Platform.LINUX_AMD64,
+      exclude: [...CDK_OUT_EXCLUDE],
     });
 
     // d) Task role — what the generator container can do at runtime
@@ -1027,6 +1029,7 @@ export class Context101Stack extends cdk.Stack {
           {
             file: "Dockerfile",
             platform: ecr_assets.Platform.LINUX_AMD64,
+            exclude: [...CDK_OUT_EXCLUDE],
           }
         ),
         memorySize: 1024,
@@ -1118,6 +1121,7 @@ export class Context101Stack extends cdk.Stack {
           directory: path.resolve(__dirname, "..", ".."),
           platform: ecr_assets.Platform.LINUX_AMD64,
           file: "Dockerfile",
+          exclude: [...CDK_OUT_EXCLUDE],
         });
 
         const instanceRole = new iam.Role(this, "AppRunnerInstanceRole", {

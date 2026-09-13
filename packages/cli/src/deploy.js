@@ -47,6 +47,8 @@ async function runCdkCommand(opts, ctx, action) {
     homeDir,
     cwd: ctx.cwd,
     fetchStack: ctx.fetchStack,
+    version: ctx.cliVersion,
+    packageDir: ctx.packageDir,
     io: opts.verbose ? io : undefined,
   });
   if (!readyStack.ok) {
@@ -139,6 +141,9 @@ async function runCdkCommand(opts, ctx, action) {
     progress,
     stackName: space.stackName,
     namePrefix: space.namePrefix,
+    homeDir,
+    version: ctx.cliVersion,
+    packageDir: ctx.packageDir,
   });
 }
 
@@ -189,6 +194,9 @@ export async function startDeploy({
     progress,
     stackName: space?.stackName,
     namePrefix: space?.namePrefix,
+    homeDir: ctx.homeDir,
+    version: ctx.cliVersion,
+    packageDir: ctx.packageDir,
   });
 }
 
