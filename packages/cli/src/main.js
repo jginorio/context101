@@ -5,7 +5,7 @@ import { runDeploy } from "./deploy.js";
 import { runInit } from "./init.js";
 import { runDestroy, runList } from "./stacks.js";
 import { banner, writers } from "./style.js";
-import { maybeOfferUpdate } from "./update.js";
+import { maybeOfferUpdate, versionLine } from "./update.js";
 
 export async function main(argv, ctx) {
   const io = writers(ctx);
@@ -23,6 +23,11 @@ export async function main(argv, ctx) {
 
   try {
     // await so Inquirer ExitPromptError is caught; a bare return leaks the rejection
+    if (opts.command === "version" && !opts.help) {
+      io.write(versionLine(ctx));
+      return 0;
+    }
+
     banner(ctx);
     const updateCode = await maybeOfferUpdate(opts, ctx);
     if (updateCode !== null) return updateCode;

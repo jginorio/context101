@@ -8,7 +8,9 @@ import {
   newerVersionNotice,
   npmInstallSpec,
   parseNpmVersion,
+  shouldSkipUpdate,
   updateNowMessage,
+  versionLine,
 } from "../src/update.js";
 import { fakeExec, memoryIo, testEnv } from "./helpers.js";
 
@@ -258,6 +260,40 @@ test("same version does not prompt", async () => {
   assert.equal(asked, false);
   assert.equal(io.stdoutText.includes("is out"), false);
   assert.match(io.stdoutText, /Usage: context101 <command>/);
+});
+
+test("version, -v, and --version skip the update check", async () => {
+  for (const argv of [["version"], ["-v"], ["--version"]]) {
+    const io = ttyIo();
+    let fetched = false;
+    let asked = false;
+    const code = await main(argv, {
+      cwd: "/tmp",
+      env: updateEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      packageVersion: "0.1.6",
+      fetchNpmLatest: async () => {
+        fetched = true;
+        return "9.9.9";
+      },
+      confirmUpdate: async () => {
+        asked = true;
+        return true;
+      },
+      installCli: async () => {
+        throw new Error("should not install");
+      },
+    });
+    assert.equal(code, 0);
+    assert.equal(fetched, false);
+    assert.equal(asked, false);
+    assert.equal(io.stdoutText, "context101-cli 0.1.6\n");
+    assert.equal(io.stdoutText.includes("your context. every agent."), false);
+    assert.equal(shouldSkipUpdate({ command: "version" }, { env: updateEnv() }), true);
+    assert.equal(versionLine({ packageVersion: "0.1.6" }), "context101-cli 0.1.6");
+  }
 });
 
 test("CONTEXT101_SKIP_UPDATE skips the check (no recurse)", async () => {

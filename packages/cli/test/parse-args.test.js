@@ -124,8 +124,19 @@ test("parses help and help <command>", () => {
   assert.equal(parseArgs(["help", "list"]).helpTopic, "list");
   assert.equal(parseArgs(["help", "ls"]).helpTopic, "list");
   assert.equal(parseArgs(["help", "config", "set"]).helpTopic, "config set");
+  assert.equal(parseArgs(["help", "version"]).helpTopic, "version");
   assert.equal(parseArgs(["destroy", "--help"]).command, "destroy");
   assert.equal(parseArgs(["destroy", "--help"]).help, true);
+});
+
+test("parses version, -v, and --version", () => {
+  assert.equal(parseArgs(["version"]).command, "version");
+  assert.equal(parseArgs(["--version"]).command, "version");
+  assert.equal(parseArgs(["-v"]).command, "version");
+  assert.equal(parseArgs(["version", "--version"]).command, "version");
+  assert.equal(parseArgs(["version", "-v"]).command, "version");
+  assert.equal(parseArgs(["version", "--help"]).command, "version");
+  assert.equal(parseArgs(["version", "--help"]).help, true);
 });
 
 test("context101 help lists every command and exits 0", async () => {
@@ -148,6 +159,7 @@ test("context101 help lists every command and exits 0", async () => {
     "config",
     "config set",
     "help",
+    "version",
   ]) {
     assert.match(io.stdoutText, new RegExp(name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   }
@@ -174,6 +186,46 @@ test("context101 --help and -h match the short command list", async () => {
   }
 });
 
+test("context101 version prints the package version and exits 0", async () => {
+  const { readFile } = await import("node:fs/promises");
+  const { fileURLToPath } = await import("node:url");
+  const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
+  const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
+
+  for (const argv of [["version"], ["-v"], ["--version"]]) {
+    const io = memoryIo();
+    const code = await main(argv, {
+      cwd: "/tmp",
+      env: testEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+    });
+    assert.equal(code, 0);
+    assert.equal(io.stdoutText, `context101-cli ${pkg.version}\n`);
+    assert.equal(io.stdoutText.includes("your context. every agent."), false);
+    assert.equal(io.stdoutText.includes("Context101\n"), false);
+    assert.equal(io.stdoutText.includes("—"), false);
+  }
+});
+
+test("context101 help version shows topic help", async () => {
+  const io = memoryIo();
+  const code = await main(["help", "version"], {
+    cwd: "/tmp",
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+  });
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /your context\. every agent\./);
+  assert.match(io.stdoutText, /print the installed CLI version/);
+  assert.match(io.stdoutText, /--version/);
+  const topic = helpText("version");
+  assert.equal(topic.includes("—"), false);
+});
+
 test("context101 help list shows list flags", async () => {
   const io = memoryIo();
   const code = await main(["help", "list"], {
@@ -194,7 +246,7 @@ test("workspace package is context101-cli with bin context101", async () => {
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.5");
+  assert.equal(pkg.version, "0.1.6");
   assert.equal(pkg.private, false);
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.bin.context101, "./bin/context101.js");
