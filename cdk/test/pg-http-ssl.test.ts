@@ -4,13 +4,13 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { test } from "node:test";
 
-const require = createRequire(__filename);
+const load = createRequire(__filename);
 const {
   isNeonConnectionString,
   sslOptionForTcp,
   tcpClientConfig,
   connectionStringForPgClient,
-} = require("../layers/pg-http/nodejs/pg-http/index.js") as {
+} = load("../layers/pg-http/nodejs/pg-http/index.js") as {
   isNeonConnectionString: (url: string) => boolean;
   sslOptionForTcp: (url: string) => false | { rejectUnauthorized: false };
   tcpClientConfig: (url: string) => {
