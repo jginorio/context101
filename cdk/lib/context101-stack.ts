@@ -1252,7 +1252,12 @@ export class Context101Stack extends cdk.Stack {
           // OpenSaaS env below). BRAIN_PROVISIONER_FN_NAME is invoked from
           // /api/brains/{create,delete} (SSR has no permission to provision
           // AWS resources directly).
-          { name: "BRAIN_PROVISIONER_FN_NAME", value: brainShared.provisionerFn.functionName },
+          //
+          // Known physical names — not CfnRefs. A Ref to provisioner /
+          // connector Lambdas cycles: WebApp → Fn → AutoIngest
+          // (CONFLICT_EVIDENCE_URL) → WebApp, and the notified docs
+          // bucket sits on the same SCC.
+          { name: "BRAIN_PROVISIONER_FN_NAME", value: `${namePrefix}-brain-provisioner` },
           // MCP host (no /mcp suffix; the /about page appends /brain/<id>/mcp
           // per brain). Empty string when teamToken wasn't passed on this deploy.
           {
@@ -1279,12 +1284,12 @@ export class Context101Stack extends cdk.Stack {
           // below (can't use a CfnRef — it would create a cycle since
           // the Lambda is declared after the App).
           { name: "START_WIKI_GEN_FN_NAME", value: `${namePrefix}-start-wiki-gen` },
-          // Data source connectors
-          { name: "CONNECTOR_SYNC_SHEETS_FN_NAME", value: connectorSyncSheetsFn.functionName },
-          { name: "CONNECTOR_SYNC_DOCS_FN_NAME", value: connectorSyncDocsFn.functionName },
-          { name: "CONNECTOR_SYNC_SLIDES_FN_NAME", value: connectorSyncSlidesFn.functionName },
-          { name: "CONNECTOR_SYNC_NOTION_FN_NAME", value: connectorSyncNotionFn.functionName },
-          { name: "CONNECTOR_SYNC_GITHUB_FN_NAME", value: connectorSyncGithubFn.functionName },
+          // Data source connectors — same known-name rule as wiki / provisioner.
+          { name: "CONNECTOR_SYNC_SHEETS_FN_NAME", value: `${namePrefix}-connector-sync-sheets` },
+          { name: "CONNECTOR_SYNC_DOCS_FN_NAME", value: `${namePrefix}-connector-sync-docs` },
+          { name: "CONNECTOR_SYNC_SLIDES_FN_NAME", value: `${namePrefix}-connector-sync-slides` },
+          { name: "CONNECTOR_SYNC_NOTION_FN_NAME", value: `${namePrefix}-connector-sync-notion` },
+          { name: "CONNECTOR_SYNC_GITHUB_FN_NAME", value: `${namePrefix}-connector-sync-github` },
           { name: "GOOGLE_OAUTH_CLIENT_SECRET_ID", value: googleOAuthClientSecret.secretName },
           { name: "NOTION_OAUTH_CLIENT_SECRET_ID", value: notionOAuthClientSecret.secretName },
           { name: "CONNECTOR_TOKEN_SECRET_PREFIX", value: `${namePrefix}-connector-` },
@@ -1504,15 +1509,25 @@ export class Context101Stack extends cdk.Stack {
           },
         })
       );
-      connectorSyncSheetsFn.grantInvoke(ssrComputeRole);
-      connectorSyncDocsFn.grantInvoke(ssrComputeRole);
-      connectorSyncSlidesFn.grantInvoke(ssrComputeRole);
-      connectorSyncNotionFn.grantInvoke(ssrComputeRole);
-      connectorSyncGithubFn.grantInvoke(ssrComputeRole);
-      // S3 delete under sources/sheets/ so DELETE /api/connectors/:id can
-      // clean up. The role already has s3:GetObject/PutObject/List via
-      // earlier grants; DeleteObject is the only gap.
-      docsBucket.grantDelete(ssrComputeRole);
+      // Identity policy on known ARNs — not grantInvoke / grantDelete.
+      // Those attach DefaultPolicy (and Lambda permissions) with CfnRefs
+      // to the notified docs bucket / provisioner / connectors, which
+      // closes the WebApp ↔ AutoIngest ↔ bucket-notifications cycle.
+      const knownFnArn = (functionName: string) =>
+        `arn:aws:lambda:${this.region}:${this.account}:function:${functionName}`;
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "InvokeConnectorSync",
+          actions: ["lambda:InvokeFunction"],
+          resources: [
+            knownFnArn(`${namePrefix}-connector-sync-sheets`),
+            knownFnArn(`${namePrefix}-connector-sync-docs`),
+            knownFnArn(`${namePrefix}-connector-sync-slides`),
+            knownFnArn(`${namePrefix}-connector-sync-notion`),
+            knownFnArn(`${namePrefix}-connector-sync-github`),
+          ],
+        })
+      );
       // "Refresh now" button on /wiki — SSR invokes a dispatcher Lambda
       // that does the ecs:RunTask. Amplify Hosting's SSR compute role
       // gets a platform session policy applied that explicitly denies
@@ -1577,7 +1592,13 @@ export class Context101Stack extends cdk.Stack {
       //   - SSR invokes BrainProvisionerFn from /api/brains/{create,delete}.
       //   - SSR needs cross-brain S3 + Secrets Manager access for any brain
       //     provisioned at runtime.
-      brainShared.provisionerFn.grantInvoke(ssrComputeRole);
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "InvokeBrainProvisioner",
+          actions: ["lambda:InvokeFunction"],
+          resources: [knownFnArn(`${namePrefix}-brain-provisioner`)],
+        })
+      );
       ssrComputeRole.addToPolicy(
         new iam.PolicyStatement({
           sid: "RwBrainBuckets",
@@ -1616,7 +1637,13 @@ export class Context101Stack extends cdk.Stack {
       );
 
       // SSR can invoke the dispatcher + describe tasks for polling
-      startWikiGenFn.grantInvoke(ssrComputeRole);
+      ssrComputeRole.addToPolicy(
+        new iam.PolicyStatement({
+          sid: "InvokeStartWikiGen",
+          actions: ["lambda:InvokeFunction"],
+          resources: [knownFnArn(`${namePrefix}-start-wiki-gen`)],
+        })
+      );
       // GitHub connector fires the per-repo code-wiki Fargate task after
       // each successful sync.
       startWikiGenFn.grantInvoke(connectorSyncGithubFn);
