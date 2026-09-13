@@ -6,6 +6,8 @@ import { findRepoRoot } from "./repo.js";
 
 export const CLONE_URL = DEFAULT_AMPLIFY_REPO;
 export const DEFAULT_CLONE_DIR = "context101";
+export const UPDATING_CHECKOUT = "updating checkout";
+export const GIT_PULL_TIMEOUT_MS = 120_000;
 
 export function resolveCloneDir(cwd, dir) {
   return path.resolve(cwd, dir || DEFAULT_CLONE_DIR);
@@ -76,6 +78,23 @@ export function ensureRepoRoot({
   }
   io?.ok?.(`cloned into ${displayCloneTarget(cwd, cloned, resolvedHome)}`);
   return { repoRoot: cloned, cloned: true };
+}
+
+export function pullCheckout({ repoRoot, exec, io } = {}) {
+  if (!repoRoot || !exec) {
+    return { ok: false, error: "could not update checkout (git pull --ff-only failed)." };
+  }
+  io?.dim?.(UPDATING_CHECKOUT);
+  const result = exec({
+    command: "git",
+    args: ["pull", "--ff-only"],
+    cwd: repoRoot,
+    timeout: GIT_PULL_TIMEOUT_MS,
+  });
+  if (!result.ok) {
+    return { ok: false, error: "could not update checkout (git pull --ff-only failed)." };
+  }
+  return { ok: true };
 }
 
 function displayCloneTarget(cwd, target, homeDir) {

@@ -219,6 +219,64 @@ test("--yes --deploy refuses when the Docker daemon is down", async () => {
   assert.match(`${io.stdoutText}\n${io.stderrText}`, /colima start|systemctl start docker/);
 });
 
+test("context101 deploy finds ./context101 without cd", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-dep-parent-"));
+  const dest = path.join(cwd, "context101");
+  await makeRepoFixture(dest);
+  await writeTestDeployEnv(dest);
+  const io = memoryIo();
+  const calls = [];
+
+  const code = await main(["deploy"], {
+    cwd,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: fakeExec(),
+    runDeploy: async (spec) => {
+      calls.push(spec);
+      return 0;
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].repoRoot, dest);
+  assert.equal(io.stdoutText.includes("Cloning"), false);
+});
+
+test("context101 deploy --dry-run finds ./context101 and does not pull", async () => {
+  const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-dep-parent-dry-"));
+  const dest = path.join(cwd, "context101");
+  await makeRepoFixture(dest);
+  await writeTestDeployEnv(dest);
+  const io = memoryIo();
+  const execCalls = [];
+
+  const code = await main(["deploy", "--dry-run"], {
+    cwd,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: ({ command, args = [], cwd: execCwd } = {}) => {
+      execCalls.push({ command, args, cwd: execCwd });
+      return fakeExec()({ command, args, cwd: execCwd });
+    },
+    runDeploy: async () => {
+      throw new Error("should not deploy");
+    },
+  });
+
+  assert.equal(code, 0);
+  assert.equal(
+    execCalls.some((call) => call.command === "git" && call.args.includes("pull")),
+    false
+  );
+  assert.equal(io.stdoutText.includes("updating checkout"), false);
+});
+
 test("context101 deploy still requires a checkout", async () => {
   const cwd = await mkdtemp(path.join(tmpdir(), "ctx101-dep-norepo-"));
   const io = memoryIo();

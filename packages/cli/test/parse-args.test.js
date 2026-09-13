@@ -79,6 +79,12 @@ test("parses deploy command", () => {
   assert.equal(opts.home, true);
 });
 
+test("allows --dir on deploy / diff / synth", () => {
+  assert.equal(parseArgs(["deploy", "--dir", "my-stack"]).dir, "my-stack");
+  assert.equal(parseArgs(["diff", "--dir", "my-stack"]).dir, "my-stack");
+  assert.equal(parseArgs(["synth", "--dir", "my-stack"]).dir, "my-stack");
+});
+
 test("rejects init flags on deploy", () => {
   assert.throws(() => parseArgs(["deploy", "--yes"]), /init option/);
 });

@@ -117,6 +117,11 @@ export function fakeExec(overrides = {}) {
           error: null,
         };
       }
+      if (args[0] === "pull" || args.includes("pull")) {
+        if (overrides["git pull --ff-only"]) return overrides["git pull --ff-only"];
+        if (overrides["git pull"]) return overrides["git pull"];
+        return ok("Already up to date.");
+      }
       return ok("https://github.com/acme/context101.git");
     }
     return { ok: false, code: 1, stdout: "", stderr: `unmocked: ${key}`, error: null };

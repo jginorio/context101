@@ -7,6 +7,7 @@ import { test } from "node:test";
 import { fileURLToPath } from "node:url";
 import { runCdk } from "../src/cdk-invoke.js";
 import { INSTALLING_DEPS } from "../src/checkout-deps.js";
+import { UPDATING_CHECKOUT } from "../src/clone.js";
 import { main } from "../src/main.js";
 import { STACK_NAME } from "../src/defaults.js";
 import {
@@ -30,6 +31,15 @@ function recordingExec(inner, calls) {
 
 function npmCiCalls(calls) {
   return calls.filter((call) => call.command === "npm" && call.args[0] === "ci");
+}
+
+function gitPullCalls(calls) {
+  return calls.filter(
+    (call) =>
+      call.command === "git" &&
+      call.args.includes("pull") &&
+      call.args.includes("--ff-only")
+  );
 }
 
 function fakeSpawnRecorder() {
@@ -116,6 +126,95 @@ test("npm ci failure does not spawn cdk", async () => {
   assert.equal(io.stderrText.includes("ctx_testtoken_xx"), false);
 });
 
+test("deploy pulls ff-only then cdk", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-pull-"));
+  await makeRepoFixture(root, { deps: false });
+  await writeTestDeployEnv(root);
+  const io = memoryIo();
+  const execCalls = [];
+  const { calls: spawnCalls, spawnFn } = fakeSpawnRecorder();
+
+  const code = await runCdk({
+    repoRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: recordingExec(fakeExec(), execCalls),
+    io: {
+      dim(msg) {
+        io.stdout.write(`${msg}\n`);
+      },
+      err(msg) {
+        io.stderr.write(`${msg}\n`);
+      },
+    },
+    spawn: spawnFn,
+    stdio: "ignore",
+  });
+
+  assert.equal(code, 0);
+  const pulls = gitPullCalls(execCalls);
+  assert.equal(pulls.length, 1);
+  assert.equal(pulls[0].cwd, root);
+  assert.equal(pulls[0].args.includes("--rebase"), false);
+  assert.equal(pulls[0].args.includes("--force"), false);
+  assert.deepEqual(pulls[0].args, ["pull", "--ff-only"]);
+  const ci = npmCiCalls(execCalls);
+  assert.equal(ci.length, 1);
+  const pullAt = execCalls.indexOf(pulls[0]);
+  const ciAt = execCalls.indexOf(ci[0]);
+  assert.equal(pullAt < ciAt, true);
+  assert.match(io.stdoutText, new RegExp(UPDATING_CHECKOUT));
+  assert.equal(spawnCalls.length, 1);
+  assert.equal(spawnCalls[0].command, path.join(root, "node_modules", ".bin", "cdk"));
+  assert.equal(spawnCalls[0].args[0], "deploy");
+});
+
+test("dirty or diverged checkout fails closed and does not spawn cdk", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-dirty-"));
+  await makeRepoFixture(root, { deps: false });
+  await writeTestDeployEnv(root);
+  const io = memoryIo();
+  const execCalls = [];
+  const { calls: spawnCalls, spawnFn } = fakeSpawnRecorder();
+
+  const code = await runCdk({
+    repoRoot: root,
+    action: "deploy",
+    env: testEnv(),
+    exec: recordingExec(
+      fakeExec({
+        "git pull --ff-only": {
+          ok: false,
+          code: 1,
+          stdout: "",
+          stderr: "error: Your local changes to the following files would be overwritten by merge",
+          error: null,
+        },
+      }),
+      execCalls
+    ),
+    io: {
+      dim(msg) {
+        io.stdout.write(`${msg}\n`);
+      },
+      err(msg) {
+        io.stderr.write(`${msg}\n`);
+      },
+    },
+    spawn: spawnFn,
+    stdio: "ignore",
+  });
+
+  assert.equal(code, 1);
+  assert.equal(gitPullCalls(execCalls).length, 1);
+  assert.equal(npmCiCalls(execCalls).length, 0);
+  assert.equal(spawnCalls.length, 0);
+  assert.match(io.stderrText, /could not update checkout/);
+  assert.match(io.stderrText, /git pull --ff-only failed/);
+  assert.equal(io.stderrText.includes("ctx_testtoken_xx"), false);
+  assert.equal(io.stderrText.includes("overwritten by merge"), false);
+});
+
 test("deploy --dry-run does not npm ci", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-dep-dry-ci-"));
   await makeRepoFixture(root, { deps: false });
@@ -137,7 +236,9 @@ test("deploy --dry-run does not npm ci", async () => {
 
   assert.equal(code, 0);
   assert.equal(npmCiCalls(execCalls).length, 0);
+  assert.equal(gitPullCalls(execCalls).length, 0);
   assert.equal(io.stdoutText.includes(INSTALLING_DEPS), false);
+  assert.equal(io.stdoutText.includes(UPDATING_CHECKOUT), false);
 });
 
 test("list / help / version do not install", async () => {
@@ -155,7 +256,9 @@ test("list / help / version do not install", async () => {
     });
     assert.equal(code, 0, argv.join(" "));
     assert.equal(npmCiCalls(execCalls).length, 0, argv.join(" "));
+    assert.equal(gitPullCalls(execCalls).length, 0, argv.join(" "));
     assert.equal(io.stdoutText.includes(INSTALLING_DEPS), false);
+    assert.equal(io.stdoutText.includes(UPDATING_CHECKOUT), false);
   }
 });
 

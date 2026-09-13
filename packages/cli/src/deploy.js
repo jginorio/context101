@@ -8,6 +8,7 @@ import {
 } from "./cdk-invoke.js";
 import { checkoutNeededMessage } from "./checkout-deps.js";
 import { printChecks, runChecks } from "./checks.js";
+import { ensureRepoRoot } from "./clone.js";
 import { createExec } from "./exec.js";
 import { deployCommand } from "./plan.js";
 import { findRepoRoot } from "./repo.js";
@@ -26,8 +27,20 @@ async function runCdkCommand(opts, ctx, action) {
     io.write("");
   }
 
-  const repoRoot = findRepoRoot(ctx.cwd);
-  if (!repoRoot) {
+  const checkout = ensureRepoRoot({
+    cwd: ctx.cwd,
+    dir: opts.dir,
+    exec,
+    io,
+    dryRun: opts.dryRun,
+    homeDir: ctx.homeDir,
+  });
+  if (checkout.error) {
+    io.err(checkout.error);
+    return 1;
+  }
+  const repoRoot = checkout.repoRoot;
+  if (!repoRoot || !findRepoRoot(repoRoot)) {
     io.err(checkoutNeededMessage());
     return 1;
   }

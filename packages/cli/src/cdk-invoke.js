@@ -5,6 +5,7 @@ import {
   githubTokenWorksForAmplify,
 } from "./checks.js";
 import { ensureCheckoutDeps, resolveCdkBin } from "./checkout-deps.js";
+import { pullCheckout } from "./clone.js";
 import { findDeployEnvPath, readDeployEnvFile } from "./deploy-env-load.js";
 import { isHostedContext101Url } from "./hosted-url.js";
 import { mask } from "./redact.js";
@@ -215,6 +216,11 @@ export function runCdk({
     stackName,
     env,
   });
+  const pulled = pullCheckout({ repoRoot, exec, io });
+  if (!pulled.ok) {
+    io?.err?.(pulled.error);
+    return Promise.resolve(1);
+  }
   const ready = ensureCheckoutDeps({ repoRoot, exec, io, exists });
   if (!ready.ok) {
     io?.err?.(ready.error);
