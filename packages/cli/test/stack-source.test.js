@@ -18,7 +18,7 @@ import {
 } from "../src/stack-source.js";
 import { makePackedStackFixture, makeRepoFixture } from "./helpers.js";
 
-const VERSION = "0.1.17";
+const VERSION = "0.1.18";
 
 test("HOME leftover ~/context101 does not beat the packaged stack", async () => {
   const home = await mkdtemp(path.join(tmpdir(), "ctx101-home-clone-"));
