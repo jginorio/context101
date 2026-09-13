@@ -4,6 +4,8 @@ import {
   classifyGithubToken,
   githubTokenWorksForAmplify,
 } from "./checks.js";
+import { ensureCheckoutDeps, resolveCdkBin } from "./checkout-deps.js";
+import { pullCheckout } from "./clone.js";
 import { findDeployEnvPath, readDeployEnvFile } from "./deploy-env-load.js";
 import { isHostedContext101Url } from "./hosted-url.js";
 import { mask } from "./redact.js";
@@ -192,6 +194,9 @@ export function runCdk({
   envFile = null,
   cwd,
   exec,
+  io,
+  exists,
+  spawn: spawnFn = spawn,
   stdio = "inherit",
 } = {}) {
   const context = resolveDeployContext({
@@ -211,6 +216,23 @@ export function runCdk({
     stackName,
     env,
   });
+  const pulled = pullCheckout({ repoRoot, exec, io });
+  if (!pulled.ok) {
+    io?.err?.(pulled.error);
+    return Promise.resolve(1);
+  }
+  const ready = ensureCheckoutDeps({ repoRoot, exec, io, exists });
+  if (!ready.ok) {
+    io?.err?.(ready.error);
+    return Promise.resolve(1);
+  }
+  const cdkBin = resolveCdkBin(repoRoot, exists);
+  if (!cdkBin) {
+    io?.err?.(
+      "local cdk is missing. Install checkout deps with npm ci, then retry."
+    );
+    return Promise.resolve(1);
+  }
   const childEnv = { ...env };
   if (context.awsProfile) childEnv.AWS_PROFILE = context.awsProfile;
   if (context.values.AWS_ACCESS_KEY_ID && !childEnv.AWS_ACCESS_KEY_ID) {
@@ -220,7 +242,7 @@ export function runCdk({
     childEnv.AWS_SECRET_ACCESS_KEY = context.values.AWS_SECRET_ACCESS_KEY;
   }
   return new Promise((resolve, reject) => {
-    const child = spawn("npx", ["cdk", ...args], {
+    const child = spawnFn(cdkBin, args, {
       cwd: path.join(repoRoot, "cdk"),
       env: childEnv,
       stdio,

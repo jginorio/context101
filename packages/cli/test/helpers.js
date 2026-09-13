@@ -56,10 +56,15 @@ export function memoryIo() {
 }
 
 export function fakeExec(overrides = {}) {
-  return ({ command, args = [] }) => {
+  return ({ command, args = [], cwd } = {}) => {
     const key = [command, ...args].join(" ");
     if (overrides[key]) return overrides[key];
 
+    if (command === "npm" && args[0] === "ci") {
+      if (overrides["npm ci"]) return overrides["npm ci"];
+      if (cwd) stubCheckoutDeps(cwd);
+      return ok("");
+    }
     if (command === "npm" && args[0] === "-v") {
       return ok("10.9.2");
     }
@@ -111,6 +116,11 @@ export function fakeExec(overrides = {}) {
           stderr: "unmocked git clone",
           error: null,
         };
+      }
+      if (args[0] === "pull" || args.includes("pull")) {
+        if (overrides["git pull --ff-only"]) return overrides["git pull --ff-only"];
+        if (overrides["git pull"]) return overrides["git pull"];
+        return ok("Already up to date.");
       }
       return ok("https://github.com/acme/context101.git");
     }
@@ -191,7 +201,19 @@ function ok(stdout) {
   return { ok: true, code: 0, stdout, stderr: "", error: null };
 }
 
-export async function makeRepoFixture(root) {
+export function stubCheckoutDeps(root) {
+  mkdirSync(path.join(root, "node_modules", "aws-cdk-lib"), { recursive: true });
+  mkdirSync(path.join(root, "node_modules", ".bin"), { recursive: true });
+  writeFileSync(
+    path.join(root, "node_modules", "aws-cdk-lib", "package.json"),
+    '{"name":"aws-cdk-lib"}\n'
+  );
+  writeFileSync(path.join(root, "node_modules", ".bin", "cdk"), "#!/bin/sh\nexit 0\n", {
+    mode: 0o755,
+  });
+}
+
+export async function makeRepoFixture(root, { deps = true } = {}) {
   await mkdir(path.join(root, "cdk", "lib"), { recursive: true });
   await mkdir(path.join(root, "web"), { recursive: true });
   await writeFile(path.join(root, "cdk", "cdk.json"), '{"app":"npx ts-node bin/context101.ts"}\n', {
@@ -211,6 +233,8 @@ export async function makeRepoFixture(root) {
     "utf8"
   );
   await writeFile(path.join(root, "web", "package.json"), '{"name":"web"}\n', "utf8");
+  await writeFile(path.join(root, "package-lock.json"), '{"lockfileVersion":3}\n', "utf8");
+  if (deps) stubCheckoutDeps(root);
 }
 
 export function mockCloneCheckout(dest) {
@@ -218,6 +242,7 @@ export function mockCloneCheckout(dest) {
   mkdirSync(path.join(dest, "web"), { recursive: true });
   writeFileSync(path.join(dest, "cdk", "cdk.json"), "{}\n");
   writeFileSync(path.join(dest, "web", "package.json"), '{"name":"web"}\n');
+  writeFileSync(path.join(dest, "package-lock.json"), '{"lockfileVersion":3}\n');
 }
 
 export async function writeTestDeployEnv(root, extra = "") {

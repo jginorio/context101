@@ -14,6 +14,7 @@ function mockClone(dest) {
   mkdirSync(path.join(dest, "web"), { recursive: true });
   writeFileSync(path.join(dest, "cdk", "cdk.json"), "{}\n");
   writeFileSync(path.join(dest, "web", "package.json"), '{"name":"web"}\n');
+  writeFileSync(path.join(dest, "package-lock.json"), '{"lockfileVersion":3}\n');
   writeFileSync(
     path.join(dest, "cdk", ".deploy-env.example"),
     'CTX_TOKEN="example-do-not-copy"\n'

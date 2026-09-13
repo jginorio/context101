@@ -26,7 +26,7 @@ npx context101-cli@latest <cmd>
 | Command | What it does |
 | --- | --- |
 | `context101 init` | write deploy-env; TTY asks to deploy |
-| `context101 deploy` | deploy the AWS stack |
+| `context101 deploy` | pull the checkout and deploy / update the AWS stack |
 | `context101 list` | list Context101 CloudFormation stacks |
 | `context101 destroy <name>` | tear down a listed stack |
 | `context101 config` | show deploy-env keys (values redacted) |
@@ -34,12 +34,15 @@ npx context101-cli@latest <cmd>
 | `context101 help` | list commands |
 | `context101 version` | print the installed CLI version (`-v`, `--version`) |
 
-`list`, `help`, and `destroy --dry-run` work without a checkout.
+`list`, `help`, `version`, and `destroy --dry-run` work without a checkout.
+
+The next day, `context101 deploy` is the update: it finds the checkout (cwd or `./context101`), `git pull --ff-only`, installs deps if needed, then CloudFormation-updates the same stack. Secrets in `cdk/.deploy-env` stay. `--dry-run` does not pull.
 
 ```bash
 context101 list
 context101 help
 context101 destroy Context101Stack --dry-run
+context101 deploy
 ```
 
 ## Name collision

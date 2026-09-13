@@ -79,6 +79,12 @@ test("parses deploy command", () => {
   assert.equal(opts.home, true);
 });
 
+test("allows --dir on deploy / diff / synth", () => {
+  assert.equal(parseArgs(["deploy", "--dir", "my-stack"]).dir, "my-stack");
+  assert.equal(parseArgs(["diff", "--dir", "my-stack"]).dir, "my-stack");
+  assert.equal(parseArgs(["synth", "--dir", "my-stack"]).dir, "my-stack");
+});
+
 test("rejects init flags on deploy", () => {
   assert.throws(() => parseArgs(["deploy", "--yes"]), /init option/);
 });
@@ -247,7 +253,7 @@ test("workspace package is context101-cli with bin context101", async () => {
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.7");
+  assert.equal(pkg.version, "0.1.8");
   assert.equal(pkg.private, false);
   assert.equal(pkg.license, "MIT");
   assert.equal(pkg.bin.context101, "./bin/context101.js");

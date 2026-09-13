@@ -1,5 +1,6 @@
 import { DEPLOY_CLI, DESTROY_CLI, LIST_CLI, SMOOTH_REGION } from "./defaults.js";
 import { runCdk } from "./cdk-invoke.js";
+import { checkoutNeededMessage } from "./checkout-deps.js";
 import { ensureRepoRoot } from "./clone.js";
 import { createExec } from "./exec.js";
 import { writers } from "./style.js";
@@ -167,7 +168,7 @@ export async function runDestroy(opts, ctx) {
   }
   const repoRoot = checkout.repoRoot;
   if (!repoRoot) {
-    io.err("could not find or clone a Context101 checkout (needs cdk/ and web/).");
+    io.err(checkoutNeededMessage("could not find or clone a Context101 checkout"));
     return 1;
   }
 
@@ -181,6 +182,7 @@ export async function runDestroy(opts, ctx) {
     envFile: opts.envFile,
     cwd: ctx.cwd,
     exec,
+    io,
   });
 }
 

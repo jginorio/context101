@@ -2,9 +2,9 @@ import { DRIVER_NEON, DRIVER_POSTGRES } from "./defaults.js";
 
 const COMMAND_LINES = [
   ["init", "write deploy-env (default); TTY asks to deploy"],
-  ["deploy", "deploy the AWS stack"],
-  ["diff", "cdk diff with the same context"],
-  ["synth", "cdk synth with the same context"],
+  ["deploy", "pull the checkout and deploy / update the AWS stack"],
+  ["diff", "pull the checkout and cdk diff"],
+  ["synth", "pull the checkout and cdk synth"],
   ["list", "list Context101 CloudFormation stacks"],
   ["destroy", "tear down a listed stack (name required)"],
   ["config", "show deploy-env keys (values redacted)"],
@@ -37,23 +37,27 @@ const TOPIC_HELP = {
   --seed
   --deploy               deploy after writing without asking`,
 
-  deploy: `deploy — deploy the AWS stack
+  deploy: `deploy — pull the checkout (ff-only) and deploy / update the AWS stack.
+  Finds cwd, ./context101, or --dir. Does not require cd. Secrets stay.
 
   --seed
+  --dir <path>           checkout here when not in cwd
   --deploy-env <path>
   --home
   --dry-run`,
 
-  diff: `diff — cdk diff with the same context as deploy
+  diff: `diff — pull the checkout and cdk diff with the same context as deploy
 
   --seed
+  --dir <path>
   --deploy-env <path>
   --home
   --dry-run`,
 
-  synth: `synth — cdk synth with the same context as deploy
+  synth: `synth — pull the checkout and cdk synth with the same context as deploy
 
   --seed
+  --dir <path>
   --deploy-env <path>
   --home
   --dry-run`,
@@ -124,6 +128,8 @@ const LIST_FROM_INIT = new Set([
   "--aws-access-key-id",
   "--aws-secret-access-key",
 ]);
+
+const CDK_FROM_INIT = new Set(["--dir"]);
 
 const CDK_COMMANDS = new Set(["deploy", "diff", "synth"]);
 
@@ -357,6 +363,7 @@ function flagAllowed(command, arg) {
   if (!INIT_ONLY.has(arg)) return true;
   if (command === "init") return true;
   if (command === "destroy") return DESTROY_FROM_INIT.has(arg);
+  if (CDK_COMMANDS.has(command)) return CDK_FROM_INIT.has(arg);
   if (command === "list") return LIST_FROM_INIT.has(arg);
   if (command === "config") return arg === "--home";
   return false;

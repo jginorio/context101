@@ -28,6 +28,7 @@ import {
   readExampleToken,
   writeDeployEnv,
 } from "./env-file.js";
+import { checkoutNeededMessage, ensureCheckoutDeps } from "./checkout-deps.js";
 import { startDeploy } from "./deploy.js";
 import { createExec } from "./exec.js";
 import { formatDryRun, nextSteps } from "./plan.js";
@@ -65,7 +66,7 @@ export async function runInit(opts, ctx) {
   }
   const repoRoot = checkout.repoRoot;
   if (!repoRoot || (!opts.dryRun && !findRepoRoot(repoRoot))) {
-    io.err("run this from a Context101 checkout (needs cdk/ and web/).");
+    io.err(checkoutNeededMessage());
     return 1;
   }
   if (checkout.wouldClone && opts.dryRun) {
@@ -299,6 +300,7 @@ export async function runInit(opts, ctx) {
     opts,
     ctx,
     io,
+    exec,
     tty,
     checks,
     awsEnv,
@@ -392,6 +394,7 @@ async function resumeExistingInit({
     opts,
     ctx,
     io,
+    exec,
     tty,
     checks,
     awsEnv,
@@ -431,6 +434,7 @@ async function finishAfterEnv({
   opts,
   ctx,
   io,
+  exec,
   tty,
   checks,
   awsEnv,
@@ -443,6 +447,16 @@ async function finishAfterEnv({
   envFile,
   deployFlag,
 }) {
+  const ready = ensureCheckoutDeps({
+    repoRoot,
+    exec: exec ?? ctx.exec,
+    io,
+  });
+  if (!ready.ok) {
+    io.err(ready.error);
+    return 1;
+  }
+
   let deploy = Boolean(deployFlag);
   if (!deploy && !opts.yes && tty) {
     deploy = Boolean(
@@ -474,6 +488,7 @@ async function finishAfterEnv({
     env: awsEnv,
     home,
     envFile,
+    exec: exec ?? ctx.exec,
     dockerDaemon: Boolean(checks.docker?.daemon),
     dockerHint: checks.docker?.hint,
   });
