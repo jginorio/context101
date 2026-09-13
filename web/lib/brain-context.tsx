@@ -3,6 +3,8 @@
 import * as React from "react";
 import { useRouter, useSearchParams, usePathname } from "next/navigation";
 
+import { COOKIE_NAME, QUERY_PARAM, resolveRequestedBrainId } from "@/lib/brain-id";
+
 /**
  * Client-side brain context.
  *
@@ -10,14 +12,19 @@ import { useRouter, useSearchParams, usePathname } from "next/navigation";
  * fetched from `/api/brains/list`. The provider:
  *
  *   1. Hydrates initial state from the URL `?brain=` query param, then
- *      from the `ctx_brain` cookie, falling back to "default".
+ *      from the `ctx_brain` cookie. Nothing selected if both are empty —
+ *      there is no implicit `default` brain.
  *   2. Loads the brain catalog on mount and refreshes it after a brain
  *      create/delete (callers fire `refreshBrains()`).
  *   3. `setBrain(id)` writes the cookie *and* replaces the URL with
  *      `?brain=<id>` so shareable links stay scoped to the right brain.
+ *   4. When the catalog loads with brains and nothing is selected,
+ *      picks the first ready brain (else the first row) so existing
+ *      stacks stay usable after a cookie clear. Empty catalog stays
+ *      unselected.
  *
  * Server routes read the same precedence (query → header → cookie →
- * default) via `lib/brains-server.ts`. URL is the source of truth when
+ * none) via `lib/brains-server.ts`. URL is the source of truth when
  * navigating; cookie is the source of truth across sessions.
  */
 
@@ -31,12 +38,8 @@ export type ClientBrain = {
   error_msg?: string | null;
 };
 
-const COOKIE_NAME = "ctx_brain";
-const QUERY_PARAM = "brain";
-const DEFAULT_BRAIN_ID = "default";
-
 type BrainContextValue = {
-  currentBrainId: string;
+  currentBrainId: string | null;
   /**
    * The registry row for the currently-selected brain, **regardless of
    * status**. Populated from the ready-list when possible (fast path), else
@@ -87,15 +90,14 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
 
-  // Hydration: query → cookie → default. Server reads the same precedence.
-  // We compute this lazily on the first render so SSR + client agree.
-  const [currentBrainId, setCurrentBrainId] = React.useState<string>(() => {
-    const fromQuery = searchParams.get(QUERY_PARAM);
-    if (fromQuery) return fromQuery;
-    const fromCookie = readCookie(COOKIE_NAME);
-    if (fromCookie) return fromCookie;
-    return DEFAULT_BRAIN_ID;
-  });
+  // Hydration: query → cookie → none. Server reads the same precedence.
+  // No implicit `default` — an empty stack has no selected brain.
+  const [currentBrainId, setCurrentBrainId] = React.useState<string | null>(() =>
+    resolveRequestedBrainId({
+      query: searchParams.get(QUERY_PARAM),
+      cookie: readCookie(COOKIE_NAME),
+    })
+  );
 
   const [brains, setBrains] = React.useState<ClientBrain[]>([]);
   const [loading, setLoading] = React.useState(true);
@@ -146,16 +148,22 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
       writeCookie(COOKIE_NAME, id);
       // Update the URL so links remain scoped to the selected brain.
       const params = new URLSearchParams(searchParams.toString());
-      if (id === DEFAULT_BRAIN_ID) {
-        params.delete(QUERY_PARAM);
-      } else {
-        params.set(QUERY_PARAM, id);
-      }
+      params.set(QUERY_PARAM, id);
       const qs = params.toString();
       router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     },
     [pathname, router, searchParams]
   );
+
+  // Existing stacks with brains but no cookie/query: pick a real brain
+  // rather than inventing `default`. Empty catalog stays unselected.
+  React.useEffect(() => {
+    if (loading || error !== null) return;
+    if (currentBrainId) return;
+    if (brains.length === 0) return;
+    const pick = brains.find((b) => b.status === "ready") ?? brains[0];
+    if (pick) setBrain(pick.brain_id);
+  }, [brains, currentBrainId, error, loading, setBrain]);
 
   // `currentBrain` resolution has two paths:
   //
@@ -194,9 +202,10 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Empty catalog (loaded, no error): the selected id cannot exist.
-    // Skip GET /api/brains/<id> so a new stack does not 404 on "default".
-    if (brains.length === 0 && error === null) {
+    // Nothing selected, or an empty catalog (loaded, no error): skip
+    // GET /api/brains/<id> so a new stack does not 404 on a leftover
+    // `default` cookie and we never fetch `/api/brains/`.
+    if (!currentBrainId || (brains.length === 0 && error === null)) {
       setFetchedBrain(null);
       return;
     }
@@ -237,7 +246,8 @@ export function BrainProvider({ children }: { children: React.ReactNode }) {
   // fetch (we skip it) or a render would flash the generic ready-gate.
   const catalogEmpty = !loading && error === null && brains.length === 0;
   const currentBrainNotFound =
-    !fastMatch && (fetchedBrain === null || catalogEmpty);
+    catalogEmpty ||
+    Boolean(currentBrainId && !fastMatch && fetchedBrain === null);
 
   const value: BrainContextValue = React.useMemo(
     () => ({

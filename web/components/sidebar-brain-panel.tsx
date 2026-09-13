@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 
 import { useBrain } from "@/lib/brain-context";
+import { brainSwitcherCopy } from "@/lib/brain-not-found";
 
 /**
  * Fills the otherwise-empty sidebar space on pages that don't supply a context
@@ -20,11 +21,18 @@ import { useBrain } from "@/lib/brain-context";
  * description — plus the most common cross-brain actions.
  */
 export function SidebarBrainPanel({ onNavigate }: { onNavigate?: () => void }) {
-  const { currentBrain, currentBrainId, loading } = useBrain();
+  const { currentBrain, currentBrainId, brains, error, loading } = useBrain();
+  const copy = brainSwitcherCopy({
+    loading,
+    error,
+    brainsCount: brains.length,
+    currentBrainId,
+    currentBrain,
+  });
   const [model, setModel] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    if (!currentBrainId) return;
+    if (!currentBrainId || copy.kind === "empty-stack") return;
     let cancelled = false;
     setModel(null);
     (async () => {
@@ -43,9 +51,9 @@ export function SidebarBrainPanel({ onNavigate }: { onNavigate?: () => void }) {
     return () => {
       cancelled = true;
     };
-  }, [currentBrainId]);
+  }, [copy.kind, currentBrainId]);
 
-  const name = currentBrain?.display_name ?? currentBrainId ?? "—";
+  const name = copy.label;
   const status = currentBrain?.status;
 
   const statusBadge =
@@ -64,7 +72,7 @@ export function SidebarBrainPanel({ onNavigate }: { onNavigate?: () => void }) {
     <div className="space-y-3 p-2">
       <div className="px-1">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-          Current brain
+          {copy.kind === "empty-stack" ? "No brains yet" : "Current brain"}
         </p>
         <div className="mt-1 flex items-center gap-1.5">
           <span className="min-w-0 flex-1 truncate text-sm font-semibold">

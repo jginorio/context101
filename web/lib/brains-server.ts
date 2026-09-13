@@ -3,6 +3,13 @@ import { cookies, headers } from "next/headers";
 import type { NextRequest } from "next/server";
 
 import { getAuth } from "@/lib/auth/server";
+import {
+  COOKIE_NAME,
+  HEADER_NAME,
+  QUERY_PARAM,
+  resolveActiveBrainId,
+  resolveRequestedBrainId,
+} from "@/lib/brain-id";
 import { db } from "@/lib/db/client";
 import { brains as postgresBrains } from "@/lib/db/schema";
 import { member } from "@/lib/db/auth-schema";
@@ -20,10 +27,7 @@ import { member } from "@/lib/db/auth-schema";
  * in `lib/brain-context.tsx`.
  */
 
-export const COOKIE_NAME = "ctx_brain";
-export const QUERY_PARAM = "brain";
-export const HEADER_NAME = "x-brain-id";
-export const DEFAULT_BRAIN_ID = "default";
+export { COOKIE_NAME, HEADER_NAME, QUERY_PARAM } from "@/lib/brain-id";
 
 export type BrainStatus = "provisioning" | "ready" | "error" | "deleting";
 
@@ -194,28 +198,27 @@ export async function listReadyBrainsForOrg(
 
 /**
  * Pull the requested brain id off a request:
- *   ?brain=<id>  →  x-brain-id header  →  ctx_brain cookie  →  "default"
+ *   ?brain=<id>  →  x-brain-id header  →  ctx_brain cookie  →  none
  */
-export async function readRequestedBrainId(request: NextRequest): Promise<string> {
-  const fromQuery = request.nextUrl.searchParams.get(QUERY_PARAM);
-  if (fromQuery) return fromQuery;
-  const fromHeader = request.headers.get(HEADER_NAME);
-  if (fromHeader) return fromHeader;
+export async function readRequestedBrainId(
+  request: NextRequest
+): Promise<string | null> {
   const cookieStore = await cookies();
-  const fromCookie = cookieStore.get(COOKIE_NAME)?.value;
-  if (fromCookie) return fromCookie;
-  return DEFAULT_BRAIN_ID;
+  return resolveRequestedBrainId({
+    query: request.nextUrl.searchParams.get(QUERY_PARAM),
+    header: request.headers.get(HEADER_NAME),
+    cookie: cookieStore.get(COOKIE_NAME)?.value,
+  });
 }
 
 /** Same logic for server components that don't have a NextRequest in hand. */
-export async function readRequestedBrainIdFromHeaders(): Promise<string> {
+export async function readRequestedBrainIdFromHeaders(): Promise<string | null> {
   const hdrs = await headers();
-  const fromHeader = hdrs.get(HEADER_NAME);
-  if (fromHeader) return fromHeader;
   const cookieStore = await cookies();
-  const fromCookie = cookieStore.get(COOKIE_NAME)?.value;
-  if (fromCookie) return fromCookie;
-  return DEFAULT_BRAIN_ID;
+  return resolveRequestedBrainId({
+    header: hdrs.get(HEADER_NAME),
+    cookie: cookieStore.get(COOKIE_NAME)?.value,
+  });
 }
 
 export type ResolveResult =
@@ -236,7 +239,14 @@ export async function resolveBrainFromRequest(
   if (!auth) {
     return { ok: false, status: 401, error: "not authenticated" };
   }
-  const brainId = await readRequestedBrainId(request);
+  const requested = await readRequestedBrainId(request);
+  const ready = requested
+    ? []
+    : (await listReadyBrainsForOrg(auth.orgId)).map((b) => b.brain_id);
+  const brainId = resolveActiveBrainId(requested, ready);
+  if (!brainId) {
+    return { ok: false, status: 404, error: "no brain selected" };
+  }
 
   const brain = await fetchBrainFromPostgres(brainId, auth.orgId);
   if (!brain) {
