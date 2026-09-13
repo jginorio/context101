@@ -36,7 +36,7 @@ test("dry-run prints the plan and writes nothing", async () => {
   assert.match(text, /dry-run/);
   assert.match(text, /Would write: (~\/\.context101\/spaces\/default\/deploy-env|cdk\/\.deploy-env)/);
   assert.match(text, /Would not deploy/);
-  assert.match(text, /Amplify: skipped/);
+  assert.match(text, /Amplify: CodeCommit in the stack/);
   assert.match(text, /request access for all Titan\/Cohere embeddings/);
   assert.match(text, /including new ids/);
   assert.match(text, /amazon\.titan-embed-text-v2:0/);

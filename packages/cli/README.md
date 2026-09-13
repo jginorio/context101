@@ -13,14 +13,14 @@ This is the AWS front door: init, deploy, list, urls, destroy, config. Not a wik
 Pin the version. `@latest` is a no-op on some machines.
 
 ```bash
-npm i -g context101-cli@0.1.14
+npm i -g context101-cli@0.1.15
 context101 <cmd>
 ```
 
 or
 
 ```bash
-npx -y context101-cli@0.1.14 <cmd>
+npx -y context101-cli@0.1.15 <cmd>
 ```
 
 ## Commands
@@ -37,13 +37,13 @@ npx -y context101-cli@0.1.14 <cmd>
 | `context101 help` | list commands |
 | `context101 version` | print the installed CLI version (`-v`, `--version`) |
 
-`list`, `urls`, `help`, `version`, and `destroy --dry-run` work without a product clone. Amplify-skipped spaces print `admin  skipped` — there is no invented admin URL.
+`list`, `urls`, `help`, `version`, and `destroy --dry-run` work without a product clone. New deploys always create Amplify (`admin  https://main.…`). Stacks that have not been updated yet still print `admin  skipped` — there is no invented admin URL.
 
 Deploy is quiet on a TTY (`deploying…`). `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose.
 
 Spaces live in `~/.context101/spaces/<name>/`. Each has its own AWS profile, region, secrets, and CloudFormation stack name. An existing `cdk/.deploy-env` or `~/.context101/deploy-env` is the `default` space.
 
-The next day: update the CLI (`context101` offers a pin-install, or `npm i -g context101-cli@0.1.14`), then `context101 deploy` / `context101 deploy platea`. The stack source is this CLI version — packaged stack copied to `~/.cache/context101/<version>/`, CDK `--output` beside it — not a git pull of your clone. `--dry-run` is preview only.
+The next day: update the CLI (`context101` offers a pin-install, or `npm i -g context101-cli@0.1.15`), then `context101 deploy` / `context101 deploy platea`. The stack source is this CLI version — packaged stack copied to `~/.cache/context101/<version>/`, CDK `--output` beside it — not a git pull of your clone. Admin is Amplify SSR from a CodeCommit repo in the stack (no GitHub PAT). `--dry-run` is preview only.
 
 ```bash
 context101 list

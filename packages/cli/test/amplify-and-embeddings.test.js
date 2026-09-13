@@ -4,11 +4,7 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import {
-  AMPLIFY_OWNER_LOGIN,
-  defaultAmplifyRepository,
-} from "../src/amplify-repo.js";
-import { DEFAULT_AMPLIFY_REPO } from "../src/defaults.js";
+import { defaultAmplifyRepository } from "../src/amplify-repo.js";
 import {
   allEmbeddingModels,
   catalogEntry,
@@ -48,17 +44,13 @@ test("pg-http does not verify certs for RDS sslmode=require", () => {
   assert.equal(/sslmode=/i.test(config.connectionString), false);
 });
 
-test("Amplify defaults to skip unless gh login is the repo owner", () => {
-  assert.equal(defaultAmplifyRepository({ ghLogin: "acme-user" }), "");
+test("Amplify defaults to CodeCommit (no GitHub watch target)", () => {
+  assert.equal(defaultAmplifyRepository(), "");
   assert.equal(defaultAmplifyRepository({}), "");
-  assert.equal(
-    defaultAmplifyRepository({ ghLogin: AMPLIFY_OWNER_LOGIN }),
-    DEFAULT_AMPLIFY_REPO
-  );
+  assert.equal(defaultAmplifyRepository({ ghLogin: "jginorio" }), "");
   assert.equal(
     defaultAmplifyRepository({
       repo: "https://github.com/acme/context101",
-      ghLogin: "acme-user",
     }),
     "https://github.com/acme/context101"
   );
@@ -194,7 +186,7 @@ test("--yes does not watch Amplify for a found-the-repo operator", async () => {
   assert.match(io.stdoutText, /^context101 deploy$/m);
 });
 
-test("--yes watches the default repo when gh login is the owner", async () => {
+test("--yes never writes REPOSITORY even when gh login is the repo owner", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-owner-amp-"));
   const home = await tempHome();
   await makeRepoFixture(root);
@@ -214,7 +206,7 @@ test("--yes watches the default repo when gh login is the owner", async () => {
         "gh api user --jq .login": {
           ok: true,
           code: 0,
-          stdout: `${AMPLIFY_OWNER_LOGIN}\n`,
+          stdout: "jginorio\n",
           stderr: "",
           error: null,
         },
@@ -224,7 +216,7 @@ test("--yes watches the default repo when gh login is the owner", async () => {
 
   assert.equal(code, 0);
   const body = await readFile(envPath, "utf8");
-  assert.match(body, new RegExp(`REPOSITORY="${DEFAULT_AMPLIFY_REPO}"`));
+  assert.equal(body.includes("REPOSITORY="), false);
   assert.match(io.stdoutText, /spaces\/default\/deploy-env/);
   assert.match(io.stdoutText, /context101 deploy/);
 });
@@ -295,7 +287,7 @@ test("--yes rejects an unknown embedding model", async () => {
   assert.equal(existsSync(path.join(root, "cdk", ".deploy-env")), false);
 });
 
-test("--yes --deploy with a ghs_ token still deploys when Amplify is skipped", async () => {
+test("--yes --deploy with a ghs_ token still deploys on the CodeCommit path", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-ghs-skip-"));
   await makeRepoFixture(root);
   const io = memoryIo();

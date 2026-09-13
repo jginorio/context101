@@ -13,6 +13,8 @@ const SKIP = new Set([
   ".git",
   "dist",
   "coverage",
+  "stack",
+  ".next",
 ]);
 
 function allow(src) {
@@ -38,7 +40,15 @@ if (!existsSync(path.join(dest, "cdk", "package-lock.json"))) {
 }
 copyRel("wiki-generator-ts");
 copyRel("knowledge");
-copyRel("web/drizzle");
+copyRel("web");
+copyRel("site");
+copyRel("packages/design");
+copyRel("packages/ui");
+copyRel("packages/cli");
+copyRel("scripts");
+copyRel("amplify.yml");
+copyRel("package.json");
+copyRel("package-lock.json");
 for (const file of ["Dockerfile", "requirements.txt", "server.py"]) {
   copyRel(file);
 }

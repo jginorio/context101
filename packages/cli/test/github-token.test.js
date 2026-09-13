@@ -42,7 +42,7 @@ test("runChecks marks a ghs_ gh login as not Amplify-ready", () => {
     warn: (m) => io.stderr.write(`${m}\n`),
     dim: (m) => io.stdout.write(`${m}\n`),
   });
-  assert.match(io.stderrText, /ghs_|installation/);
+  assert.match(`${io.stdoutText}\n${io.stderrText}`, /ghs_|installation/);
   assert.equal(io.stdoutText.includes("ghs_installation_must_never_appear"), false);
   assert.equal(io.stderrText.includes("ghs_installation_must_never_appear"), false);
 });

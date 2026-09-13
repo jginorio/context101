@@ -16,6 +16,7 @@ export const STACK_COPY_SKIP = new Set([
   ".git",
   "dist",
   "coverage",
+  ".next",
 ]);
 
 export function isStackRoot(dir, exists = existsSync) {

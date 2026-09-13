@@ -9,7 +9,7 @@ Alpha / trusted-team only. Not a wiki app. Retrieval is raw-first.
 ## context101
 
 ```bash
-npm i -g context101-cli@0.1.14
+npm i -g context101-cli@0.1.15
 ```
 
 Package `context101-cli`, bin `context101`. Pin the version — `@latest` is a no-op on some machines. Unscoped `npx context101` is Context7's MCP, unrelated.
@@ -30,7 +30,7 @@ Default deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / 
 
 The stack is this CLI version — packaged source copied to `~/.cache/context101/<version>/`, CDK `--output` beside it. Next time: update the CLI, then `context101 deploy [space]`. Not `git pull` on `~/context101`.
 
-CDK fails closed without `CTX_TOKEN` (plus `CTX_GH_TOKEN` when Amplify watches a repo). `cdk/deploy.sh` is a shim. Never run bare `cdk deploy`. Never print deploy-env or MCP bearers.
+CDK fails closed without `CTX_TOKEN` (plus `CTX_GH_TOKEN` only if Amplify watches an external repo). Admin always ships on Amplify via a CodeCommit repo in the stack — no GitHub PAT. `cdk/deploy.sh` is a shim. Never run bare `cdk deploy`. Never print deploy-env or MCP bearers.
 
 Commands and flags: [packages/cli/README.md](./packages/cli/README.md).
 

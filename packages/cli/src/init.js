@@ -8,7 +8,7 @@ import {
   EXAMPLE_ENV_REL,
   SMOOTH_REGION,
 } from "./defaults.js";
-import { defaultAmplifyRepository, detectGithubLogin } from "./amplify-repo.js";
+import { defaultAmplifyRepository } from "./amplify-repo.js";
 import {
   classifyGithubToken,
   githubTokenWorksForAmplify,
@@ -32,7 +32,7 @@ import { ensureCheckoutDeps } from "./checkout-deps.js";
 import { startDeploy } from "./deploy.js";
 import { createExec } from "./exec.js";
 import { formatDryRun, nextSteps } from "./plan.js";
-import { detectGitRemote, findRepoRoot, normalizeRepoUrl } from "./repo.js";
+import { findRepoRoot, normalizeRepoUrl } from "./repo.js";
 import { generateCtxToken, generateSecret } from "./secrets.js";
 import {
   DEFAULT_SPACE,
@@ -581,16 +581,11 @@ async function resolveInitSpaceName(opts, ctx, { tty, io }) {
 async function collectAnswers(opts, ctx) {
   const { repoRoot, exec, io, env, awsEnv, tty } = ctx;
   const seeded = ctx.seedFromEnv;
-  const remote = detectGitRemote(exec, repoRoot);
-  const ghLogin = detectGithubLogin(exec);
   const repository = opts.repo
     ? normalizeRepoUrl(opts.repo)
     : seeded
       ? seeded.repository || ""
-      : defaultAmplifyRepository({
-          repo: "",
-          ghLogin,
-        });
+      : defaultAmplifyRepository();
   const databaseUrl = opts.databaseUrl || env.DATABASE_URL || seeded?.databaseUrl || "";
   const awsProfile = ctx.awsProfile ?? null;
   const awsAccessKeyId = ctx.awsAccessKeyId ?? null;
@@ -649,7 +644,6 @@ async function collectAnswers(opts, ctx) {
       repoRoot,
       region: seeded?.region || SMOOTH_REGION,
       repository,
-      suggestedRepo: remote,
       embedModelId: opts.embedModel || "",
       databaseUrl,
       createRds: Boolean(seeded?.createRds),

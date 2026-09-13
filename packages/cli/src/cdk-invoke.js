@@ -169,7 +169,7 @@ export function formatCdkPreview({ action, context, args, seed }) {
   if (context.repository) {
     lines.push(`  githubToken: ${mask(context.githubToken)}`);
   } else {
-    lines.push("  githubToken: (skipped — no REPOSITORY)");
+    lines.push("  githubToken: (skipped — CodeCommit)");
   }
   for (const [flag, value] of contextPairs(args)) {
     if (flag === "token" || flag === "githubToken" || flag === "seed") continue;

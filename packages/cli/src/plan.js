@@ -42,11 +42,11 @@ export function formatDryRun(plan) {
     `     default: ${embedDefault}`,
     `     Claude (${CLAUDE_IMPROVE_MODEL}) for Improve — wiki is paused; skip`,
     plan.repository
-      ? `  5. Amplify: watch ${plan.repository}`
-      : "  5. Amplify: skipped (stack only — no GitHub-watched web app)",
+      ? `  5. Amplify: watch ${plan.repository} (GitHub override)`
+      : "  5. Amplify: CodeCommit in the stack (no GitHub PAT)",
     plan.repository
       ? "     written as REPOSITORY in the secrets file (CDK reads it as context)"
-      : "     a found-the-repo operator does not watch this checkout by default",
+      : "     CLI pushes web/ after deploy (AMPLIFY_MONOREPO_APP_ROOT=web)",
     plan.createRds
       ? "  6. Postgres: CDK creates RDS (db.t3.micro, public) — no DATABASE_URL in the secrets file"
       : `  6. Postgres: DATABASE_URL ${plan.hasDatabaseUrl ? "provided" : "missing"}, driver ${plan.databaseDriver}, prepare ${
@@ -62,9 +62,7 @@ export function formatDryRun(plan) {
       : "     file does not exist yet",
     `  9. Next: ${deployCommand(plan.seed)}`,
     "     first deploy: add --seed to upload knowledge/ once",
-    plan.repository
-      ? " 10. After web is up: /setup on the Amplify domain (first admin)"
-      : " 10. Amplify skipped — run web/ locally, or re-run with --repo to watch a GitHub repo",
+    " 10. After web is up: /setup on the Amplify domain (first admin)",
     "",
     `Would write: ${plan.envDisplay}`,
     plan.deploy

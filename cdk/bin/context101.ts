@@ -11,7 +11,7 @@ assertGatedContext({
   token: app.node.tryGetContext("token") as string | undefined,
   githubToken: app.node.tryGetContext("githubToken") as string | undefined,
   repository: app.node.tryGetContext("REPOSITORY") as string | undefined,
-});
+}); // githubToken only required when REPOSITORY is set (optional override)
 
 const stackName =
   String(app.node.tryGetContext("STACK_NAME") || "Context101Stack").trim() ||

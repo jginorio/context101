@@ -46,29 +46,9 @@ export async function promptAnswers({ defaults, io, exec, env }) {
     io.warn(`${SMOOTH_REGION} is the smooth path (S3 Vectors + Bedrock).`);
   }
 
-  const watchByDefault = Boolean(defaults.repository);
-  const amplifyMode = await select({
-    message: "Amplify frontend",
-    default: watchByDefault ? "watch" : "skip",
-    choices: [
-      {
-        name: "Skip — deploy the stack only (no GitHub-watched web app)",
-        value: "skip",
-      },
-      { name: "Watch a GitHub repo", value: "watch" },
-    ],
-  });
-
-  let repository = "";
-  if (amplifyMode === "watch") {
-    repository = normalizeRepoUrl(
-      await input({
-        message: "GitHub repo Amplify should watch",
-        default: defaults.repository || defaults.suggestedRepo || "",
-        validate: (value) =>
-          value ? true : "needed if Amplify should watch a repo",
-      })
-    );
+  let repository = defaults.repository || "";
+  if (repository) {
+    repository = normalizeRepoUrl(repository);
   }
 
   const dbMode = await select({

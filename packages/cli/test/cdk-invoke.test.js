@@ -68,7 +68,7 @@ test("refuses a hosted product URL written in the env file", async () => {
   assert.throws(() => buildCdkArgs({ action: "deploy", context }), /hosted Context101 product/);
 });
 
-test("deploys without githubToken when Amplify is skipped", async () => {
+test("deploys without githubToken on the CodeCommit path", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-skipgh-"));
   await makeRepoFixture(root);
   const context = await contextFromFile(root, [
