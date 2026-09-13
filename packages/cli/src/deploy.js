@@ -1,4 +1,5 @@
 import { homedir } from "node:os";
+import { pushAdminSource } from "./admin-source.js";
 import { SMOOTH_REGION } from "./defaults.js";
 import {
   assertDeployTokens,
@@ -12,6 +13,12 @@ import { createExec } from "./exec.js";
 import { deployCommand } from "./plan.js";
 import { LABEL_DEPLOYING, createProgress } from "./progress.js";
 import { resolveSelectedSpace } from "./spaces.js";
+import {
+  describeStackOutputs,
+  formatAdminUrl,
+  pickAdminRepoCloneUrl,
+  pickAdminUrl,
+} from "./stack-outputs.js";
 import { ensureStackRoot } from "./stack-source.js";
 import { writers } from "./style.js";
 
@@ -179,7 +186,7 @@ export async function startDeploy({
   if (verbose) io.write("Deploying the stack…");
   else if (!ctx.stdout?.isTTY) io.write(LABEL_DEPLOYING);
   else progress.start(LABEL_DEPLOYING);
-  return (ctx.runDeploy ?? runCdk)({
+  const status = await (ctx.runDeploy ?? runCdk)({
     repoRoot: sourceRoot,
     stackRoot: sourceRoot,
     action: "deploy",
@@ -198,6 +205,50 @@ export async function startDeploy({
     version: ctx.cliVersion,
     packageDir: ctx.packageDir,
   });
+  progress.stop();
+  if (status !== 0) return status;
+
+  const context = resolveDeployContext({
+    repoRoot: sourceRoot,
+    env,
+    home,
+    envFile,
+    cwd: ctx.cwd,
+    exec: exec ?? ctx.exec,
+  });
+  const region = space?.region || context.values.AWS_REGION || env.AWS_REGION || SMOOTH_REGION;
+  const stackName = space?.stackName || context.values.STACK_NAME || "";
+  const outputs = (ctx.describeStackOutputs ?? describeStackOutputs)({
+    exec: exec ?? ctx.exec,
+    env,
+    stackName,
+    region,
+  });
+
+  if (!context.repository) {
+    const cloneUrl = pickAdminRepoCloneUrl(outputs);
+    if (cloneUrl) {
+      if (verbose) io.write("Publishing admin…");
+      else progress.start("publishing admin…");
+      const push = ctx.pushAdminSource ?? pushAdminSource;
+      await Promise.resolve(
+        push({
+          stackRoot: sourceRoot,
+          cloneUrl,
+          exec: exec ?? ctx.exec,
+          env,
+          io,
+          region,
+          version: ctx.cliVersion,
+        })
+      );
+      progress.stop();
+    }
+  }
+
+  const adminLine = formatAdminUrl(pickAdminUrl(outputs));
+  if (adminLine) io.write(adminLine);
+  return 0;
 }
 
 function withSpaceAws(env, space) {

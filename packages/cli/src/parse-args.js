@@ -32,7 +32,7 @@ const TOPIC_HELP = {
   --aws-profile <name>
   --aws-access-key-id
   --aws-secret-access-key
-  --repo <url>           Amplify watch (skipped unless gh login is jginorio)
+  --repo <url>           optional GitHub override (default is stack CodeCommit)
   --embed-model <id>
   --skip-bedrock-access
   --seed

@@ -132,15 +132,15 @@ export function printChecks(checks, io) {
   }
   printDockerCheck(checks.docker, { ok, warn });
   if (checks.gh.ok && checks.gh.amplifyOk) {
-    ok("gh (logged in with a PAT — usable if you watch a repo with Amplify)");
+    ok("gh (logged in with a PAT — usable if you pass --repo)");
   } else if (checks.gh.ok && checks.gh.loggedIn) {
-    warn(
-      `gh token is ${checks.gh.tokenKind} — if Amplify watches a repo, set CTX_GH_TOKEN=ghp_…`
+    dim(
+      `gh token is ${checks.gh.tokenKind} — set CTX_GH_TOKEN=ghp_… only if you pass --repo`
     );
   } else if (checks.gh.ok) {
-    warn("gh found but not logged in — set CTX_GH_TOKEN only if Amplify watches a repo");
+    dim("gh found but not logged in — set CTX_GH_TOKEN only if you pass --repo");
   } else {
-    dim("gh optional — Amplify is skipped unless you pass --repo");
+    dim("gh optional — admin uses CodeCommit unless you pass --repo");
   }
 }
 

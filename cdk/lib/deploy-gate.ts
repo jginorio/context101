@@ -1,15 +1,16 @@
 /**
  * Fail-closed gate for Context101 CDK commands.
  *
- * MCP (`-c token=`) and Amplify (`-c githubToken=` + REPOSITORY) are
- * optional constructs. A bare `cdk deploy` / `synth` without those
- * flags synthesizes them away and CloudFormation deletes the live
- * resources. That already happened once.
+ * MCP (`-c token=`) is an optional construct. A bare `cdk deploy` /
+ * `synth` without that flag synthesizes MCP away and CloudFormation
+ * deletes the live service. That already happened once.
+ *
+ * Amplify admin always ships (CodeCommit in the stack). githubToken is
+ * required only when REPOSITORY is set (optional GitHub override).
  *
  * The CLI (`context101 deploy`) is the front door — it loads
  * cdk/.deploy-env and passes the context flags. This module throws
- * before those `if (token)` / `if (githubToken)` blocks can emit an
- * empty update.
+ * before the `if (token)` block can emit an empty MCP update.
  *
  * `cdk destroy` of the whole stack is allowed (CLI `destroy <name>`).
  */

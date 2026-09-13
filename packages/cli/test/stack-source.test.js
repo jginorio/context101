@@ -18,7 +18,7 @@ import {
 } from "../src/stack-source.js";
 import { makePackedStackFixture, makeRepoFixture } from "./helpers.js";
 
-const VERSION = "0.1.14";
+const VERSION = "0.1.15";
 
 test("HOME leftover ~/context101 does not beat the packaged stack", async () => {
   const home = await mkdtemp(path.join(tmpdir(), "ctx101-home-clone-"));
@@ -238,14 +238,15 @@ test("monorepo checkout is the last resort when developing the CLI", async () =>
   assert.equal(embeddedStackRoot(), null);
 });
 
-test("pack-stack ships cdk lockfile, skips cdk.out, and not the web app", async () => {
+test("pack-stack ships cdk lockfile, web/, and the Amplify monorepo files", async () => {
   const src = await readFile(fileURLToPath(new URL("../scripts/pack-stack.js", import.meta.url)), "utf8");
   assert.match(src, /copyRel\("cdk"\)/);
   assert.match(src, /cdk\/package-lock\.json/);
   assert.match(src, /"cdk\.out"/);
-  assert.equal(src.includes('copyRel("web")'), false);
-  assert.equal(src.includes('copyRel("package-lock.json")'), false);
-  assert.equal(src.includes('copyRel("web/package.json")'), false);
+  assert.match(src, /copyRel\("web"\)/);
+  assert.match(src, /copyRel\("amplify.yml"\)/);
+  assert.match(src, /copyRel\("package-lock.json"\)/);
+  assert.match(src, /"stack"/);
 
   const cdkLock = fileURLToPath(new URL("../../../cdk/package-lock.json", import.meta.url));
   const lock = JSON.parse(await readFile(cdkLock, "utf8"));

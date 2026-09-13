@@ -32,7 +32,7 @@ test("assertGatedContext allows destroy without tokens", () => {
   assert.doesNotThrow(() => assertGatedContext({ command: "destroy" }));
 });
 
-test("assertGatedContext allows deploy with token and no Amplify", () => {
+test("assertGatedContext allows deploy with token and no GitHub override", () => {
   assert.doesNotThrow(() =>
     assertGatedContext({ command: "deploy", token: "ctx_testtoken_xx" })
   );

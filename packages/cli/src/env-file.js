@@ -35,7 +35,7 @@ export function renderDeployEnv(values) {
     lines.push(`CTX_GH_TOKEN=${quoteShell(values.CTX_GH_TOKEN)}`);
   } else {
     lines.push(
-      "# CTX_GH_TOKEN omitted — only needed if REPOSITORY is set (Amplify watches a repo)."
+      "# CTX_GH_TOKEN omitted — only needed if REPOSITORY is set (optional GitHub override)."
     );
   }
 

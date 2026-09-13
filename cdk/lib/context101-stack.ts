@@ -25,6 +25,7 @@ import {
   contextWantsRds,
   provisionRdsPostgres,
 } from "./control-plane-db";
+import { provisionAdminSource } from "./admin-source";
 import { assertGatedContext, cdkCommandFromArgv } from "./deploy-gate";
 import { CDK_OUT_EXCLUDE } from "./asset-exclude";
 import { pgHttpDockerCommand, tryBundlePgHttp } from "./pg-http-layer";
@@ -91,8 +92,8 @@ export class Context101Stack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
     super(scope, id, props);
 
-    // Fail closed before `if (teamToken)` / `if (githubToken)` can
-    // synthesize an empty update and delete live MCP / Amplify.
+    // Fail closed before `if (teamToken)` can synthesize an empty
+    // update and delete live MCP. Amplify admin always ships.
     assertGatedContext({
       command: cdkCommandFromArgv(process.argv),
       token: this.node.tryGetContext("token") as string | undefined,
@@ -695,10 +696,7 @@ export class Context101Stack extends cdk.Stack {
           ...pgLambdaEnv,
           DOCS_BUCKET: docsBucket.bucketName,
           // Layer 2: after a successful sync, fire the per-repo code-wiki
-          // Fargate task. The dispatcher Lambda lives inside the
-          // if (githubToken) block; if the web stack isn't deployed,
-          // this name resolves to a non-existent fn and the sync just
-          // logs a warning (the github sync itself still succeeds).
+          // Fargate task. The dispatcher Lambda is provisioned with admin.
           START_WIKI_GEN_FN_NAME: `${namePrefix}-start-wiki-gen`,
           // Auto-regenerate a repo's isolated code wiki when its tree changes,
           // throttled per repo so a busy repo regenerates at most ~twice a day.
@@ -1190,10 +1188,10 @@ export class Context101Stack extends cdk.Stack {
       );
     }
 
-    // ── 9. Optional: Amplify Hosting for the web admin UI ─────────────
-    //      Only provisioned if -c githubToken=<pat> and -c REPOSITORY= are
-    //      passed. There is no default watch target — a found-the-repo
-    //      operator deploys the stack without a GitHub-watched web app.
+    // ── 9. Amplify Hosting for the web admin UI ───────────────────────
+    //      Always provisioned. Default source is a CodeCommit repo in this
+    //      stack (IAM / SIGV4 — no githubToken). REPOSITORY + githubToken
+    //      remain an optional override to watch an external git host.
     const githubToken = this.node.tryGetContext("githubToken") as
       | string
       | undefined;
@@ -1203,11 +1201,11 @@ export class Context101Stack extends cdk.Stack {
 
     if (githubToken && !amplifyRepository) {
       throw new Error(
-        "REPOSITORY is required when githubToken is set. Omit both to skip Amplify."
+        "REPOSITORY is required when githubToken is set. Omit both to use the stack CodeCommit repo."
       );
     }
 
-    if (githubToken && amplifyRepository) {
+    {
       // a) Service role for the Amplify app. Auth is Better Auth + Postgres
       //    now, so there's no Amplify Gen 2 backend (Cognito) to provision —
       //    this role exists only so Amplify Hosting can deliver SSR compute
@@ -1231,12 +1229,21 @@ export class Context101Stack extends cdk.Stack {
         })
       );
 
-      // b) Amplify App — points at the GitHub repo
+      const adminSource = provisionAdminSource(this, {
+        namePrefix,
+        repository: amplifyRepository,
+        githubToken,
+        serviceRole: amplifyServiceRole,
+      });
+
+      // b) Amplify App — CodeCommit by default (no accessToken).
       const webApp = new amplify.CfnApp(this, "WebApp", {
         name: `${namePrefix}-web`,
         description: "Context101 knowledge admin UI",
-        repository: amplifyRepository,
-        accessToken: githubToken,
+        repository: adminSource.repositoryUrl,
+        ...(adminSource.accessToken
+          ? { accessToken: adminSource.accessToken }
+          : {}),
         iamServiceRole: amplifyServiceRole.roleArn,
         platform: "WEB_COMPUTE", // Next.js SSR
         environmentVariables: [
@@ -1289,6 +1296,9 @@ export class Context101Stack extends cdk.Stack {
           ...mcpEnvVars,
         ],
       });
+      if (adminSource.repo) {
+        webApp.node.addDependency(adminSource.repo);
+      }
 
       // c) Branch — tracks main and auto-builds on push
       const amplifyDefaultUrl = cdk.Fn.join("", [
@@ -1637,6 +1647,13 @@ export class Context101Stack extends cdk.Stack {
         description:
           "Self-host web URL (Amplify default). Use this for /setup unless you brought your own domain.",
       });
+      if (adminSource.repo) {
+        new cdk.CfnOutput(this, "AdminRepoCloneUrl", {
+          value: adminSource.repo.repositoryCloneUrlHttp,
+          description:
+            "CodeCommit HTTPS URL. The CLI pushes web/ here after deploy.",
+        });
+      }
       new cdk.CfnOutput(this, "WebSsrComputeRoleArn", {
         value: ssrComputeRole.roleArn,
         description:
