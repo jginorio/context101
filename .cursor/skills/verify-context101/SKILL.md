@@ -8,7 +8,7 @@ description: Drive Context101's two verification surfaces — the Next.js admin 
 Context101 has two verification surfaces:
 
 1. **Next.js admin** in `web/` (Knowledge library, wiki, suggestions, sources, brains) at `:3000`.
-2. **Self-host CLI** in `packages/cli` — npm package `context101-cli`, bin `context101` — the AWS front door for stack ops (`help` / `list` / `destroy --dry-run` in a default run).
+2. **Self-host CLI** in `packages/cli` — npm package `context101-cli`, bin `context101` — the AWS front door for stack ops (`help` / `list` / `help urls` / `destroy --dry-run` in a default run).
 
 The MCP server and marketing `site/` remain out of scope here.
 
@@ -45,7 +45,7 @@ If `BETTER_AUTH_URL` is a hosted origin, browser `fetch` to `/api/auth/sign-in/e
 
 ### CLI (fresh session per command)
 
-`list`, `help`, and `destroy --dry-run` need no repo checkout. Use a new short-lived shell for each command — this is not the long-lived admin on `:3000`.
+`list`, `help`, `help urls`, and `destroy --dry-run` need no repo checkout. Use a new short-lived shell for each command — this is not the long-lived admin on `:3000`.
 
 Doctor: `which context101` or `npx -y context101-cli@0.1.2`. `context101 help` exits 0.
 
@@ -54,6 +54,7 @@ Drive via `bin/cli` when present, or bare `context101`. Capture stdout under `ar
 ```bash
 .cursor/skills/verify-context101/bin/cli help
 .cursor/skills/verify-context101/bin/cli help list
+.cursor/skills/verify-context101/bin/cli help urls
 .cursor/skills/verify-context101/bin/cli list --aws-profile <name>
 .cursor/skills/verify-context101/bin/cli destroy <space-or-stack> --dry-run --aws-profile <name>
 ```

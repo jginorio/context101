@@ -8,7 +8,9 @@ import {
 import { printCancelled, SIGINT_EXIT } from "./cancel.js";
 import { ensureCheckoutDeps, resolveCdkBin } from "./checkout-deps.js";
 import { actionLabel } from "./progress.js";
+import { SMOOTH_REGION } from "./defaults.js";
 import { formatQuietFailure, formatQuietSuccess, secretsFromContext } from "./quiet.js";
+import { writeStackUrlsBestEffort } from "./urls.js";
 import { findDeployEnvPath, readDeployEnvFile } from "./deploy-env-load.js";
 import { displaySpaceEnv } from "./spaces.js";
 import { isHostedContext101Url } from "./hosted-url.js";
@@ -323,6 +325,15 @@ export function runCdk({
         io.err(formatQuietFailure({ action, output, secrets: secretsFromContext(context) }));
       } else if (status === 0 && (action === "deploy" || action === "destroy") && typeof io?.ok === "function") {
         io.ok(formatQuietSuccess({ action, stackName: resolvedStackName }));
+        if (action === "deploy") {
+          writeStackUrlsBestEffort({
+            exec,
+            env: childEnv,
+            region: childEnv.AWS_REGION || context.values.AWS_REGION || SMOOTH_REGION,
+            stackName: resolvedStackName,
+            io,
+          });
+        }
       }
       resolve(status);
     });
