@@ -49,7 +49,7 @@ test("pushAdminSource runs git push --force to CodeCommit (mocked)", async () =>
   const result = pushAdminSource({
     stackRoot: root,
     cloneUrl: CLONE,
-    version: "0.1.15",
+    version: "0.1.16",
     exec: (spec) => {
       calls.push(spec);
       return { ok: true, code: 0, stdout: "", stderr: "", error: null };

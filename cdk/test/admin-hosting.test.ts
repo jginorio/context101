@@ -144,4 +144,14 @@ test("stack always provisions admin (no githubToken gate)", () => {
   assert.match(src, /mainBranch\.node\.addDependency\(adminSource\.seedMain\)/);
   assert.equal(src.includes("if (githubToken && amplifyRepository)"), false);
   assert.equal(src.includes("Omit both to skip Amplify"), false);
+  assert.equal(src.includes("docsBucket.grantDelete(ssrComputeRole)"), false);
+  assert.equal(src.includes("brainShared.provisionerFn.grantInvoke(ssrComputeRole)"), false);
+  assert.match(
+    src,
+    /BRAIN_PROVISIONER_FN_NAME.*\$\{namePrefix\}-brain-provisioner/
+  );
+  assert.match(
+    src,
+    /CONNECTOR_SYNC_SHEETS_FN_NAME.*\$\{namePrefix\}-connector-sync-sheets/
+  );
 });
