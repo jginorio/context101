@@ -11,24 +11,32 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const require = createRequire(import.meta.url);
-const { pgExecute } = require("pg-http");
+
+function defaultExecute() {
+  const { pgExecute } = require("pg-http");
+  return pgExecute;
+}
 
 const DATABASE_URL = process.env.DATABASE_URL;
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const DRIZZLE_DIR = path.join(HERE, "drizzle");
 
-function statementsFromSql(sql) {
+export function statementsFromSql(sql) {
   return sql
     .split("--> statement-breakpoint")
     .map((part) => part.trim())
     .filter(Boolean);
 }
 
-async function applyMigrations() {
-  if (!DATABASE_URL) throw new Error("DATABASE_URL is not configured");
+export async function applyMigrations(opts = {}) {
+  const databaseUrl = opts.databaseUrl ?? DATABASE_URL;
+  const drizzleDir = opts.drizzleDir ?? DRIZZLE_DIR;
+  const execute = opts.execute ?? defaultExecute();
 
-  await pgExecute(
-    DATABASE_URL,
+  if (!databaseUrl) throw new Error("DATABASE_URL is not configured");
+
+  await execute(
+    databaseUrl,
     `CREATE TABLE IF NOT EXISTS context101_schema_migrations (
        id text PRIMARY KEY,
        applied_at timestamptz NOT NULL DEFAULT now()
@@ -36,25 +44,25 @@ async function applyMigrations() {
   );
 
   const journal = JSON.parse(
-    await readFile(path.join(DRIZZLE_DIR, "_journal.json"), "utf8")
+    await readFile(path.join(drizzleDir, "_journal.json"), "utf8")
   );
   const entries = [...(journal.entries || [])].sort((a, b) => a.idx - b.idx);
 
   for (const entry of entries) {
     const id = entry.tag;
-    const already = await pgExecute(
-      DATABASE_URL,
+    const already = await execute(
+      databaseUrl,
       "SELECT 1 FROM context101_schema_migrations WHERE id = $1",
       [id]
     );
     if (already > 0) continue;
 
-    const sql = await readFile(path.join(DRIZZLE_DIR, `${id}.sql`), "utf8");
+    const sql = await readFile(path.join(drizzleDir, `${id}.sql`), "utf8");
     for (const statement of statementsFromSql(sql)) {
-      await pgExecute(DATABASE_URL, statement);
+      await execute(databaseUrl, statement);
     }
-    await pgExecute(
-      DATABASE_URL,
+    await execute(
+      databaseUrl,
       "INSERT INTO context101_schema_migrations (id) VALUES ($1)",
       [id]
     );

@@ -30,6 +30,10 @@ export function composeRdsUrl(
     instance.instanceEndpoint.hostname,
     ":5432/",
     DB_NAME,
+    // `require` (not `no-verify`): postgres-js maps require →
+    // rejectUnauthorized:false. Unknown modes verify and break Amplify
+    // / App Runner. pg-http strips sslmode so node-pg cannot override
+    // that same no-verify TLS policy (see tcpClientConfig).
     "?sslmode=require",
   ]);
 }

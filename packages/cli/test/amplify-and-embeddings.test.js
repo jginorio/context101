@@ -22,9 +22,11 @@ import { DEFAULT_SPACE, defaultSpaceEnvPath } from "../src/spaces.js";
 import { fakeExec, makeRepoFixture, memoryIo, tempHome, testEnv } from "./helpers.js";
 
 const require = createRequire(import.meta.url);
-const { isNeonConnectionString } = require(
-  "../../../cdk/layers/pg-http/nodejs/pg-http/index.js"
-);
+const {
+  isNeonConnectionString,
+  sslOptionForTcp,
+  tcpClientConfig,
+} = require("../../../cdk/layers/pg-http/nodejs/pg-http/index.js");
 
 test("pg-http treats Neon hosts as HTTP and RDS as TCP", () => {
   assert.equal(
@@ -35,6 +37,15 @@ test("pg-http treats Neon hosts as HTTP and RDS as TCP", () => {
     isNeonConnectionString("postgresql://u:p@context101.xxxx.rds.amazonaws.com/context101"),
     false
   );
+});
+
+test("pg-http does not verify certs for RDS sslmode=require", () => {
+  const url =
+    "postgresql://u:p@context101.xxxx.rds.amazonaws.com/context101?sslmode=require";
+  assert.deepEqual(sslOptionForTcp(url), { rejectUnauthorized: false });
+  const config = tcpClientConfig(url);
+  assert.deepEqual(config.ssl, { rejectUnauthorized: false });
+  assert.equal(/sslmode=/i.test(config.connectionString), false);
 });
 
 test("Amplify defaults to skip unless gh login is the repo owner", () => {
