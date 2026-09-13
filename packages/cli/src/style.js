@@ -7,9 +7,10 @@ const MAGENTA_256 = 170;
 const VIOLET_256 = 99;
 const DUSTY_256 = 139;
 
-function enabled(stream) {
-  if (process.env.NO_COLOR) return false;
-  if (process.env.FORCE_COLOR === "0") return false;
+function enabled(stream, env = process.env) {
+  const e = env ?? process.env;
+  if (e.NO_COLOR) return false;
+  if (e.FORCE_COLOR === "0") return false;
   return Boolean(stream && stream.isTTY);
 }
 
@@ -25,8 +26,8 @@ function fg(rgb, fallback256) {
   return `\x1b[38;5;${fallback256}m`;
 }
 
-export function palette(stream = process.stdout) {
-  if (!enabled(stream)) {
+export function palette(stream = process.stdout, env = process.env) {
+  if (!enabled(stream, env)) {
     return { magenta: "", violet: "", dim: "", red: "", bold: "", reset: "" };
   }
   return {
@@ -42,7 +43,7 @@ export function palette(stream = process.stdout) {
 export function writers(io) {
   const out = io.stdout;
   const err = io.stderr;
-  const c = palette(out);
+  const c = palette(out, io.env ?? process.env);
   return {
     c,
     write(line = "") {
