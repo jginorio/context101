@@ -1,14 +1,40 @@
 import type { NextConfig } from "next";
+import { existsSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const appRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(appRoot, "..");
 
+// npm workspaces hoist @better-auth/drizzle-adapter to the repo root but nest
+// drizzle-orm under web/. turbopack.root is the repo, so the adapter's
+// `import … from "drizzle-orm"` otherwise 500s /login.
+function resolveFromWorkspace(name: string): string {
+  const nested = path.join(appRoot, "node_modules", name);
+  if (existsSync(nested)) return nested;
+  const hoisted = path.join(repoRoot, "node_modules", name);
+  if (existsSync(hoisted)) return hoisted;
+  return name;
+}
+
+const drizzleOrm = resolveFromWorkspace("drizzle-orm");
+
 const nextConfig: NextConfig = {
   outputFileTracingRoot: repoRoot,
   turbopack: {
     root: repoRoot,
+    resolveAlias: {
+      "drizzle-orm": drizzleOrm,
+    },
+  },
+  webpack: (config) => {
+    config.resolve ??= {};
+    const alias = config.resolve.alias;
+    config.resolve.alias = {
+      ...(alias && typeof alias === "object" && !Array.isArray(alias) ? alias : {}),
+      "drizzle-orm": drizzleOrm,
+    };
+    return config;
   },
   // Amplify Hosting's SSR runtime doesn't forward app-level env vars to the
   // compute Lambda by default. Bake DOCS_BUCKET into the build so
@@ -38,6 +64,8 @@ const nextConfig: NextConfig = {
     "@context101/ui",
     "@aws-sdk/client-s3",
     "@aws-sdk/client-bedrock",
+    "@better-auth/drizzle-adapter",
+    "drizzle-orm",
   ],
 };
 
