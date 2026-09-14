@@ -147,7 +147,7 @@ export async function handleHostedProvisionRequest(
       nextStep: result.nextStep,
     });
     return { status: 200, body: result };
-  } catch (err) {
+  } catch {
     console.error("[hosted-provision] failed");
     return { status: 500, body: { error: "provision failed" } };
   }
