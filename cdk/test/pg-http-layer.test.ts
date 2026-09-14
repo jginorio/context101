@@ -17,7 +17,7 @@ test("layer package.json does not use a file: path npm will delete", async () =>
   const pkg = JSON.parse(
     await readFile(path.join(layerSrc, "nodejs", "package.json"), "utf8")
   );
-  assert.equal(pkg.dependencies.pg, "^8.16.3");
+  assert.equal(pkg.dependencies.pg, "^8.23.0");
   assert.equal(pkg.dependencies["pg-http"], undefined);
   assertPgHttpManifest(layerSrc);
 });
