@@ -13,14 +13,14 @@ This is the AWS front door: init, update, list, urls, destroy, config. Not a wik
 Pin the version. `@latest` is a no-op on some machines.
 
 ```bash
-npm i -g context101-cli@0.1.19
+npm i -g context101-cli@0.1.20
 context101 <cmd>
 ```
 
 or
 
 ```bash
-npx -y context101-cli@0.1.19 <cmd>
+npx -y context101-cli@0.1.20 <cmd>
 ```
 
 ## Commands
@@ -44,7 +44,7 @@ Deploy is quiet on a TTY (`deploying…`). `--verbose` dumps cdk / npm / docker.
 
 Spaces live in `~/.context101/spaces/<name>/`. Each has its own AWS profile, region, secrets, and CloudFormation stack name. An existing `cdk/.deploy-env` or `~/.context101/deploy-env` is the `default` space.
 
-The next day: pin the new CLI (`context101` offers a pin-install, or `npm i -g context101-cli@0.1.19`), then `context101 update` / `context101 update platea`. The stack source is this CLI version — packaged stack copied to `~/.cache/context101/<version>/`, CDK `--output` beside it — not a git pull of your clone. Admin is Amplify SSR from a CodeCommit repo in the stack (no GitHub PAT). `--dry-run` is preview only.
+The next day: pin the new CLI (`context101` offers a pin-install, or `npm i -g context101-cli@0.1.20`), then `context101 update` / `context101 update platea`. The stack source is this CLI version — packaged stack copied to `~/.cache/context101/<version>/`, CDK `--output` beside it — not a git pull of your clone. Admin is Amplify SSR from a CodeCommit repo in the stack (no GitHub PAT). `--dry-run` is preview only.
 
 ```bash
 context101 list
