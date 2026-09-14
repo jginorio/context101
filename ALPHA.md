@@ -2,6 +2,12 @@
 
 Context101 is alpha software. It started as an internal proof of concept and is being opened so other teams can self-host, evaluate, and evolve it for their own trusted internal use.
 
+## Repos
+
+This repo is the self-host product: CLI + CDK + web + site. Pin `context101-cli` and run it in your AWS account.
+
+Hosted/ops is a separate private repo ([jginorio/context101-hosted](https://github.com/jginorio/context101-hosted)). Same published CLI, Context101-owned AWS later. Not a second product. Not in this tree.
+
 ## Intended Use
 
 - Trusted internal teams running the stack in their own AWS account.

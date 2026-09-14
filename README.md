@@ -2,7 +2,9 @@
 
 **your context. every agent.**
 
-A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases — S3 + S3 Vectors, FastMCP per-brain, Better Auth + Postgres. Self-host in your AWS. Paid hosting later is not shipped.
+A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases — S3 + S3 Vectors, FastMCP per-brain, Better Auth + Postgres. This repo is the product: CLI + CDK + web + site. Pin `context101-cli` and run it in your AWS.
+
+Hosted/ops is private ([jginorio/context101-hosted](https://github.com/jginorio/context101-hosted)) — same published CLI, Context101-owned AWS later. Not a second product. Not in this tree.
 
 Alpha / trusted-team only. Not a wiki app. Retrieval is raw-first.
 

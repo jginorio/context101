@@ -2,7 +2,7 @@
 
 your context. every agent.
 
-Thin self-host CLI for [Context101](https://github.com/jginorio/context101) — a wrapper around Amazon Bedrock Knowledge Bases. Self-host now; hosted later (not there yet). Alpha / trusted-team.
+Thin self-host CLI for [Context101](https://github.com/jginorio/context101) — a wrapper around Amazon Bedrock Knowledge Bases. This repo is the product; hosted/ops is a separate private repo, not this tree. Alpha / trusted-team.
 
 This is the AWS front door: init, update, list, urls, destroy, config. Not a wiki app.
 
