@@ -158,7 +158,7 @@
   ],
   "narrative": {
     "northStar": "The Synaptic Dark",
-    "overview": "Context101 looks like a powered-on brain in a dark room. Near-black substrate, signal moving along faint magenta-violet traces, light pooling only where there's activity. The identity is unapologetically dark and unapologetically purple: the --brain mark is the loudest thing on the page, and that's the point. The system spans two surfaces that are recognizably the same product — a drenched-dark brand site (site/) built on Space Grotesk + Inter, and a quieter, instrumented product app (web/) on Geist with a light-default magenta-tinted OKLCH palette. Brand can shout; product keeps its voice down. The shared --brain purple is the thread between them. It rejects corporate-cold sterility and enterprise-heavy clutter alike.",
+    "overview": "Context101 looks like a powered-on brain in a dark room. Near-black substrate, signal moving along faint magenta-violet traces, light pooling only where there's activity. The identity is unapologetically dark and unapologetically purple: the --brain mark is the loudest thing on the page, and that's the point. This repo ships a quieter, instrumented product app (web/) on Geist with a light-default magenta-tinted OKLCH palette. Brand/marketing is not in this repo; product keeps its voice down. The shared --brain purple is the thread between them. It rejects corporate-cold sterility and enterprise-heavy clutter alike.",
     "keyCharacteristics": [
       "Dark, purple, and committed to it — the brand mark leads, it doesn't hide",
       "Two registers, one identity: drenched-dark brand site, quiet light-default product app, shared accent",

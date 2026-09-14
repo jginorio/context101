@@ -41,7 +41,7 @@ jobs:
           registry-url: https://registry.npmjs.org
           cache: npm
 
-      # Root is a private monorepo (workspaces: site, web, packages/*) with a
+      # Root is a private monorepo (workspaces: web, packages/*) with a
       # single lockfile — same install Amplify uses.
       - name: Install
         run: npm ci

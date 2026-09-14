@@ -62,7 +62,6 @@ export function packStack(repoRoot, dest) {
   copyRel("wiki-generator-ts", repoRoot, dest);
   copyRel("knowledge", repoRoot, dest);
   copyRel("web", repoRoot, dest);
-  copyRel("site", repoRoot, dest);
   copyRel("packages/design", repoRoot, dest);
   copyRel("packages/ui", repoRoot, dest);
   copyRel("packages/cli", repoRoot, dest);

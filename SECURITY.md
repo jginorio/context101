@@ -13,7 +13,7 @@ Email the maintainer or use GitHub private vulnerability reporting once it is en
 - A short description of the issue.
 - Reproduction steps or proof-of-concept details.
 - Impact and affected deployment surface, if known.
-- Whether the issue affects self-hosted deployments, the public site, or both.
+- Whether the issue affects self-hosted deployments.
 
 ## Current Security Model
 

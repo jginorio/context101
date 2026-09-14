@@ -10,7 +10,7 @@ Context101 has two verification surfaces:
 1. **Next.js admin** in `web/` (Knowledge library, wiki, suggestions, sources, brains) at `:3000`.
 2. **Self-host CLI** in `packages/cli` — npm package `context101-cli`, bin `context101` — the AWS front door for stack ops (`help` / `list` / `help urls` / `destroy --dry-run` in a default run).
 
-The MCP server and marketing `site/` remain out of scope here.
+The MCP server and marketing remain out of scope here.
 
 Agents that have never seen this repo should follow this file cold. For admin features: launch or reuse `:3000`, run doctor, drive a mapped feature through the real UI or the authenticated file APIs, capture proof, then clean up scratch keys only. For CLI features: use a fresh shell session per command, doctor the `context101` bin (or `npx -y context101-cli@0.1.2`), drive help / list / destroy --dry-run, and capture stdout under `artifacts/cli/`.
 
