@@ -8,5 +8,10 @@
   ],
   "scripts": {
     "context101": "node ./packages/cli/bin/context101.js"
+  },
+  "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
+    "drizzle-orm": "^0.45.2",
+    "postgres": "^3.4.9"
   }
 }
