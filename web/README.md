@@ -25,6 +25,8 @@ npm run lint
 
 `amplify.yml` points Amplify Hosting at this `web` app. The CDK stack injects the environment needed for the admin UI, API routes, connectors, wiki generation, and brain control plane.
 
+Hosted Amplify (`APP_MODE=hosted`) also needs `HOSTED_PROVISION_SECRET` for `POST /api/internal/hosted-provision`. Self-host omits it.
+
 You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
 
 ## Deploy on Vercel

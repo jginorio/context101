@@ -47,6 +47,9 @@ AWS_PROFILE="plateapr.com"
 # APP_MODE="self_hosted"
 # ALLOW_PUBLIC_SIGNUP="false"
 # BILLING_ENABLED="false"
+# Hosted-only shared secret for POST /api/internal/hosted-provision.
+# Omit on self-host. Set the name on Amplify; never commit a value.
+# HOSTED_PROVISION_SECRET
 # APP_URL="https://kb.example.com"
 # MCP_PUBLIC_HOST="https://mcp.example.com"
 #

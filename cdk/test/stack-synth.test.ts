@@ -116,4 +116,27 @@ test("full stack synths CodeCommit admin with Amplify and no circular dependency
     false,
     "SSR DefaultPolicy must not Ref BrainProvisionerFn / AutoIngestFn"
   );
+  assert.equal(
+    env.find((item) => item.Name === "HOSTED_PROVISION_SECRET"),
+    undefined
+  );
+});
+
+test("HOSTED_PROVISION_SECRET is forwarded to Amplify when set", () => {
+  const app = new cdk.App({
+    context: {
+      token: "ctx_testtoken_xx",
+      DATABASE_URL:
+        "postgresql://context101:test@127.0.0.1:5432/context101?sslmode=require",
+      NAME_PREFIX: "context101-testinghostedprov",
+      "aws:cdk:bundling-stacks": [],
+      HOSTED_PROVISION_SECRET: "hosted-provision-test-secret",
+    },
+  });
+  const stack = new Context101Stack(app, "Context101Testinghostedprov", {
+    env: { account: "123456789012", region: "us-west-2" },
+  });
+  const template = Template.fromStack(stack);
+  const env = amplifyEnv(template);
+  assert.equal(envValue(env, "HOSTED_PROVISION_SECRET"), "hosted-provision-test-secret");
 });

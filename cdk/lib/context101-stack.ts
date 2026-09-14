@@ -825,6 +825,9 @@ export class Context101Stack extends cdk.Stack {
     const billingEnabled = this.node.tryGetContext("BILLING_ENABLED") as
       | string
       | undefined;
+    const hostedProvisionSecret = this.node.tryGetContext(
+      "HOSTED_PROVISION_SECRET"
+    ) as string | undefined;
     const appUrl = ownPublicUrl(
       this.node.tryGetContext("APP_URL") as string | undefined
     );
@@ -869,6 +872,9 @@ export class Context101Stack extends cdk.Stack {
         : []),
       ...(billingEnabled
         ? [{ name: "BILLING_ENABLED", value: billingEnabled }]
+        : []),
+      ...(hostedProvisionSecret
+        ? [{ name: "HOSTED_PROVISION_SECRET", value: hostedProvisionSecret }]
         : []),
       ...(appUrl ? [{ name: "APP_URL", value: appUrl }] : []),
       ...(marketingUrl ? [{ name: "MARKETING_URL", value: marketingUrl }] : []),
