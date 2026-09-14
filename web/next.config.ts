@@ -34,10 +34,16 @@ const nextConfig: NextConfig = {
   // Next 16's Turbopack auto-externalizes @aws-sdk/* by default, but it
   // renames them with a hash ("@aws-sdk/client-s3-611b56...") that
   // Amplify's Lambda runtime can't resolve. Bundling side-steps the issue.
+  //
+  // Also bundle the Better Auth drizzle adapter: npm hoists it to the repo
+  // root (turbopack.root) while its peers can nest under web/. Leaving it
+  // external 500s /login with Can't resolve 'drizzle-orm'.
   transpilePackages: [
     "@context101/ui",
     "@aws-sdk/client-s3",
     "@aws-sdk/client-bedrock",
+    "@better-auth/drizzle-adapter",
+    "drizzle-orm",
   ],
 };
 
