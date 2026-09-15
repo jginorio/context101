@@ -39,5 +39,5 @@ Preconditions:
 - `/api/wiki/chat` also retrieves, then calls Claude. Prefer `/api/wiki/retrieve` when polling so a wait loop does not spend inference.
 - Proof JSON lists source keys and canary hit counts only. Do not save other documents' passage text.
 - Retrieve ranks by similarity. The query must include the canary (or the distinctive sentence). A generic "test file" query will miss.
-- Default filter excludes `source=github` and `source=code-wiki`. Manual uploads have no `source` sidecar and are included.
+- Default filter excludes `source=code-wiki` and `source=wiki` (not `github`). Hits under `wiki/` and GitHub source-code files (`.ts`, `.py`, …) are dropped after retrieve. GitHub-synced `.md` / `.mdx` / `.txt` and manual uploads (no `source` sidecar) are included.
 - If retrieve returns `this brain has no knowledge base yet`, stop. There is nothing to wait for.

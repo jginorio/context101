@@ -9,7 +9,9 @@ import { retrieveSources } from "@/lib/wiki-retrieve";
  * Body: { message: string, includeRaw?: boolean }
  *
  * Same Bedrock Retrieve as `/api/wiki/chat`, without the Claude answer.
- * Returns `{ sources: [{ n, key, score, text }] }` so a client can see
+ * Default filter matches MCP `search_knowledge` (raw source docs including
+ * GitHub-synced documentation; wiki overlay and source-code files excluded). Returns
+ * `{ sources: [{ n, key, score, text }] }` so a client can see
  * which S3 keys the vector index currently ranks for a query.
  */
 export async function POST(request: NextRequest) {

@@ -70,7 +70,7 @@ export function packStack(repoRoot, dest) {
   copyRel("amplify.yml", repoRoot, dest);
   copyRel("package.json", repoRoot, dest);
   copyRel("package-lock.json", repoRoot, dest);
-  for (const file of ["Dockerfile", "requirements.txt", "server.py"]) {
+  for (const file of ["Dockerfile", "requirements.txt", "server.py", "search_filter.py"]) {
     copyRel(file, repoRoot, dest);
   }
 }
