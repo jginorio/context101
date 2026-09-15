@@ -55,3 +55,7 @@ AWS_PROFILE="plateapr.com"
 # SES_REGION="us-east-1"
 # SES_FROM_EMAIL="Context101 <no-reply@your-domain.com>"
 # SES_REPLY_TO_EMAIL="support@your-domain.com"
+#
+# Magic-link sign-in reuses SES_* + APP_URL / BETTER_AUTH_URL (no extra
+# secrets). Optional Better Auth origin allow-list if a browser Origin is sent:
+# BETTER_AUTH_TRUSTED_ORIGINS="https://app.example.com"

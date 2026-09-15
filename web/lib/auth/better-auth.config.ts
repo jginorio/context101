@@ -1,6 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
-import { organization } from "better-auth/plugins";
+import { magicLink, organization } from "better-auth/plugins";
 
 import { db } from "@/lib/db/client";
 import * as authSchema from "@/lib/db/auth-schema";
@@ -22,6 +22,9 @@ export const auth = betterAuth({
   plugins: [
     organization({
       creatorRole: "admin",
+    }),
+    magicLink({
+      sendMagicLink: async () => {},
     }),
   ],
 });

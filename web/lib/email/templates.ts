@@ -103,6 +103,37 @@ export function welcomeEmail({
   };
 }
 
+export function magicLinkEmail({
+  magicUrl,
+}: {
+  magicUrl: string;
+}): EmailContent {
+  const subject = `Sign in to ${APP_NAME}`;
+
+  return {
+    subject,
+    html: layout({
+      title: subject,
+      preview: `Use this link to sign in to ${APP_NAME}.`,
+      body: `
+        <h1 style="margin:0 0 16px;color:#211822;font-size:24px;line-height:1.25;">Sign in to ${APP_NAME}</h1>
+        ${paragraph("Use the link below to sign in. It expires in one hour.")}
+        <p style="margin:24px 0;">${button("Sign in", magicUrl)}</p>
+        ${paragraph("If you did not request this, you can ignore this email.")}
+      `,
+    }),
+    text: [
+      `Sign in to ${APP_NAME}`,
+      "",
+      "Use the link below to sign in. It expires in one hour.",
+      "",
+      magicUrl,
+      "",
+      "If you did not request this, you can ignore this email.",
+    ].join("\n"),
+  };
+}
+
 export function resetPasswordEmail({
   resetUrl,
 }: {

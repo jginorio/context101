@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "test": "tsx --test $(find lib utils -name '*.test.ts')"
   },
   "dependencies": {
     "@ark-ui/react": "^5.39.2",
