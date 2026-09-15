@@ -16,7 +16,7 @@ import { brainSwitcherCopy } from "@/lib/brain-not-found";
 
 /**
  * Fills the otherwise-empty sidebar space on pages that don't supply a context
- * panel (Brains, Sources, Suggestions, Ask). Gives the user at-a-glance
+ * panel (Brains, Sources, Suggestions). Gives the user at-a-glance
  * orientation for the active brain — name, status, embedding model, a short
  * description — plus the most common cross-brain actions.
  */

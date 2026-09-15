@@ -45,6 +45,17 @@ const nextConfig: NextConfig = {
     "@better-auth/drizzle-adapter",
     "drizzle-orm",
   ],
+  // Isolated wiki restore: /wiki is live. Conflicts stay parked.
+  async redirects() {
+    return [
+      { source: "/conflicts", destination: "/knowledge", permanent: false },
+      {
+        source: "/conflicts/:path*",
+        destination: "/knowledge",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

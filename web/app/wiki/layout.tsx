@@ -9,9 +9,7 @@ async function OrgGate({ children }: { children: React.ReactNode }) {
 }
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  // Sync layout renders the boundary immediately; the async auth gate sits
-  // INSIDE it, so navigation shows the skeleton instantly while
-  // requireActiveOrg() resolves on the server (instead of a blank stall).
+  // Isolated wiki restore: /wiki is reachable. Conflicts stay redirected.
   return (
     <React.Suspense fallback={<AppShellSkeleton />}>
       <OrgGate>{children}</OrgGate>
