@@ -16,3 +16,5 @@ on top of the sources+retrieve strip so wiki can be tested alone.
 - Conflicts stay parked (no Opus judge)
 
 See `WIKI_PARKED.md` on main (`cursor/strip-wiki-conflicts-de63` / PR #78).
+
+<!-- bump: clear stale Vercel commit status after public project deleted -->
