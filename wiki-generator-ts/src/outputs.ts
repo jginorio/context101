@@ -55,8 +55,8 @@ async function deleteKeys(keys: string[]): Promise<void> {
 
 // Keep the sidecar tiny: Bedrock S3 Vectors ignores a metadata sidecar
 // entirely if it exceeds 1024 bytes, which would silently strip `source`.
-// search_knowledge excludes source=code-wiki (and source=github) via notIn,
-// so a stripped sidecar would leak code-wiki pages into team search results.
+// search_knowledge excludes source=wiki / code-wiki / github via notIn and
+// also drops any hit whose S3 key starts with wiki/ (covers a stripped sidecar).
 function buildWikiSidecar(slug: string, startedAt: string): object {
   const sourceTag = WIKI_MODE === "code" ? "code-wiki" : "wiki";
   const attrs: Record<string, string> = {

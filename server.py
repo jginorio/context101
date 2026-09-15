@@ -47,6 +47,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Mount
 
+from search_filter import (
+    clamp_search_limit,
+    filter_search_results,
+    search_retrieve_count,
+    search_source_filter,
+    source_key_from_retrieval,
+)
+
 # ── Config ────────────────────────────────────────────────────────────
 
 AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
@@ -278,23 +286,23 @@ mcp = FastMCP(
 
 Retrieval is raw-first:
 
-  • search_knowledge searches the whole brain — raw source docs (manual
-    uploads, Notion/Google/suggestion content) plus the synthesized wiki
-    overview pages. Raw chunks are always as fresh as the last connector
-    sync; wiki chunks add cross-source overviews. Synced code files and
-    per-repo code wikis are excluded so they don't dominate results by
-    sheer volume — reach those via read_knowledge.
+  • search_knowledge searches raw source docs only — manual uploads,
+    Notion/Google/suggestion content, and other ingested source files.
+    Synthesized wiki overview pages (wiki/**, source=wiki) are excluded.
+    Synced code files and per-repo code wikis are also excluded so they
+    don't dominate results by sheer volume. Reach wiki or code via
+    read_knowledge if you already have the S3 key.
 
-  • read_knowledge can fetch any document by its S3 key — including code
-    sources and code-wiki pages excluded from search. Use it when a chunk
-    cites a file and you need the full ground-truth content.
+  • read_knowledge can fetch any document by its S3 key — including wiki
+    overview pages and code sources excluded from search. Use it when a
+    chunk cites a file and you need the full ground-truth content.
 
 Workflow:
   1. Call search_knowledge with a natural-language question. You get ranked
      chunks with their document's S3 key and a relevance score.
-  2. If a chunk references another file (e.g. a wiki page's `Sources:
-     [file]()` footnote) and you need the full detail, call
-     read_knowledge(s3_key) on it.
+  2. If a chunk references another file and you need the full detail, call
+     read_knowledge(s3_key) on it. Wiki/code keys are readable this way
+     even though search will not return them.
   3. Use list_sources if you just want to enumerate what's in the bucket.
   4. If you discover something worth preserving (a missing fact, an
      inaccuracy, a better explanation), call suggest_knowledge. The
@@ -303,7 +311,7 @@ Workflow:
      as soon as they're ingested (~1 min).
 
 Available tools:
-- search_knowledge(query, limit=5): semantic search over the brain (raw docs + wiki pages; code excluded)
+- search_knowledge(query, limit=5): semantic search over raw source docs only (wiki overview pages and code excluded)
 - read_knowledge(s3_key): full content of any document (raw, wiki, or code)
 - list_sources(): list all documents in the S3 bucket
 - suggest_knowledge(title, content, target_path?, rationale?, trigger?):
@@ -320,13 +328,7 @@ Available tools:
 
 def _source_key_from_retrieval(result: dict[str, Any]) -> str:
     """Extract the S3 object key from a Retrieve result."""
-    loc = result.get("location", {})
-    s3_loc = loc.get("s3Location") or {}
-    uri = s3_loc.get("uri", "")
-    if uri.startswith("s3://"):
-        without_scheme = uri[5:]
-        return without_scheme.split("/", 1)[1] if "/" in without_scheme else without_scheme
-    return uri
+    return source_key_from_retrieval(result)
 
 
 def _report_conflict_evidence(
@@ -378,16 +380,15 @@ def _report_conflict_evidence(
 
 @mcp.tool()
 def search_knowledge(query: str, limit: int = 5) -> str:
-    """Semantic search across the active brain — raw docs and wiki pages.
+    """Semantic search across the active brain — raw source docs only.
 
-    Retrieval is raw-first: it covers everything in the brain's vector
-    index — manually uploaded docs, connector-synced content (Notion,
-    Google Docs/Sheets/Slides), approved suggestions, and the synthesized
-    wiki overview pages — so results are as fresh as the last ingest, not
-    the last wiki regeneration. Only code is excluded (`source=github` raw
-    repo files and `source=code-wiki` per-repo wiki pages), because those
-    outnumber everything else and would crowd out team knowledge; reach
-    them via read_knowledge.
+    Retrieval is raw-first: it covers manually uploaded docs, connector-synced
+    content (Notion, Google Docs/Sheets/Slides), and approved suggestions, as
+    fresh as the last ingest. Synthesized wiki overview pages are excluded
+    (`source=wiki` and any S3 key under `wiki/`, including `wiki/code/`).
+    Code is also excluded (`source=github` raw repo files and
+    `source=code-wiki` per-repo wiki pages). Reach wiki or code via
+    read_knowledge if you have the key.
 
     Args:
         query: Natural-language question, e.g. "how do I find active listings in Amplia"
@@ -397,25 +398,26 @@ def search_knowledge(query: str, limit: int = 5) -> str:
         Markdown-formatted list of chunks with source + score + text.
     """
     brain = _brain()
-    limit = max(1, min(limit, 20))
+    limit = clamp_search_limit(limit)
 
     resp = bedrock_runtime.retrieve(
         knowledgeBaseId=brain["kb_id"],
         retrievalQuery={"text": query},
         retrievalConfiguration={
             "vectorSearchConfiguration": {
-                "numberOfResults": limit,
+                # Over-fetch so dropping wiki/ keys can still fill `limit`.
+                "numberOfResults": search_retrieve_count(limit),
                 # notIn also matches documents with no `source` attribute at
                 # all (manual uploads have no .metadata.json sidecar), so this
-                # is "everything except code" rather than an allowlist.
-                "filter": {
-                    "notIn": {"key": "source", "value": ["github", "code-wiki"]}
-                },
+                # cannot be an allowlist. Wiki pages are tagged source=wiki;
+                # we still post-filter wiki/ keys below in case a sidecar is
+                # missing or stripped.
+                "filter": search_source_filter(),
             }
         },
     )
 
-    results = resp.get("retrievalResults", [])
+    results = filter_search_results(resp.get("retrievalResults", []), limit)
     if not results:
         return f'No results for "{query}" in brain `{brain["brain_id"]}`.'
 
@@ -443,10 +445,10 @@ def read_knowledge(s3_key: str) -> str:
     """Read the full content of any document in the active brain's bucket.
 
     This is the escape hatch to full ground-truth content. search_knowledge
-    returns chunks, which may cut off mid-document, and excludes code sources
-    entirely. Use this to pull a complete document: a raw doc a chunk came
-    from, a source a wiki page cites (inline via `Sources: [file]()`), or the
-    code files search doesn't cover (`sources/github/…`, `wiki/code/…`).
+    returns chunks, which may cut off mid-document, and excludes wiki overview
+    pages and code sources. Use this to pull a complete document: a raw doc a
+    chunk came from, a wiki page by key (`wiki/overview.md`), or the code
+    files search doesn't cover (`sources/github/…`, `wiki/code/…`).
 
     Works on any key — raw docs (e.g. "domain-knowledge/amplia.md"), wiki
     pages (e.g. "wiki/overview.md"), or code sources.

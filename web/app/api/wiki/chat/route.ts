@@ -34,8 +34,9 @@ RULES
  * Body: { message: string, history?: {role,text}[], includeRaw?: boolean }
  *
  * A retrieval playground for the active brain: runs a Bedrock KB Retrieve
- * (raw-first like the MCP `search_knowledge` tool — everything except code
- * sources; includeRaw lifts that filter so code chunks show too), then
+ * (raw-first like the MCP `search_knowledge` tool — raw source docs only;
+ * wiki overview pages and code are excluded; includeRaw lifts that filter
+ * so wiki/code chunks show too), then
  * streams a grounded Claude answer. Responds as NDJSON so the client can
  * render the retrieved chunks (with scores + source keys) and the streamed
  * answer together:
@@ -75,9 +76,9 @@ export async function POST(request: NextRequest) {
     : [];
 
   // 1. Retrieve from the brain's KB — mirror the MCP tool's raw-first filter:
-  // everything except code (synced repo files + per-repo code wikis). notIn
-  // also matches docs with no `source` attribute (manual uploads have no
-  // sidecar). includeRaw lifts the filter entirely so code chunks show too.
+  // raw source docs only (wiki overview pages + synced repo files + per-repo
+  // code wikis excluded). notIn also matches docs with no `source` attribute
+  // (manual uploads have no sidecar). includeRaw lifts the filter entirely.
   let sources: Source[] = [];
   try {
     const auth = await readAuthContext(request);

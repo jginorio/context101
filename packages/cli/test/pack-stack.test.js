@@ -42,6 +42,7 @@ async function makePackFixture() {
   write("Dockerfile", "FROM scratch\n", repoRoot);
   write("requirements.txt", "fastapi\n", repoRoot);
   write("server.py", "print('ok')\n", repoRoot);
+  write("search_filter.py", "SEARCH_EXCLUDED_SOURCES = []\n", repoRoot);
   return repoRoot;
 }
 
@@ -82,6 +83,8 @@ test("packStack on a monorepo fixture writes stack/packages/cli without nesting 
   assert.equal(existsSync(path.join(dest, "amplify.yml")), true);
   assert.equal(existsSync(path.join(dest, "package-lock.json")), true);
   assert.equal(existsSync(path.join(dest, "packages", "cli", "bin", "context101.js")), true);
+  assert.equal(existsSync(path.join(dest, "search_filter.py")), true);
+  assert.equal(existsSync(path.join(dest, "server.py")), true);
 
   assert.equal(existsSync(path.join(dest, "packages", "cli", "stack")), false);
   assert.equal(existsSync(path.join(dest, "stack")), false);
