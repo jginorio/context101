@@ -51,3 +51,17 @@ test("filterSearchHits drops wiki/ keys and still fills limit", () => {
   assert.ok(kept.every((h) => !h.key.startsWith("wiki/")));
   assert.ok(searchRetrieveCount(6) > 6);
 });
+
+test("filterSearchHits drops source=wiki even without a wiki/ key", () => {
+  const kept = filterSearchHits(
+    [
+      { key: "legacy-overview.md", source: "wiki" },
+      { key: "ga4-events.md", source: null },
+    ],
+    5
+  );
+  assert.deepEqual(
+    kept.map((h) => h.key),
+    ["ga4-events.md"]
+  );
+});

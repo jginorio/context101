@@ -60,17 +60,26 @@ export function searchRetrieveCount(limit: number): number {
   return Math.min(BEDROCK_MAX_RESULTS, Math.max(capped * 3, capped + 5));
 }
 
-export function filterSearchHits<T extends { key: string }>(
+export function filterSearchHits<T extends { key: string; source?: string | null }>(
   hits: T[],
   limit: number
 ): T[] {
   const kept: T[] = [];
   for (const hit of hits) {
-    if (shouldExcludeFromSearch(hit.key)) continue;
+    if (shouldExcludeFromSearch(hit.key, hit.source)) continue;
     kept.push(hit);
     if (kept.length >= limit) break;
   }
   return kept;
+}
+
+function metadataSource(
+  meta: Record<string, unknown> | undefined
+): string | null {
+  const value = meta?.source;
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && typeof value[0] === "string") return value[0];
+  return null;
 }
 
 /**
@@ -107,13 +116,19 @@ export async function retrieveSources(opts: {
   );
   const mapped = (ret.retrievalResults ?? []).map((r) => ({
     key: keyFromUri(r.location?.s3Location?.uri),
+    source: metadataSource(r.metadata as Record<string, unknown> | undefined),
     score: r.score ?? null,
     text: (r.content?.text ?? "").trim(),
   }));
   const filtered = opts.includeRaw
     ? mapped.slice(0, limit)
     : filterSearchHits(mapped, limit);
-  const hits = filtered.map((h, i) => ({ n: i + 1, ...h }));
+  const hits = filtered.map((h, i) => ({
+    n: i + 1,
+    key: h.key,
+    score: h.score,
+    text: h.text,
+  }));
   if (opts.conflictScope) {
     void import("@/lib/conflicts")
       .then(({ reportEvidence }) =>

@@ -51,6 +51,9 @@ class ShouldExcludeFromSearch(unittest.TestCase):
             should_exclude_from_search("connectors/notion/events.md", "notion")
         )
 
+    def test_tagged_wiki_without_prefix_still_excluded(self) -> None:
+        self.assertTrue(should_exclude_from_search("legacy-overview.md", "wiki"))
+
 
 class SearchSourceFilter(unittest.TestCase):
     def test_notin_includes_wiki_not_allowlist(self) -> None:
