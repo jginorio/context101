@@ -2,6 +2,8 @@ import type { NextConfig } from "next";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { WIKI_UI_ENABLED } from "./lib/wiki-ui";
+
 const appRoot = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.join(appRoot, "..");
 
@@ -45,6 +47,15 @@ const nextConfig: NextConfig = {
     "@better-auth/drizzle-adapter",
     "drizzle-orm",
   ],
+  // HTTP-level hide while wiki UI is off. Layout also redirects as a
+  // backstop; flip WIKI_UI_ENABLED to restore /wiki without hunting.
+  async redirects() {
+    if (WIKI_UI_ENABLED) return [];
+    return [
+      { source: "/wiki", destination: "/knowledge", permanent: false },
+      { source: "/wiki/:path*", destination: "/knowledge", permanent: false },
+    ];
+  },
 };
 
 export default nextConfig;
