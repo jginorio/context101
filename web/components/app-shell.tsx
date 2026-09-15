@@ -38,15 +38,21 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { BRAIN_ACCENT_RGB } from "@/lib/brain-accent";
+import { visibleAppNavItems } from "@/lib/wiki-ui";
 
-const NAV_ITEMS = [
-  { href: "/knowledge", label: "Knowledge", icon: FolderTree },
-  { href: "/wiki", label: "Wiki", icon: BookOpen },
-  { href: "/suggestions", label: "Suggestions", icon: Sparkles },
-  { href: "/conflicts", label: "Conflicts", icon: GitCompare },
-  { href: "/sources", label: "Sources", icon: Plug },
-  { href: "/brains", label: "Brains", icon: Brain },
-];
+const NAV_ICONS = {
+  "/knowledge": FolderTree,
+  "/wiki": BookOpen,
+  "/suggestions": Sparkles,
+  "/conflicts": GitCompare,
+  "/sources": Plug,
+  "/brains": Brain,
+} as const;
+
+const NAV_ITEMS = visibleAppNavItems().map((item) => ({
+  ...item,
+  icon: NAV_ICONS[item.href as keyof typeof NAV_ICONS],
+}));
 
 // Lets sidebar content (file tree, wiki nav) close the mobile sheet when the
 // user navigates or selects something. A no-op on desktop. Pass `after` to

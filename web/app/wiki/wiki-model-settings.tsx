@@ -1,5 +1,13 @@
 "use client";
 
+/**
+ * Wiki generation model + BYO API keys.
+ *
+ * Lives under `web/app/wiki/` (rendered at `/wiki/settings`) so it stays
+ * with the wiki surface instead of Settings → Advanced. The `/wiki` layout
+ * gates the page with `WIKI_UI_ENABLED`.
+ */
+
 import * as React from "react";
 import { ExternalLink, HelpCircle, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
