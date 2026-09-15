@@ -19,3 +19,5 @@ conflicts can be tested alone.
 - `AUTO_TRIGGER_CODE_WIKI` stays `false`
 
 See PR #78 (`cursor/strip-wiki-conflicts-de63`) for the shipping strip.
+
+<!-- bump: clear stale Vercel commit status after public project deleted -->
