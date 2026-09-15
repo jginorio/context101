@@ -1,10 +1,10 @@
 import { Inter, JetBrains_Mono, Space_Grotesk } from "next/font/google";
 
 /**
- * Shared font configuration for every Context101 app. Import the instances and
- * spread `fontVariables` onto <html> so the CSS vars (--font-body /
+ * Font configuration for the Context101 admin (`web/`). Import the instances
+ * and spread `fontVariables` onto <html> so the CSS vars (--font-body /
  * --font-display / --font-mono-code) resolve. tokens.css wires those vars to
- * body / headings / mono. Defined once here so the apps never drift.
+ * body / headings / mono.
  */
 export const bodyFont = Inter({
   variable: "--font-body",
