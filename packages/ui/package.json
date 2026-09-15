@@ -4,20 +4,12 @@
   "private": true,
   "type": "module",
   "exports": {
-    "./cn": "./src/cn.ts",
-    "./fonts": "./src/fonts.ts",
-    "./*": "./src/*.tsx"
+    "./fonts": "./src/fonts.ts"
   },
   "peerDependencies": {
     "next": "^16",
     "react": "^19",
     "react-dom": "^19"
-  },
-  "dependencies": {
-    "clsx": "^2.1.1",
-    "tailwind-merge": "^3.7.0",
-    "motion": "^12.43.0",
-    "lucide-react": "^1.45.0"
   },
   "devDependencies": {
     "@types/react": "^19",

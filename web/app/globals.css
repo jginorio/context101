@@ -77,7 +77,7 @@
   }
 }
 
-/* Unified dark theme — "Synaptic Dark", shared with site/ via @context101/design.
+/* Unified dark theme — "Synaptic Dark", via @context101/design.
    Brand + surface primitives (--brain*, --bg, --fg, --card, --line, --muted-bg, …)
    come from tokens.css; this maps the shadcn contract onto them. Dark-only, so
    :root IS the dark palette (no separate .dark block; the .dark class is forced on
