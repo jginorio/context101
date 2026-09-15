@@ -4,6 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BookOpen,
   Brain,
   Building2,
   ChevronUp,
@@ -40,6 +41,7 @@ import { APP_NAV_ITEMS } from "@/lib/app-nav";
 
 const NAV_ICONS = {
   "/knowledge": FolderTree,
+  "/wiki": BookOpen,
   "/suggestions": Sparkles,
   "/sources": Plug,
   "/brains": Brain,

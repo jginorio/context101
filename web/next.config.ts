@@ -45,12 +45,9 @@ const nextConfig: NextConfig = {
     "@better-auth/drizzle-adapter",
     "drizzle-orm",
   ],
-  // Wiki and Conflicts are parked — not on the shipping chrome.
-  // Isolated restore branches remove these redirects.
+  // Isolated wiki restore: /wiki is live. Conflicts stay parked.
   async redirects() {
     return [
-      { source: "/wiki", destination: "/knowledge", permanent: false },
-      { source: "/wiki/:path*", destination: "/knowledge", permanent: false },
       { source: "/conflicts", destination: "/knowledge", permanent: false },
       {
         source: "/conflicts/:path*",
