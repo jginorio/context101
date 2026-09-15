@@ -66,6 +66,8 @@ test("help init names the flags that --yes needs", () => {
   assert.match(text, /No continues the wizard \(same secrets\)/);
   assert.match(text, /--force starts over \(new secrets\)/);
   assert.match(text, /context101 update <space>/);
+  assert.match(text, /No name: TTY asks/);
+  assert.match(text, /non-TTY needs a name/);
 });
 
 test("rejects unknown command and flag", () => {
@@ -367,6 +369,7 @@ test("npm README is on-brand and warns about the Context7 name collision", async
   assert.match(text, /Context7/);
   assert.match(text, /https:\/\/github.com\/jginorio\/context101/);
   assert.match(text, /spaces\/<name>/);
+  assert.match(text, /nameless `init` prompts/);
   assert.match(text, /\.cache\/context101/);
   assert.match(text, /update platea/);
   assert.match(text, /--verbose/);

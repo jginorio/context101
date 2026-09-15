@@ -309,7 +309,7 @@ test("existing env + non-TTY fails immediately", async () => {
   let askedResume = false;
   let askedDeploy = false;
 
-  const code = await main(["init"], {
+  const code = await main(["init", "default"], {
     cwd: root,
     env: testEnv(),
     stdout: io.stdout,

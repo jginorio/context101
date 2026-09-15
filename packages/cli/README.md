@@ -27,7 +27,7 @@ npx -y context101-cli@0.1.21 <cmd>
 
 | Command | What it does |
 | --- | --- |
-| `context101 init [space]` | name a space and write its deploy-env; TTY asks to deploy |
+| `context101 init [space]` | name a space and write its deploy-env; nameless `init` prompts, then TTY asks to deploy |
 | `context101 update [space]` | update that space from this CLI version |
 | `context101 deploy [space]` | same as update |
 | `context101 list` | list spaces |
@@ -42,7 +42,7 @@ npx -y context101-cli@0.1.21 <cmd>
 
 Deploy is quiet on a TTY (`deploying…`). `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose.
 
-Spaces live in `~/.context101/spaces/<name>/`. Each has its own AWS profile, region, secrets, and CloudFormation stack name. An existing `cdk/.deploy-env` or `~/.context101/deploy-env` is the `default` space.
+Spaces live in `~/.context101/spaces/<name>/`. Each has its own AWS profile, region, secrets, and CloudFormation stack name. `context101 init acme` uses the space name you choose (`acme` is an example); nameless `init` prompts. An existing `cdk/.deploy-env` or `~/.context101/deploy-env` is the `default` space.
 
 The next day: pin the new CLI (`context101` offers a pin-install, or `npm i -g context101-cli@0.1.21`), then `context101 update` / `context101 update platea`. The stack source is this CLI version — packaged stack copied to `~/.cache/context101/<version>/`, CDK `--output` beside it — not a git pull of your clone. Admin is Amplify SSR from a CodeCommit repo in the stack (no GitHub PAT). `--dry-run` is preview only.
 

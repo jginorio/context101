@@ -5,6 +5,50 @@ import {
 } from "./defaults.js";
 import { inferDriver, inferPrepare } from "./env-file.js";
 import { normalizeRepoUrl } from "./repo.js";
+import { DEFAULT_SPACE, parseSpaceName } from "./spaces.js";
+
+export function spaceNameHelpLines() {
+  return [
+    "name of this stack/space. files live at ~/.context101/spaces/<name>/",
+    "later: context101 update <name>, urls <name>, destroy <name>",
+    "lowercase letters, numbers, hyphens; start with a letter",
+  ];
+}
+
+export function spaceNamePromptMessage() {
+  return "space name";
+}
+
+export function spaceNamePromptOptions() {
+  return {
+    message: spaceNamePromptMessage(),
+    help: spaceNameHelpLines().join("\n"),
+    default: "",
+  };
+}
+
+export function usingDefaultSpaceLine(name = DEFAULT_SPACE) {
+  return `using space ${name} — ~/.context101/spaces/${name}/`;
+}
+
+export function initSpaceNameRequiredMessage() {
+  return "init needs a space name (context101 init acme) or a TTY to ask";
+}
+
+export async function promptSpaceName() {
+  const { input } = await import("@inquirer/prompts");
+  return input({
+    message: spaceNamePromptMessage(),
+    validate: (value) => {
+      try {
+        parseSpaceName(value);
+        return true;
+      } catch (error) {
+        return error.message;
+      }
+    },
+  });
+}
 
 export function existingEnvContinueMessage() {
   return "Continue with these values?";
