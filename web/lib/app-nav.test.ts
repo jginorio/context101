@@ -11,12 +11,10 @@ test("shipping nav is Knowledge / Suggestions / Sources / Brains", () => {
 });
 
 test("shipping nav has no Wiki or Conflicts", () => {
-  const labels = APP_NAV_ITEMS.map((item) => item.label);
-  const hrefs = APP_NAV_ITEMS.map((item) => item.href);
+  const labels: string[] = APP_NAV_ITEMS.map((item) => item.label);
+  const hrefs: string[] = APP_NAV_ITEMS.map((item) => item.href);
   assert.equal(labels.includes("Wiki"), false);
   assert.equal(labels.includes("Conflicts"), false);
-  assert.equal(hrefs.includes("/wiki" as AppNavHref), false);
-  assert.equal(hrefs.includes("/conflicts" as AppNavHref), false);
+  assert.equal(hrefs.includes("/wiki"), false);
+  assert.equal(hrefs.includes("/conflicts"), false);
 });
-
-type AppNavHref = (typeof APP_NAV_ITEMS)[number]["href"];
