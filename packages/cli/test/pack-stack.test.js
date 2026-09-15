@@ -24,7 +24,7 @@ async function makePackFixture() {
   write("packages/ui/package.json", '{"name":"@context101/ui"}\n', repoRoot);
   write(
     "packages/cli/package.json",
-    '{"name":"context101-cli","version":"0.1.21"}\n',
+    '{"name":"context101-cli","version":"0.1.22"}\n',
     repoRoot
   );
   write("packages/cli/bin/context101.js", "#!/usr/bin/env node\n", repoRoot);
@@ -55,7 +55,7 @@ test("copyRel packages/cli into dest under itself does not EINVAL or nest stack/
   assert.equal(existsSync(packedPkg), true);
   const pkg = JSON.parse(await readFile(packedPkg, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.21");
+  assert.equal(pkg.version, "0.1.22");
   assert.equal(existsSync(path.join(dest, "packages", "cli", "bin", "context101.js")), true);
   assert.equal(existsSync(path.join(dest, "packages", "cli", "src", "main.js")), true);
   assert.equal(existsSync(path.join(dest, "packages", "cli", "scripts", "pack-stack.js")), true);

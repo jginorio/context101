@@ -11,7 +11,7 @@ Alpha / trusted-team only. Not a wiki app. Retrieval is raw-first.
 ## context101
 
 ```bash
-npm i -g context101-cli@0.1.21
+npm i -g context101-cli@0.1.22
 ```
 
 Package `context101-cli`, bin `context101`. Pin the version — `@latest` is a no-op on some machines. Unscoped `npx context101` is Context7's MCP, unrelated.
@@ -24,7 +24,7 @@ context101 urls acme
 context101 destroy acme --dry-run
 ```
 
-`init [space]` writes `~/.context101/spaces/<name>/`. `update` (`deploy`), `destroy`, `list`, and `urls` are space-aware. An existing `cdk/.deploy-env` is the `default` space.
+`acme` is the space name you choose, not a required token. Nameless `init` prompts. `init [space]` writes `~/.context101/spaces/<name>/`. `update` (`deploy`), `destroy`, `list`, and `urls` are space-aware. An existing `cdk/.deploy-env` is the `default` space.
 
 Default deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose. A successful deploy prints `✓ deployed <stack>` then the same public URL block as `urls`.
 

@@ -1,4 +1,5 @@
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import path from "node:path";
 import {
   ALLOW_PUBLIC_SIGNUP,
@@ -32,6 +33,13 @@ import { ensureCheckoutDeps } from "./checkout-deps.js";
 import { startDeploy } from "./deploy.js";
 import { createExec } from "./exec.js";
 import { formatDryRun, nextSteps } from "./plan.js";
+import {
+  initSpaceNameRequiredMessage,
+  promptSpaceName,
+  spaceNameHelpLines,
+  spaceNamePromptOptions,
+  usingDefaultSpaceLine,
+} from "./prompt.js";
 import { findRepoRoot, normalizeRepoUrl } from "./repo.js";
 import { generateCtxToken, generateSecret } from "./secrets.js";
 import {
@@ -48,7 +56,6 @@ import {
 import { ensureStackRoot, resolveStackRoot, resolveStackSource } from "./stack-source.js";
 import { writers } from "./style.js";
 import { listAwsProfiles, resolveAwsAuth } from "./aws-profiles.js";
-import { homedir } from "node:os";
 
 export async function runInit(opts, ctx) {
   const io = writers(ctx);
@@ -556,24 +563,21 @@ async function finishAfterEnv({
 
 async function resolveInitSpaceName(opts, ctx, { tty, io }) {
   if (opts.space) return parseSpaceName(opts.space);
-  if (opts.yes || opts.dryRun) return DEFAULT_SPACE;
-  if (!tty) return DEFAULT_SPACE;
-  if (typeof ctx.promptSpace === "function") {
-    return parseSpaceName(await ctx.promptSpace(DEFAULT_SPACE));
+  if (opts.yes || opts.dryRun) {
+    io.write(usingDefaultSpaceLine());
+    return DEFAULT_SPACE;
   }
-  const { input } = await import("@inquirer/prompts");
-  const name = await input({
-    message: "Space name",
-    default: DEFAULT_SPACE,
-    validate: (value) => {
-      try {
-        parseSpaceName(value);
-        return true;
-      } catch (error) {
-        return error.message;
-      }
-    },
-  });
+  if (!tty) {
+    const err = new Error(initSpaceNameRequiredMessage());
+    err.code = "USAGE";
+    throw err;
+  }
+  for (const line of spaceNameHelpLines()) io.write(line);
+  io.write("");
+  if (typeof ctx.promptSpace === "function") {
+    return parseSpaceName(await ctx.promptSpace(spaceNamePromptOptions()));
+  }
+  const name = await promptSpaceName();
   io.write("");
   return parseSpaceName(name);
 }
