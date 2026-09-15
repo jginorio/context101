@@ -4,11 +4,11 @@
 
 product
 
-> This repo has three design surfaces. The default register above is **product** (the `web/` admin). **brand** is the `site/` landing — when working on `site/` or any landing/campaign/long-form page, treat the task as `brand` and read `reference/brand.md` instead of `reference/product.md`. **cli** is `packages/cli` (bin `context101`) — operate-in-a-terminal; louder than `web/`, still an instrument.
+> This repo ships two design surfaces. The default register above is **product** (the `web/` admin). **cli** is `packages/cli` (bin `context101`) — operate-in-a-terminal; louder than `web/`, still an instrument. Brand/marketing is not in this repo.
 
 ## Users
 
-Engineers and ops on trusted teams. Two hands-on surfaces: `web/` admin (brains, connectors, suggestions, MCP tokens) and `context101-cli` (the only front door for AWS: init, deploy, list, destroy, config, help). The brand site (`site/`) is evaluate-to-adopt.
+Engineers and ops on trusted teams. Two hands-on surfaces: `web/` admin (brains, connectors, suggestions, MCP tokens) and `context101-cli` (the only front door for AWS: init, deploy, list, destroy, config, help).
 
 ## Product Purpose
 
@@ -36,9 +36,9 @@ Bold and distinctive. Opinionated infrastructure with a memorable identity — t
 1. **Isolation made legible.** Each brain is a sealed unit; the UI should make that boundary obvious and reassuring, never blur brains together.
 2. **Control without clutter.** Admins want levers, not a maze. Expose configuration progressively; default to the calm state and reveal depth on demand.
 3. **Trustworthy feedback.** This tool provisions real cloud infrastructure and ingests real data. Every action's state — pending, ingesting, ready, failed — must be honest and visible. No silent failures, no fake progress.
-4. **One identity, three registers.** Site shouts (brand, drenched dark). `web/` is quiet admin (product, light-default). CLI is louder than web — the mark and accent lead — but still an instrument, not a landing page. Shared accent: `#b855c9` / `#8b5cf6`. Hero line for brand + CLI: `your context. every agent.`
+4. **One identity, two registers here.** `web/` is quiet admin (product, light-default). CLI is louder than web — the mark and accent lead — but still an instrument, not a landing page. Shared accent: `#b855c9` / `#8b5cf6`. Hero line for CLI: `your context. every agent.`
 5. **Talk to engineers as peers.** Precise, direct copy. Name things what they are (brain, connector, MCP token). No marketing fluff, no dumbing down.
 
 ## Accessibility & Inclusion
 
-Light-touch for the alpha. No formal WCAG target, but hold the non-negotiables: body text stays legible against the dark background (don't let muted purples drop below readable contrast), interactive elements are keyboard-reachable, and motion respects `prefers-reduced-motion` (already wired in `site/globals.css`). CLI color is TTY-only and respects `NO_COLOR`. Revisit a formal AA pass before any external/multi-tenant launch.
+Light-touch for the alpha. No formal WCAG target, but hold the non-negotiables: body text stays legible, interactive elements are keyboard-reachable, and motion respects `prefers-reduced-motion`. CLI color is TTY-only and respects `NO_COLOR`. Revisit a formal AA pass before any external/multi-tenant launch.

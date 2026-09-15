@@ -12,7 +12,6 @@ export const ADMIN_SOURCE_RELS = [
   "package.json",
   "package-lock.json",
   "web",
-  "site",
   "packages/design",
   "packages/ui",
   "packages/cli",

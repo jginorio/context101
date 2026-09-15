@@ -2,7 +2,7 @@ import * as React from "react";
 
 // Monochrome brand marks for connector sources (Simple Icons path data),
 // rendered with currentColor so they inherit the surrounding text color.
-// Mirrors the marks used on the marketing site (site/components/stack-logos).
+// Mirrors the marks used on the marketing site.
 
 type LogoProps = { className?: string };
 

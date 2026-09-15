@@ -5,7 +5,7 @@ applications:
       phases:
         preBuild:
           commands:
-            # Monorepo: site/web/packages are npm workspaces with a single root
+            # Monorepo: web/packages are npm workspaces with a single root
             # lockfile, so deps install from the repo root (web/ has no lockfile
             # of its own). cwd persists across Amplify phases, so cd back into
             # web/ at the end — the build phase below runs there.

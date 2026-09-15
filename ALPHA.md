@@ -35,3 +35,5 @@ Context101 is alpha software. It started as an internal proof of concept and is 
 - App Runner is used by the current MCP service path; future versions may migrate to ECS Express Mode or ECS Fargate.
 
 If you are evaluating Context101, start with one test brain and non-sensitive data. Treat the current release as a working alpha, not a hardened platform.
+
+Later hosted (not shipped) is the same product on our AWS: one stack, paying customers as Better Auth organizations — not a space per customer.

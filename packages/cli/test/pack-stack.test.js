@@ -20,7 +20,6 @@ async function makePackFixture() {
   write("knowledge/.keep", "", repoRoot);
   write("web/package.json", '{"name":"web"}\n', repoRoot);
   write("web/.next/cache", "skip-me\n", repoRoot);
-  write("site/package.json", '{"name":"site"}\n', repoRoot);
   write("packages/design/package.json", '{"name":"@context101/design"}\n', repoRoot);
   write("packages/ui/package.json", '{"name":"@context101/ui"}\n', repoRoot);
   write(
@@ -80,6 +79,7 @@ test("packStack on a monorepo fixture writes stack/packages/cli without nesting 
   assert.equal(pkg.name, "context101-cli");
   assert.equal(existsSync(path.join(dest, "cdk", "package-lock.json")), true);
   assert.equal(existsSync(path.join(dest, "web", "package.json")), true);
+  assert.equal(existsSync(path.join(dest, "site")), false);
   assert.equal(existsSync(path.join(dest, "amplify.yml")), true);
   assert.equal(existsSync(path.join(dest, "package-lock.json")), true);
   assert.equal(existsSync(path.join(dest, "packages", "cli", "bin", "context101.js")), true);

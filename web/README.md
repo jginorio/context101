@@ -1,8 +1,8 @@
 # Context101 Web App
 
-This is the deployable Context101 admin app. It is intentionally separate from the public marketing site in `../site`.
+This is the deployable Context101 admin. It ships inside `context101-cli` on Amplify.
 
-Self-hosted users deploy this app, not the homepage. The root route redirects into `/knowledge`; the app is gated by Better Auth once deployed.
+Self-hosted users deploy this app. The root route redirects into `/knowledge`; the app is gated by Better Auth once deployed.
 
 ## Local Development
 
@@ -12,7 +12,7 @@ npm run dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-Most routes need the AWS environment variables that CDK/Amplify inject in deployed environments. The public landing page is not part of this package anymore.
+Most routes need the AWS environment variables that CDK/Amplify inject in deployed environments.
 
 ## Checks
 

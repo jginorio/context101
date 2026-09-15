@@ -7,7 +7,7 @@ description: Update the Context101 verify-context101 skill after merged admin PR
 
 `.cursor/skills/verify-context101/` is the cold-start map for the Next.js admin. After user-facing admin PRs merge (or when building a new one), refresh that map so recipes, ARIA handles, and HTTP helpers still match the running app.
 
-MCP and marketing `site/` stay out of scope.
+MCP and marketing stay out of scope.
 
 ## Do
 

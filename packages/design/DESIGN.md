@@ -1,7 +1,7 @@
 ---
 name: Context101
 description: An MCP knowledge-base platform — isolated "brains" served to AI clients, wired across a dark synaptic identity.
-# Posture note: the brand site (site/) is canonically hex; the product app (web/) is
+# Posture note: the brand register is canonically hex; the product app (web/) is
 # canonically OKLCH (it has an OKLCH doctrine). Each token below stays in its own
 # surface's canonical format on purpose — OKLCH values trip Stitch's hex-only linter
 # warning by design, not by mistake.
@@ -9,7 +9,7 @@ colors:
   # Shared brand identity
   brain-magenta: "#b855c9"
   brain-violet: "#8b5cf6"
-  # Brand surface (site/) — dark only
+  # Brand register — dark only
   site-ink-bg: "#060509"
   site-ink-bg-2: "#09060c"
   site-foreground: "#f2eef8"
@@ -115,7 +115,7 @@ components:
 
 Context101 looks like a powered-on brain in a dark room. Near-black substrate, signal moving along faint magenta-violet traces, light pooling only where there's activity — beams flowing between nodes, a cursor blinking after a typed line, a card edge catching the accent. The identity is unapologetically dark and unapologetically purple: the `--brain` mark is the loudest thing on the page, and that's the point. This is infrastructure with a pulse, built for engineers who'd rather see the wiring than a stock photo of a handshake.
 
-The system spans three registers that are recognizably the same product. The **brand site** (`site/`) is drenched dark — `#060509` ground, luminous Space Grotesk headlines, animated synaptic beams — built to make a technical evaluator feel the product's point of view in three seconds. The **product app** (`web/`) is quieter and more instrumented: a light-default, magenta-tinted OKLCH palette (with a full `.dark` mode) on Geist, tuned for dense admin work — creating brains, wiring connectors, reviewing suggestions — where legibility and honest state beat spectacle. The **CLI** (`context101`) is the operate register: louder brand than `web/` at instrument volume — mark + accent, no figlet. Brand can shout; product keeps its voice down; CLI leads with the mark. The shared `--brain` purple is the thread between them. See PRODUCT.md for the third-register brief.
+This repo ships two registers that are recognizably the same product. The **product app** (`web/`) is quieter and more instrumented: a light-default, magenta-tinted OKLCH palette (with a full `.dark` mode) on Geist, tuned for dense admin work — creating brains, wiring connectors, reviewing suggestions — where legibility and honest state beat spectacle. The **CLI** (`context101`) is the operate register: louder brand than `web/` at instrument volume — mark + accent, no figlet. Brand/marketing is not in this repo. Product keeps its voice down; CLI leads with the mark. The shared `--brain` purple is the thread between them. See PRODUCT.md for the CLI brief.
 
 What this system explicitly rejects: **corporate-cold** sterility (no navy-and-gray fintech polish, no stock photography, no soulless enterprise sheen) and **enterprise-heavy** clutter (no AWS-console density, no walls of gray tables dumped on the user). It also refuses the cross-register AI tells: gradient text, side-stripe borders, decorative glassmorphism, the hero-metric template, identical icon-card grids, and tracked-uppercase eyebrows on every section.
 
