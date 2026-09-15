@@ -7,13 +7,12 @@ Library ingest is the Bedrock knowledge-base side effect of creating, renaming, 
 - `ingest-after-create` retrieves a unique canary from the new S3 key after put.
 - `ingest-after-rename` retrieves the same canary from the renamed (or drag-moved) key and not the old key.
 - `ingest-after-delete` no longer retrieves the canary or either key.
-- `ingest-ask-ui` asks the same question on `/wiki/ask` and shows the source key in Retrieved context.
+- `ingest-ask-ui` is skipped while wiki UI is gated off (`WIKI_UI_ENABLED`). Use `bin/retrieve` instead of `/wiki/ask`.
 
 ## How to get to it (user POV)
 
 - Create, rename, or delete a Library file (see [library-files](./library-files.md)).
-- Open **Ask the brain** (`/wiki/ask`) and submit a question. Retrieved context lists S3 keys and scores.
-- Call `POST /api/wiki/retrieve` with `{ "message": "…" }` while signed in. This is the same Bedrock Retrieve as `/api/wiki/chat` without the Claude answer.
+- Call `POST /api/wiki/retrieve` with `{ "message": "…" }` while signed in (`bin/retrieve`). Wiki chrome (`/wiki/ask`) is hidden by default.
 
 ## Driving it with bin/files + bin/retrieve
 
@@ -30,7 +29,7 @@ Preconditions:
 - **Wait until remapped.** `bin/retrieve --expect-key "${RUN}e2e-renamed.md" --absent-key "${RUN}e2e.md" --canary "<CANARY>" --timeout 480 "Where does the purple lantern moth nest <CANARY>"`. Save `artifacts/library-ingest/02-after-rename.json`.
 - **Delete.** `bin/files delete "${RUN}e2e-renamed.md"` (or the Delete dialog).
 - **Wait until dropped.** `bin/retrieve --absent-key "${RUN}e2e-renamed.md" --absent-canary "<CANARY>" --timeout 480 "Where does the purple lantern moth nest <CANARY>"`. Save `artifacts/library-ingest/03-after-delete.json`.
-- **Ask UI (optional).** After create (or rename) is indexed, open `/wiki/ask`. Fill textbox `Ask this brain` with the same query. Submit (Enter or the send button). Expand `Retrieved context`. The source key matches the current filename. Screenshot `artifacts/library-ingest/ask.png`.
+- **Ask UI.** Skip while `WIKI_UI_ENABLED` is false (`/wiki/ask` redirects). Proof is `bin/retrieve`.
 
 ## Gotchas
 

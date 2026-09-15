@@ -8,6 +8,7 @@ import {
   Code2,
   MessagesSquare,
   RefreshCw,
+  Settings,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -18,6 +19,7 @@ import { BrainStatusGate } from "@/components/brain-status-gate";
 import { OpenInChat } from "@/components/open-in-chat";
 import { WikiMarkdown } from "@/components/previews/wiki-markdown";
 import { cn } from "@/lib/utils";
+import { WIKI_SETTINGS_HREF } from "@/lib/wiki-ui";
 
 type WikiPage = {
   id: string;
@@ -480,11 +482,18 @@ export default function WikiPage() {
       }
       contextPanel={navContent}
       toolbar={
-        <Link href="/wiki/ask">
-          <Button variant="outline" size="sm">
-            <MessagesSquare className="mr-1 h-3.5 w-3.5" /> Ask the brain
-          </Button>
-        </Link>
+        <div className="flex items-center gap-1 sm:gap-2">
+          <Link href={WIKI_SETTINGS_HREF}>
+            <Button variant="outline" size="sm">
+              <Settings className="mr-1 h-3.5 w-3.5" /> Settings
+            </Button>
+          </Link>
+          <Link href="/wiki/ask">
+            <Button variant="outline" size="sm">
+              <MessagesSquare className="mr-1 h-3.5 w-3.5" /> Ask the brain
+            </Button>
+          </Link>
+        </div>
       }
     >
       <BrainStatusGate>

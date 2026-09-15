@@ -38,6 +38,6 @@ This directory is the maintained source for verifying user-facing Context101 beh
 - [GitHub source](./github-source.md) — org-scoped GitHub App (Connect GitHub / repo picker); PAT is fallback only. Do not install or submit in a default run.
 - [Login](./login.md) — email sign-in and session cookie. `/setup` is first admin only (skip when an org exists).
 - [Brains](./brains.md) — switch and inspect brains (do not provision, delete, or retry-delete brains in a default run).
-- [Wiki](./wiki.md) — open the wiki index and a page; do not click Refresh now unless asked.
+- [Wiki](./wiki.md) — UI gated off by default (`WIKI_UI_ENABLED`); prove redirect + no nav. Do not click Refresh now.
 - [Conflicts](./conflicts.md) — open the Conflicts queue; filter/search/refresh. Do not approve a GitHub write-back in a default run.
 - [CLI](./cli.md) — context101-cli AWS front door: help / list / help urls / destroy --dry-run (no checkout). Live `urls <space>` is optional. Do not init --force or deploy in a default run.

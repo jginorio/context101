@@ -13,6 +13,7 @@ import {
 
 import { useBrain } from "@/lib/brain-context";
 import { brainSwitcherCopy } from "@/lib/brain-not-found";
+import { WIKI_UI_ENABLED } from "@/lib/wiki-ui";
 
 /**
  * Fills the otherwise-empty sidebar space on pages that don't supply a context
@@ -96,12 +97,16 @@ export function SidebarBrainPanel({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <div className="space-y-0.5 border-t border-sidebar-border/60 pt-2">
-        <Link href="/wiki/ask" onClick={onNavigate} className={actionClass}>
-          <MessagesSquare className="h-4 w-4 shrink-0" /> Ask the brain
-        </Link>
-        <Link href="/wiki" onClick={onNavigate} className={actionClass}>
-          <BookOpen className="h-4 w-4 shrink-0" /> Go to wiki
-        </Link>
+        {WIKI_UI_ENABLED ? (
+          <>
+            <Link href="/wiki/ask" onClick={onNavigate} className={actionClass}>
+              <MessagesSquare className="h-4 w-4 shrink-0" /> Ask the brain
+            </Link>
+            <Link href="/wiki" onClick={onNavigate} className={actionClass}>
+              <BookOpen className="h-4 w-4 shrink-0" /> Go to wiki
+            </Link>
+          </>
+        ) : null}
         <Link href="/brains" onClick={onNavigate} className={actionClass}>
           <Brain className="h-4 w-4 shrink-0" /> Manage brains
         </Link>

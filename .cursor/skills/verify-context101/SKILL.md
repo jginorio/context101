@@ -79,7 +79,7 @@ Two harnesses, both going through the **same user-facing routes**:
 2. **`bin/files`** (HTTP) — `PUT/GET/list/move/delete` on `/api/files/*` with a session cookie.
 3. **`bin/retrieve`** (HTTP) — `POST /api/wiki/retrieve` (Bedrock Retrieve, no Claude). Use this to wait until the vector index matches S3.
 
-Prefer the browser for library rename/delete/drag-move (that is the feature users touch). Use `bin/files` to prove the S3 side effect. Use `bin/retrieve` to prove auto-ingest remapped or dropped the key. `/wiki/ask` is the same retrieve plus a streamed answer — do not poll it.
+Prefer the browser for library rename/delete/drag-move (that is the feature users touch). Use `bin/files` to prove the S3 side effect. Use `bin/retrieve` to prove auto-ingest remapped or dropped the key. Wiki chrome is hidden by default; do not poll `/wiki/ask`.
 
 ### Auth (always)
 
@@ -97,7 +97,7 @@ Stable handles:
 | Control | Handle |
 | --- | --- |
 | Knowledge nav | link `Knowledge` → `/knowledge` |
-| Wiki nav | link `Wiki` → `/wiki` |
+| Wiki nav | gated off (`web/lib/wiki-ui.ts` `WIKI_UI_ENABLED`, default false). No Wiki link. `/wiki`, `/wiki/ask`, and `/wiki/settings` redirect to `/knowledge`. Do not expect Settings → Advanced to contain wiki model controls — those live at `/wiki/settings` when the flag is on |
 | Suggestions nav | link `Suggestions` → `/suggestions` |
 | Conflicts nav | link `Conflicts` → `/conflicts` (heading `Conflicts`) |
 | App nav strip | sidebar row under Active brain; `overflow-x-auto` — scroll sideways if Conflicts is off-screen |
