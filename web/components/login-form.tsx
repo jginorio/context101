@@ -17,9 +17,9 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
   const router = useRouter();
   const search = useSearchParams();
   const next = search.get("next") || "/knowledge";
-  const [mode, setMode] = React.useState<"forgot" | "sign-in" | "sign-up">(
-    "sign-in"
-  );
+  const [mode, setMode] = React.useState<
+    "forgot" | "magic-link" | "sign-in" | "sign-up"
+  >("sign-in");
   const [name, setName] = React.useState("");
   const [email, setEmail] = React.useState("");
   const [password, setPassword] = React.useState("");
@@ -43,6 +43,15 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
         });
         if (result.error) throw new Error(result.error.message);
         setNotice("If that account exists, we sent a password reset email.");
+        return;
+      } else if (mode === "magic-link") {
+        const result = await authClient.signIn.magicLink({
+          email,
+          callbackURL: next,
+          errorCallbackURL: "/login",
+        });
+        if (result.error) throw new Error(result.error.message);
+        setNotice("If that account exists, we sent a sign-in link.");
         return;
       } else if (mode === "sign-up") {
         const result = await authClient.signUp.email({
@@ -75,6 +84,10 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
         {mode === "forgot" ? (
           <h2 className="mb-2 text-center text-lg font-semibold tracking-tight">
             Reset password
+          </h2>
+        ) : mode === "magic-link" ? (
+          <h2 className="mb-2 text-center text-lg font-semibold tracking-tight">
+            Email a sign-in link
           </h2>
         ) : canSignUp ? (
           <div className="mb-5 flex rounded-xl border border-border/60 bg-muted/30 p-1">
@@ -115,6 +128,10 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
             Enter your email and we&apos;ll send you a link to choose a new
             password.
           </p>
+        ) : mode === "magic-link" ? (
+          <p className="mb-5 text-center text-sm text-muted-foreground">
+            Enter your email and we&apos;ll send a one-click sign-in link.
+          </p>
         ) : null}
 
         <form className="space-y-4" onSubmit={submit}>
@@ -147,7 +164,7 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
               value={email}
             />
           </div>
-          {mode !== "forgot" ? (
+          {mode !== "forgot" && mode !== "magic-link" ? (
             <div className="space-y-1.5">
               <label className="text-xs font-medium text-muted-foreground" htmlFor="password">
                 Password
@@ -184,6 +201,8 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
               </>
             ) : mode === "forgot" ? (
               "Send reset link"
+            ) : mode === "magic-link" ? (
+              "Email me a link"
             ) : mode === "sign-up" ? (
               "Create account"
             ) : (
@@ -192,8 +211,8 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
           </Button>
         </form>
 
-        <div className="mt-4 text-center text-sm">
-          {mode === "forgot" ? (
+        <div className="mt-4 flex flex-col items-center gap-2 text-center text-sm">
+          {mode === "forgot" || mode === "magic-link" ? (
             <button
               className="font-medium text-foreground underline underline-offset-4"
               onClick={() => setMode("sign-in")}
@@ -202,13 +221,22 @@ export function LoginForm({ setupAvailable }: { setupAvailable: boolean }) {
               Back to sign in
             </button>
           ) : (
-            <button
-              className="font-medium text-foreground underline underline-offset-4"
-              onClick={() => setMode("forgot")}
-              type="button"
-            >
-              Forgot your password?
-            </button>
+            <>
+              <button
+                className="font-medium text-foreground underline underline-offset-4"
+                onClick={() => setMode("forgot")}
+                type="button"
+              >
+                Forgot your password?
+              </button>
+              <button
+                className="font-medium text-foreground underline underline-offset-4"
+                onClick={() => setMode("magic-link")}
+                type="button"
+              >
+                Email me a sign-in link
+              </button>
+            </>
           )}
         </div>
 

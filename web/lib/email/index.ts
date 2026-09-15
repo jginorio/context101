@@ -1,5 +1,6 @@
 import { sendEmail } from "@/lib/email/send-email";
 import {
+  magicLinkEmail,
   organizationInvitationEmail,
   resetPasswordEmail,
   welcomeEmail,
@@ -31,6 +32,13 @@ export function sendPasswordResetEmail(input: {
   resetUrl: string;
 }) {
   return deliver(input.email, resetPasswordEmail({ resetUrl: input.resetUrl }));
+}
+
+export function sendMagicLinkEmail(input: {
+  email: string;
+  magicUrl: string;
+}) {
+  return deliver(input.email, magicLinkEmail({ magicUrl: input.magicUrl }));
 }
 
 export function sendOrganizationInvitationEmail(input: {

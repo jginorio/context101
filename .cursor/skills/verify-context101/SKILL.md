@@ -114,6 +114,7 @@ Stable handles:
 | Brain empty gate | heading `No brains yet`; primary button `Create a brain` → `/brains?new=1` (opens `Create a brain` dialog; do not submit). Header switcher matches: hint `No brains yet`, label `Create a brain`, aria `No brains yet. Create a brain` — never `Active brain: default`. New self-host has zero brains — do not expect a `default` row |
 | Brain stale gate | heading `Brain not found` + “registered under …”; outline button `Pick another brain` → `/brains`. Only when the catalog has other brains but this id 404s |
 | First-run setup | `/setup` — heading `Set up Context101`, card `Create first admin`. Redirects to `/login` when an org already exists. Skip on a shared instance |
+| Login magic link | `/login` — button `Email me a sign-in link` (do not submit in a default run) |
 | New file | button `New file` |
 | New folder | button `New folder` |
 | Add source | button `Add source` → dialog `Add a source` |

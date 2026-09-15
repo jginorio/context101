@@ -19,7 +19,39 @@ Most routes need the AWS environment variables that CDK/Amplify inject in deploy
 ```bash
 npm run build
 npm run lint
+npm test
 ```
+
+`npm test` runs the `node:test` files under `lib/` and `utils/` (`tsx --test`).
+
+## Magic link
+
+Hosted checkout (and the login form) can send a one-click sign-in email through Better Auth's magic-link plugin. Password sign-in stays enabled.
+
+### Storefront / API
+
+`POST /api/auth/sign-in/magic-link`
+
+```json
+{ "email": "user@example.com", "callbackURL": "/knowledge" }
+```
+
+`callbackURL` is optional (defaults to `/`). `Content-Type: application/json`.
+
+A well-formed request returns `{ "status": true }` whether or not the account exists (no email enumeration). Clicking the emailed link hits `APP_URL/api/auth/magic-link/verify` and sets a session cookie. If the user has an organization membership, the existing session hook still sets `activeOrganizationId`.
+
+When `ALLOW_PUBLIC_SIGNUP=false` (Hosted production):
+
+- Existing users — including passwordless accounts with `email_verified=true` — receive the email.
+- Unknown emails get the same success response and no email.
+
+When `ALLOW_PUBLIC_SIGNUP=true`, unknown emails also receive a link and Better Auth will create the user on verify.
+
+Call this from a **server** (no `Origin` header), the same way password sign-in works from curl. A browser `Origin` must match `BETTER_AUTH_URL` / `APP_URL`. Optional Better Auth env (names only): `BETTER_AUTH_TRUSTED_ORIGINS` (comma-separated origins). No new secrets; magic link reuses `SES_FROM_EMAIL`, `SES_REGION`, `APP_URL`, `BETTER_AUTH_URL`, and `BETTER_AUTH_SECRET`.
+
+The login page also has **Email me a sign-in link**.
+
+## Deployment
 
 ## Deployment
 

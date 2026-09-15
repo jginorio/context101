@@ -7,11 +7,13 @@ Login issues a Better Auth session for an existing email/password user and sends
 - `login-api` signs in via `POST /api/auth/sign-in/email`.
 - `login-session` returns the user from `GET /api/auth/get-session`.
 - `login-form` fills Email / Password and clicks Sign in (desktop Chrome with WebGL only).
+- `login-magic-link` (optional) opens **Email me a sign-in link** (heading `Email a sign-in link`, email-only, button `Email me a link`). Do not submit on a shared instance — it sends a real SES email. API equivalent: `POST /api/auth/sign-in/magic-link` with `{ "email": "<user>", "callbackURL": "/knowledge" }`. Unknown emails still return `{ "status": true }` when public signup is off.
 
 ## How to get to it (user POV)
 
 - Visit `/login`.
 - Submit the Sign in form (labels `Email`, `Password`, button `Sign in`).
+- Optional: button `Email me a sign-in link` → heading `Email a sign-in link`, button `Email me a link` (do not submit on a shared instance).
 - Call the Better Auth email sign-in endpoint.
 
 ## Driving it with bin/auth-cookie + Chrome DevTools

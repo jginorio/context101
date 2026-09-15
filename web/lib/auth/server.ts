@@ -1,13 +1,19 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
-import { organization } from "better-auth/plugins";
-import { eq } from "drizzle-orm";
+import { magicLink, organization } from "better-auth/plugins";
+import { eq, sql } from "drizzle-orm";
 
+import {
+  extraTrustedOrigins,
+  rewriteMagicLinkUrl,
+  shouldSendMagicLink,
+} from "@/lib/auth/magic-link";
 import { deploymentConfig } from "@/lib/deployment/config";
 import { db } from "@/lib/db/client";
 import * as authSchema from "@/lib/db/auth-schema";
 import {
+  sendMagicLinkEmail,
   sendOrganizationInvitationEmail,
   sendPasswordResetEmail,
   sendWelcomeEmail,
@@ -31,6 +37,19 @@ function appLink(path: string) {
   return `${deploymentConfig.appUrl.replace(/\/$/, "")}${path}`;
 }
 
+async function userExistsByEmail(
+  database: NonNullable<typeof db>,
+  email: string
+): Promise<boolean> {
+  const normalized = email.trim().toLowerCase();
+  const [row] = await database
+    .select({ id: authSchema.user.id })
+    .from(authSchema.user)
+    .where(sql`lower(${authSchema.user.email}) = ${normalized}`)
+    .limit(1);
+  return Boolean(row);
+}
+
 function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
   if (!db) throw new Error("DATABASE_URL is not configured");
   const database = db;
@@ -38,6 +57,7 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
   const options = {
     secret: requiredEnv("BETTER_AUTH_SECRET"),
     baseURL: requiredEnv("BETTER_AUTH_URL"),
+    trustedOrigins: extraTrustedOrigins(deploymentConfig.appUrl),
     database: drizzleAdapter(database, {
       provider: "pg",
       schema: authSchema,
@@ -121,6 +141,26 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
             invitedByName: data.inviter?.user?.name,
             organizationName: data.organization?.name,
             role: data.role,
+          });
+        },
+      }),
+      magicLink({
+        disableSignUp,
+        expiresIn: 60 * 60,
+        storeToken: "hashed",
+        sendMagicLink: async ({ email, url }) => {
+          const exists = await userExistsByEmail(database, email);
+          if (
+            !shouldSendMagicLink({
+              allowPublicSignup: !disableSignUp,
+              userExists: exists,
+            })
+          ) {
+            return;
+          }
+          await sendMagicLinkEmail({
+            email,
+            magicUrl: rewriteMagicLinkUrl(url, deploymentConfig.appUrl),
           });
         },
       }),
