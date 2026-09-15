@@ -6,11 +6,8 @@ import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   BarChart3,
-  Boxes,
   DollarSign,
-  FileText,
   FlaskConical,
-  KeyRound,
   Plug,
   Settings as SettingsIcon,
   Users,
@@ -18,21 +15,11 @@ import {
 
 import { SignOutButton } from "@/components/sign-out-button";
 import { Button } from "@/components/ui/button";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { OrganizationSettings } from "@/components/settings/organization-settings";
-import { WikiModelSettings } from "@/components/settings/wiki-model-settings";
 import { EmbeddingSettings } from "@/components/settings/embedding-settings";
 
-type SectionId =
-  | "organization"
-  | "advanced"
-  | "wiki"
-  | "sources"
-  | "costs"
-  | "analytics";
-
-type AdvancedTab = "model" | "embeddings";
+type SectionId = "organization" | "advanced" | "sources" | "costs" | "analytics";
 
 type Section = {
   id: SectionId;
@@ -44,7 +31,6 @@ type Section = {
 const SECTIONS: Section[] = [
   { id: "organization", label: "Organization", icon: Users, available: true },
   { id: "advanced", label: "Advanced", icon: FlaskConical, available: true },
-  { id: "wiki", label: "Wiki regeneration", icon: FileText, available: false },
   { id: "sources", label: "Source sync", icon: Plug, available: false },
   { id: "costs", label: "Costs", icon: DollarSign, available: false },
   { id: "analytics", label: "Analytics", icon: BarChart3, available: false },
@@ -53,19 +39,13 @@ const SECTIONS: Section[] = [
 function SettingsContent() {
   const searchParams = useSearchParams();
   const sectionParam = searchParams.get("section");
-  const tabParam = searchParams.get("tab");
   // Lets the /brains "Advanced" button deep-link to a specific brain so its
-  // model/embedding config is preselected when the page opens.
+  // embedding config is preselected when the page opens.
   const brainParam = searchParams.get("brain");
 
   const [active, setActive] = React.useState<SectionId>(
     sectionParam === "advanced" ? "advanced" : "organization"
   );
-  const [advancedTab, setAdvancedTab] = React.useState<AdvancedTab>(
-    tabParam === "embeddings" ? "embeddings" : "model"
-  );
-
-  const current = SECTIONS.find((s) => s.id === active) ?? SECTIONS[0];
 
   return (
     <main className="flex min-h-screen flex-col">
@@ -152,44 +132,16 @@ function SettingsContent() {
                   Advanced
                 </h2>
                 <p className="text-sm text-muted-foreground">
-                  Per-brain model configuration — how each brain generates its
-                  wiki and how it embeds knowledge for search.
+                  Per-brain embedding configuration — how each brain embeds
+                  knowledge for search.
                 </p>
               </div>
 
-              <Tabs
-                value={advancedTab}
-                onValueChange={(v) => setAdvancedTab(v as AdvancedTab)}
-              >
-                <TabsList>
-                  <TabsTrigger value="model">
-                    <KeyRound className="h-3.5 w-3.5" />
-                    Wiki model &amp; API keys
-                  </TabsTrigger>
-                  <TabsTrigger value="embeddings">
-                    <Boxes className="h-3.5 w-3.5" />
-                    Embeddings
-                  </TabsTrigger>
-                </TabsList>
-
-                <TabsContent value="model" className="mt-4">
-                  <p className="mb-4 text-sm text-muted-foreground">
-                    Choose which model generates each brain&apos;s wiki — AWS
-                    Bedrock, or bring your own Anthropic / OpenAI / Grok / Gemini
-                    key.
-                  </p>
-                  <WikiModelSettings initialBrainId={brainParam ?? undefined} />
-                </TabsContent>
-
-                <TabsContent value="embeddings" className="mt-4">
-                  <p className="mb-4 text-sm text-muted-foreground">
-                    Choose the embedding model a brain uses — AWS Titan or
-                    Cohere (via Bedrock) — and, for Cohere, its text chunking
-                    strategy.
-                  </p>
-                  <EmbeddingSettings initialBrainId={brainParam ?? undefined} />
-                </TabsContent>
-              </Tabs>
+              <p className="mb-4 text-sm text-muted-foreground">
+                Choose the embedding model a brain uses — AWS Titan or Cohere
+                (via Bedrock) — and, for Cohere, its text chunking strategy.
+              </p>
+              <EmbeddingSettings initialBrainId={brainParam ?? undefined} />
             </>
           ) : null}
         </section>

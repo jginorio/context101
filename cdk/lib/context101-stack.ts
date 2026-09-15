@@ -525,11 +525,9 @@ export class Context101Stack extends cdk.Stack {
       allowAllOutbound: true,
     });
 
-    // h) EventBridge rule — kept around but DISABLED by default. Wiki
-    //    regen costs ~$0.30-0.80 in Opus per run; we'd rather pay it
-    //    only when a human clicks "Refresh now" on /wiki. Flip the
-    //    `enabled` flag back to `true` (and redeploy) if you want
-    //    scheduled regens.
+    // h) EventBridge rule — parked / DISABLED. Wiki generation is not
+    //    on the shipping product. Do not flip `enabled` to true on
+    //    mainline. Isolated wiki testing still leaves this disabled.
     new events.Rule(this, "WikiGenSchedule", {
       description: "Regenerate the Context101 wiki every 10h (disabled)",
       enabled: false,
@@ -698,9 +696,8 @@ export class Context101Stack extends cdk.Stack {
           // Layer 2: after a successful sync, fire the per-repo code-wiki
           // Fargate task. The dispatcher Lambda is provisioned with admin.
           START_WIKI_GEN_FN_NAME: `${namePrefix}-start-wiki-gen`,
-          // Auto-regenerate a repo's isolated code wiki when its tree changes,
-          // throttled per repo so a busy repo regenerates at most ~twice a day.
-          AUTO_TRIGGER_CODE_WIKI: "true",
+          // Wiki is parked. Do not auto-fire code-wiki generation on sync.
+          AUTO_TRIGGER_CODE_WIKI: "false",
           CODE_WIKI_MIN_INTERVAL_HOURS: "12",
         },
       }
@@ -880,16 +877,6 @@ export class Context101Stack extends cdk.Stack {
         ? [{ name: "SES_REPLY_TO_EMAIL", value: sesReplyToEmail }]
         : []),
     ];
-
-    if (appUrl) {
-      ingestFn.addEnvironment(
-        "CONFLICT_EVIDENCE_URL",
-        `${appUrl.replace(/\/$/, "")}/api/conflicts/evidence`
-      );
-    }
-    if (mcpTokenPepper) {
-      ingestFn.addEnvironment("CONFLICT_EVIDENCE_SECRET", mcpTokenPepper);
-    }
 
     const brainShared = new BrainShared(this, "BrainShared", {
       namePrefix,
@@ -1254,9 +1241,8 @@ export class Context101Stack extends cdk.Stack {
           // AWS resources directly).
           //
           // Known physical names — not CfnRefs. A Ref to provisioner /
-          // connector Lambdas cycles: WebApp → Fn → AutoIngest
-          // (CONFLICT_EVIDENCE_URL) → WebApp, and the notified docs
-          // bucket sits on the same SCC.
+          // connector Lambdas cycles: WebApp → Fn → AutoIngest →
+          // WebApp, and the notified docs bucket sits on the same SCC.
           { name: "BRAIN_PROVISIONER_FN_NAME", value: `${namePrefix}-brain-provisioner` },
           // MCP host (no /mcp suffix; the /about page appends /brain/<id>/mcp
           // per brain). Empty string when teamToken wasn't passed on this deploy.
@@ -1333,13 +1319,6 @@ export class Context101Stack extends cdk.Stack {
       if (adminSource.seedMain) {
         mainBranch.node.addDependency(adminSource.seedMain);
       }
-      if (!appUrl) {
-        ingestFn.addEnvironment(
-          "CONFLICT_EVIDENCE_URL",
-          cdk.Fn.join("", [amplifyDefaultUrl, "/api/conflicts/evidence"])
-        );
-      }
-
       // d) SSR Compute role — the IAM role the Amplify Hosting compute
       //    Lambda assumes at runtime. Granting it S3 perms on the docs
       //    bucket means API routes don't need access keys, and any writes

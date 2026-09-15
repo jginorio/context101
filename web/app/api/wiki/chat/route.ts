@@ -6,7 +6,7 @@ import {
   type Message,
 } from "@aws-sdk/client-bedrock-runtime";
 
-import { readAuthContext, resolveBrainFromRequest } from "@/lib/brains-server";
+import { resolveBrainFromRequest } from "@/lib/brains-server";
 import { retrieveSources } from "@/lib/wiki-retrieve";
 
 const region = process.env.AWS_REGION ?? "us-east-1";
@@ -83,15 +83,11 @@ export async function POST(request: NextRequest) {
   // no sidecar) so github must not be in that list. includeRaw lifts it.
   let sources: Source[] = [];
   try {
-    const auth = await readAuthContext(request);
     sources = await retrieveSources({
       knowledgeBaseId: brain.kb_id,
       query: message,
       includeRaw,
       numberOfResults: NUM_RESULTS,
-      ...(auth
-        ? { conflictScope: { orgId: auth.orgId, brainId: brain.brain_id } }
-        : {}),
     });
   } catch (err) {
     return NextResponse.json(
