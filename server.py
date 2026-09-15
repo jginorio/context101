@@ -286,15 +286,16 @@ mcp = FastMCP(
 
 Retrieval is raw-first:
 
-  • search_knowledge searches raw source docs only — manual uploads,
-    Notion/Google/suggestion content, and other ingested source files.
-    Synthesized wiki overview pages (wiki/**, source=wiki) are excluded.
-    Synced code files and per-repo code wikis are also excluded so they
-    don't dominate results by sheer volume. Reach wiki or code via
+  • search_knowledge searches raw source docs — manual uploads,
+    Notion/Google/suggestion content, and GitHub-synced documentation
+    (.md / .mdx / .txt under sources/github/). Synthesized wiki overlay
+    pages (wiki/**, including wiki/code/ and source=wiki / code-wiki) are
+    excluded. GitHub source-code files (.ts, .py, .go, …) are also
+    excluded so they don't dominate results. Reach wiki or code via
     read_knowledge if you already have the S3 key.
 
   • read_knowledge can fetch any document by its S3 key — including wiki
-    overview pages and code sources excluded from search. Use it when a
+    overlay pages and code files excluded from search. Use it when a
     chunk cites a file and you need the full ground-truth content.
 
 Workflow:
@@ -311,7 +312,7 @@ Workflow:
      as soon as they're ingested (~1 min).
 
 Available tools:
-- search_knowledge(query, limit=5): semantic search over raw source docs only (wiki overview pages and code excluded)
+- search_knowledge(query, limit=5): semantic search over raw docs including GitHub-synced documentation (wiki overlay and source-code files excluded)
 - read_knowledge(s3_key): full content of any document (raw, wiki, or code)
 - list_sources(): list all documents in the S3 bucket
 - suggest_knowledge(title, content, target_path?, rationale?, trigger?):
@@ -380,15 +381,16 @@ def _report_conflict_evidence(
 
 @mcp.tool()
 def search_knowledge(query: str, limit: int = 5) -> str:
-    """Semantic search across the active brain — raw source docs only.
+    """Semantic search across the active brain — raw docs including GitHub docs.
 
-    Retrieval is raw-first: it covers manually uploaded docs, connector-synced
-    content (Notion, Google Docs/Sheets/Slides), and approved suggestions, as
-    fresh as the last ingest. Synthesized wiki overview pages are excluded
-    (`source=wiki` and any S3 key under `wiki/`, including `wiki/code/`).
-    Code is also excluded (`source=github` raw repo files and
-    `source=code-wiki` per-repo wiki pages). Reach wiki or code via
-    read_knowledge if you have the key.
+    Retrieval is raw-first: manually uploaded docs, connector-synced content
+    (Notion, Google, GitHub-synced .md/.mdx/.txt), and approved suggestions,
+    as fresh as the last ingest. Synthesized wiki overlay pages are excluded
+    (`source=wiki` / `source=code-wiki` and any S3 key under `wiki/`,
+    including `wiki/code/`). GitHub source-code files (.ts, .py, .go, …)
+    are also excluded. Reach wiki or code via read_knowledge if you have
+    the key. Do not treat `source=github` as a blanket exclude — those
+    markdown docs are often the brain's primary content.
 
     Args:
         query: Natural-language question, e.g. "how do I find active listings in Amplia"
@@ -405,13 +407,14 @@ def search_knowledge(query: str, limit: int = 5) -> str:
         retrievalQuery={"text": query},
         retrievalConfiguration={
             "vectorSearchConfiguration": {
-                # Over-fetch so dropping wiki/ keys can still fill `limit`.
+                # Over-fetch so dropping wiki/ keys (and github source files)
+                # can still fill `limit`.
                 "numberOfResults": search_retrieve_count(limit),
                 # notIn also matches documents with no `source` attribute at
                 # all (manual uploads have no .metadata.json sidecar), so this
-                # cannot be an allowlist. Wiki pages are tagged source=wiki;
-                # we still post-filter wiki/ keys below in case a sidecar is
-                # missing or stripped.
+                # cannot be an allowlist and must not list github. Wiki pages
+                # are tagged source=wiki / code-wiki; we still post-filter
+                # wiki/ keys and github source-code extensions below.
                 "filter": search_source_filter(),
             }
         },
@@ -445,10 +448,11 @@ def read_knowledge(s3_key: str) -> str:
     """Read the full content of any document in the active brain's bucket.
 
     This is the escape hatch to full ground-truth content. search_knowledge
-    returns chunks, which may cut off mid-document, and excludes wiki overview
-    pages and code sources. Use this to pull a complete document: a raw doc a
-    chunk came from, a wiki page by key (`wiki/overview.md`), or the code
-    files search doesn't cover (`sources/github/…`, `wiki/code/…`).
+    returns chunks, which may cut off mid-document, and excludes wiki overlay
+    pages and GitHub source-code files. Use this to pull a complete document:
+    a raw doc a chunk came from (including GitHub-synced .md), a wiki page by
+    key (`wiki/overview.md`), or code search doesn't cover (`*.ts` under
+    `sources/github/…`, `wiki/code/…`).
 
     Works on any key — raw docs (e.g. "domain-knowledge/amplia.md"), wiki
     pages (e.g. "wiki/overview.md"), or code sources.

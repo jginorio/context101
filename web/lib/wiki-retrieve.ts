@@ -7,8 +7,47 @@ const region = process.env.AWS_REGION ?? process.env.AWS_DEFAULT_REGION;
 const agentRuntime = new BedrockAgentRuntimeClient({ region });
 
 export const DEFAULT_NUM_RESULTS = 6;
-export const SEARCH_EXCLUDED_SOURCES = ["github", "code-wiki", "wiki"] as const;
+/** Metadata denylist for Bedrock retrieve. Never include "github". */
+export const SEARCH_EXCLUDED_SOURCES = ["code-wiki", "wiki"] as const;
 const BEDROCK_MAX_RESULTS = 100;
+
+const DOC_EXTENSIONS = [".md", ".mdx", ".txt", ".markdown", ".rst"] as const;
+const CODE_EXTENSIONS = [
+  ".ts",
+  ".tsx",
+  ".js",
+  ".jsx",
+  ".mjs",
+  ".cjs",
+  ".mts",
+  ".cts",
+  ".py",
+  ".go",
+  ".rs",
+  ".java",
+  ".kt",
+  ".kts",
+  ".scala",
+  ".c",
+  ".cc",
+  ".cpp",
+  ".h",
+  ".hpp",
+  ".cs",
+  ".swift",
+  ".rb",
+  ".php",
+  ".lua",
+  ".sh",
+  ".bash",
+  ".zsh",
+  ".ps1",
+  ".sql",
+  ".css",
+  ".scss",
+  ".vue",
+  ".svelte",
+] as const;
 
 export type RetrievedSource = {
   n: number;
@@ -28,23 +67,53 @@ export function keyFromUri(uri: string | undefined): string {
   return uri;
 }
 
+function basename(key: string): string {
+  const slash = key.lastIndexOf("/");
+  return (slash >= 0 ? key.slice(slash + 1) : key).toLowerCase();
+}
+
+function suffix(name: string): string {
+  const dot = name.lastIndexOf(".");
+  return dot >= 0 ? name.slice(dot) : "";
+}
+
+/** True for source-code files, including GitHub wrappers like `x.ts.md`. */
+export function looksLikeSourceCode(key: string): boolean {
+  const name = basename(key);
+  if (!name) return false;
+  for (const docExt of DOC_EXTENSIONS) {
+    if (name.endsWith(docExt) && name !== docExt) {
+      const inner = name.slice(0, -docExt.length);
+      return (CODE_EXTENSIONS as readonly string[]).includes(suffix(inner));
+    }
+  }
+  return (CODE_EXTENSIONS as readonly string[]).includes(suffix(name));
+}
+
+function isGithubKey(key: string, source?: string | null): boolean {
+  return source === "github" || key.startsWith("sources/github/");
+}
+
 /**
- * Wiki overview pages are tagged `source=wiki` (see wiki-generator-ts
- * sidecars) and live under `wiki/` (including `wiki/code/`). Manual uploads
- * have no `source` sidecar — Bedrock `notIn` still matches those, so this
- * must not become an allowlist.
+ * Do not blanket-exclude `source=github` — GitHub-synced `.md` docs are
+ * often the brain's primary content. Wiki overlay lives under `wiki/`
+ * (including `wiki/code/` and untagged `_index.json`). Manual uploads have
+ * no `source` sidecar; Bedrock `notIn` still matches those, so this must
+ * not become an allowlist.
  */
 export function shouldExcludeFromSearch(
   key: string,
   source?: string | null
 ): boolean {
+  if (key.startsWith("wiki/")) return true;
   if (
     source &&
     (SEARCH_EXCLUDED_SOURCES as readonly string[]).includes(source)
   ) {
     return true;
   }
-  return key.startsWith("wiki/");
+  if (isGithubKey(key, source) && looksLikeSourceCode(key)) return true;
+  return false;
 }
 
 export function searchSourceFilter(): {
@@ -85,8 +154,9 @@ function metadataSource(
 /**
  * Bedrock KB Retrieve for the active brain — the same call `/api/wiki/chat`
  * makes before it streams an answer. Mirrors MCP `search_knowledge`: raw
- * source docs only. Manual uploads have no `source` sidecar; the default
- * filter excludes github / code-wiki / wiki, then drops any `wiki/` key.
+ * source docs including GitHub-synced documentation. Manual uploads have
+ * no `source` sidecar; the default filter excludes tagged wiki / code-wiki,
+ * then drops `wiki/` keys and GitHub source-code files.
  */
 export async function retrieveSources(opts: {
   knowledgeBaseId: string;

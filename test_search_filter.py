@@ -1,4 +1,4 @@
-"""Unit tests for raw-docs-only search exclusion (no AWS)."""
+"""Unit tests for raw-docs search exclusion (no AWS)."""
 
 from __future__ import annotations
 
@@ -27,21 +27,45 @@ def _hit(key: str, source: str | None = None) -> dict:
     return result
 
 
+GA4_DOC = "sources/github/platea/apps/docs/ga4-events.md"
+
+
 class ShouldExcludeFromSearch(unittest.TestCase):
-    def test_wiki_source_and_prefix(self) -> None:
+    def test_github_markdown_docs_are_searchable(self) -> None:
+        self.assertFalse(should_exclude_from_search(GA4_DOC, "github"))
+        self.assertFalse(
+            should_exclude_from_search(
+                "sources/github/acme/docs/auth.mdx", "github"
+            )
+        )
+        self.assertFalse(
+            should_exclude_from_search("sources/github/acme/README.txt", "github")
+        )
+        self.assertFalse(should_exclude_from_search(GA4_DOC, None))
+
+    def test_wiki_overview_and_code_wiki_are_not(self) -> None:
         self.assertTrue(should_exclude_from_search("wiki/overview.md", "wiki"))
         self.assertTrue(should_exclude_from_search("wiki/overview.md", None))
         self.assertTrue(
             should_exclude_from_search("wiki/code/acme/auth.md", "code-wiki")
         )
         self.assertTrue(should_exclude_from_search("wiki/code/acme/auth.md", None))
+        self.assertTrue(
+            should_exclude_from_search("wiki/code/acme/_index.json", None)
+        )
 
-    def test_code_sources(self) -> None:
+    def test_github_ts_source_is_not_searchable(self) -> None:
         self.assertTrue(
             should_exclude_from_search("sources/github/acme/src/x.ts", "github")
         )
         self.assertTrue(
-            should_exclude_from_search("wiki/code/acme/page.md", "code-wiki")
+            should_exclude_from_search("sources/github/acme/src/x.ts", None)
+        )
+        self.assertTrue(
+            should_exclude_from_search("sources/github/acme/src/x.ts.md", "github")
+        )
+        self.assertTrue(
+            should_exclude_from_search("sources/github/acme/app.py", "github")
         )
 
     def test_manual_upload_without_source_stays_in(self) -> None:
@@ -53,34 +77,48 @@ class ShouldExcludeFromSearch(unittest.TestCase):
 
     def test_tagged_wiki_without_prefix_still_excluded(self) -> None:
         self.assertTrue(should_exclude_from_search("legacy-overview.md", "wiki"))
+        self.assertTrue(should_exclude_from_search("legacy-code.md", "code-wiki"))
 
 
 class SearchSourceFilter(unittest.TestCase):
-    def test_notin_includes_wiki_not_allowlist(self) -> None:
+    def test_notin_excludes_wiki_not_github(self) -> None:
         filt = search_source_filter()
         self.assertIn("notIn", filt)
         self.assertEqual(filt["notIn"]["key"], "source")
-        self.assertEqual(
-            filt["notIn"]["value"], ["github", "code-wiki", "wiki"]
-        )
-        self.assertEqual(SEARCH_EXCLUDED_SOURCES, ["github", "code-wiki", "wiki"])
-        # An allowlist would drop manual uploads (no source attr). notIn keeps them.
+        self.assertEqual(filt["notIn"]["value"], ["code-wiki", "wiki"])
+        self.assertNotIn("github", filt["notIn"]["value"])
+        self.assertEqual(SEARCH_EXCLUDED_SOURCES, ["code-wiki", "wiki"])
 
 
 class FilterSearchResults(unittest.TestCase):
-    def test_drops_wiki_keys_and_fills_limit_from_overfetch(self) -> None:
+    def test_keeps_github_md_drops_wiki_and_ts(self) -> None:
         results = [
             _hit("wiki/overview.md", "wiki"),
-            _hit("ga4/purchase.md"),
-            _hit("wiki/code/repo/page.md", "code-wiki"),
+            _hit("wiki/code/platea/_index.json"),
+            _hit("sources/github/acme/src/client.ts", "github"),
+            _hit(GA4_DOC, "github"),
+            _hit("wiki/code/acme/page.md", "code-wiki"),
             _hit("uploads/runbook.md"),
-            _hit("wiki/index.md"),
-            _hit("notion/events.md", "notion"),
+        ]
+        kept = filter_search_results(results, limit=5)
+        keys = [source_key_from_retrieval(r) for r in kept]
+        self.assertEqual(keys, [GA4_DOC, "uploads/runbook.md"])
+        self.assertTrue(all(not k.startswith("wiki/") for k in keys))
+        self.assertTrue(all(not k.endswith(".ts") for k in keys))
+
+    def test_overfetch_fills_limit_after_dropping_wiki_junk(self) -> None:
+        results = [
+            _hit("wiki/code/x/_index.json"),
+            _hit("wiki/overview.md", "wiki"),
+            _hit(GA4_DOC, "github"),
+            _hit("sources/github/acme/docs/funnels.md", "github"),
         ]
         kept = filter_search_results(results, limit=2)
         keys = [source_key_from_retrieval(r) for r in kept]
-        self.assertEqual(keys, ["ga4/purchase.md", "uploads/runbook.md"])
-        self.assertTrue(all(not k.startswith("wiki/") for k in keys))
+        self.assertEqual(
+            keys,
+            [GA4_DOC, "sources/github/acme/docs/funnels.md"],
+        )
 
     def test_trims_to_limit_after_filter(self) -> None:
         results = [_hit(f"doc-{i}.md") for i in range(8)]

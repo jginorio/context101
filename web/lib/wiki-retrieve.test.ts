@@ -9,6 +9,8 @@ import {
   shouldExcludeFromSearch,
 } from "./wiki-retrieve";
 
+const ga4Doc = "sources/github/platea/apps/docs/ga4-events.md";
+
 test("keyFromUri strips s3://bucket/ from a retrieve location", () => {
   assert.equal(
     keyFromUri("s3://docs-bucket/verify/run/e2e.md"),
@@ -19,49 +21,69 @@ test("keyFromUri strips s3://bucket/ from a retrieve location", () => {
   assert.equal(keyFromUri("s3://docs-bucket"), "docs-bucket");
 });
 
-test("shouldExcludeFromSearch drops wiki prefix and tagged sources", () => {
-  assert.equal(shouldExcludeFromSearch("wiki/overview.md", "wiki"), true);
-  assert.equal(shouldExcludeFromSearch("wiki/overview.md"), true);
-  assert.equal(shouldExcludeFromSearch("wiki/code/acme/auth.md", "code-wiki"), true);
-  assert.equal(shouldExcludeFromSearch("sources/github/acme/x.ts", "github"), true);
-  assert.equal(shouldExcludeFromSearch("ga4-events.md"), false);
-  assert.equal(shouldExcludeFromSearch("domain-knowledge/amplia.md", null), false);
-  assert.equal(shouldExcludeFromSearch("sources/notion/events.md", "notion"), false);
+test("github markdown docs are searchable", () => {
+  assert.equal(shouldExcludeFromSearch(ga4Doc, "github"), false);
+  assert.equal(
+    shouldExcludeFromSearch("sources/github/acme/docs/auth.mdx", "github"),
+    false
+  );
+  assert.equal(
+    shouldExcludeFromSearch("sources/github/acme/README.txt", "github"),
+    false
+  );
+  assert.equal(shouldExcludeFromSearch(ga4Doc), false);
 });
 
-test("searchSourceFilter is notIn including wiki, not an allowlist", () => {
+test("wiki overview and code-wiki paths are not searchable", () => {
+  assert.equal(shouldExcludeFromSearch("wiki/overview.md", "wiki"), true);
+  assert.equal(shouldExcludeFromSearch("wiki/overview.md"), true);
+  assert.equal(
+    shouldExcludeFromSearch("wiki/code/acme/auth.md", "code-wiki"),
+    true
+  );
+  assert.equal(shouldExcludeFromSearch("wiki/code/acme/_index.json"), true);
+});
+
+test("github .ts source is not searchable", () => {
+  assert.equal(
+    shouldExcludeFromSearch("sources/github/acme/src/x.ts", "github"),
+    true
+  );
+  assert.equal(shouldExcludeFromSearch("sources/github/acme/src/x.ts"), true);
+  assert.equal(
+    shouldExcludeFromSearch("sources/github/acme/src/x.ts.md", "github"),
+    true
+  );
+});
+
+test("manual uploads and notion stay searchable", () => {
+  assert.equal(shouldExcludeFromSearch("ga4-events.md"), false);
+  assert.equal(shouldExcludeFromSearch("domain-knowledge/amplia.md", null), false);
+  assert.equal(
+    shouldExcludeFromSearch("sources/notion/events.md", "notion"),
+    false
+  );
+});
+
+test("searchSourceFilter is notIn wiki/code-wiki, not github", () => {
   assert.deepEqual(searchSourceFilter(), {
-    notIn: { key: "source", value: ["github", "code-wiki", "wiki"] },
+    notIn: { key: "source", value: ["code-wiki", "wiki"] },
   });
 });
 
-test("filterSearchHits drops wiki/ keys and still fills limit", () => {
+test("filterSearchHits keeps github md, drops wiki and ts", () => {
   const hits = [
-    { key: "wiki/overview.md" },
-    { key: "ga4/purchase.md" },
-    { key: "wiki/code/repo/page.md" },
+    { key: "wiki/overview.md", source: "wiki" },
+    { key: "wiki/code/platea/_index.json" },
+    { key: "sources/github/acme/src/client.ts", source: "github" },
+    { key: ga4Doc, source: "github" },
     { key: "uploads/runbook.md" },
-    { key: "notion/events.md" },
   ];
-  const kept = filterSearchHits(hits, 2);
+  const kept = filterSearchHits(hits, 5);
   assert.deepEqual(
     kept.map((h) => h.key),
-    ["ga4/purchase.md", "uploads/runbook.md"]
+    [ga4Doc, "uploads/runbook.md"]
   );
   assert.ok(kept.every((h) => !h.key.startsWith("wiki/")));
   assert.ok(searchRetrieveCount(6) > 6);
-});
-
-test("filterSearchHits drops source=wiki even without a wiki/ key", () => {
-  const kept = filterSearchHits(
-    [
-      { key: "legacy-overview.md", source: "wiki" },
-      { key: "ga4-events.md", source: null },
-    ],
-    5
-  );
-  assert.deepEqual(
-    kept.map((h) => h.key),
-    ["ga4-events.md"]
-  );
 });
