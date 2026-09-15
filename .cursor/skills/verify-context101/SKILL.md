@@ -1,18 +1,18 @@
 ---
 name: verify-context101
-description: Drive Context101's two verification surfaces — the Next.js admin (Knowledge library, wiki, brains) and the self-host CLI (context101-cli / bin context101). Use when verifying create/rename/move/delete, login, wiki, brains, or CLI help/list/destroy --dry-run against a real app or AWS account.
+description: Drive Context101's two verification surfaces — the Next.js admin (Knowledge library, sources, brains) and the self-host CLI (context101-cli / bin context101). Use when verifying create/rename/move/delete, login, brains, or CLI help/list/destroy --dry-run against a real app or AWS account. Wiki and Conflicts are parked.
 ---
 
 # Verify Context101
 
 Context101 has two verification surfaces:
 
-1. **Next.js admin** in `web/` (Knowledge library, wiki, suggestions, sources, brains) at `:3000`.
+1. **Next.js admin** in `web/` (Knowledge library, suggestions, sources, brains) at `:3000`. Wiki and Conflicts are parked.
 2. **Self-host CLI** in `packages/cli` — npm package `context101-cli`, bin `context101` — the AWS front door for stack ops (`help` / `list` / `help urls` / `destroy --dry-run` in a default run).
 
 The MCP server and marketing remain out of scope here.
 
-Agents that have never seen this repo should follow this file cold. For admin features: launch or reuse `:3000`, run doctor, drive a mapped feature through the real UI or the authenticated file APIs, capture proof, then clean up scratch keys only. For CLI features: use a fresh shell session per command, doctor the `context101` bin (or `npx -y context101-cli@0.1.2`), drive help / list / destroy --dry-run, and capture stdout under `artifacts/cli/`.
+Agents that have never seen this repo should follow this file cold. For admin features: launch or reuse `:3000`, run doctor, drive a mapped feature through the real UI or the authenticated file APIs, capture proof, then clean up scratch keys only. For CLI features: use a fresh shell session per command, doctor the `context101` bin (or `npx -y context101-cli@0.1.2`), drive help / list / destroy --dry-run, and capture stdout under `artifacts/cli/`. Wiki and Conflicts are parked on main — do not expect those nav items.
 
 ## Launch
 
@@ -79,7 +79,7 @@ Two harnesses, both going through the **same user-facing routes**:
 2. **`bin/files`** (HTTP) — `PUT/GET/list/move/delete` on `/api/files/*` with a session cookie.
 3. **`bin/retrieve`** (HTTP) — `POST /api/wiki/retrieve` (Bedrock Retrieve, no Claude). Use this to wait until the vector index matches S3.
 
-Prefer the browser for library rename/delete/drag-move (that is the feature users touch). Use `bin/files` to prove the S3 side effect. Use `bin/retrieve` to prove auto-ingest remapped or dropped the key. `/wiki/ask` is the same retrieve plus a streamed answer — do not poll it.
+Prefer the browser for library rename/delete/drag-move (that is the feature users touch). Use `bin/files` to prove the S3 side effect. Use `bin/retrieve` to prove auto-ingest remapped or dropped the key. Wiki chrome is parked; do not poll `/wiki/ask`.
 
 ### Auth (always)
 
@@ -97,14 +97,10 @@ Stable handles:
 | Control | Handle |
 | --- | --- |
 | Knowledge nav | link `Knowledge` → `/knowledge` |
-| Wiki nav | link `Wiki` → `/wiki` |
+| Wiki nav | parked. No Wiki link. `/wiki` and `/wiki/*` redirect to `/knowledge`. Settings has no wiki model or Wiki regeneration |
 | Suggestions nav | link `Suggestions` → `/suggestions` |
-| Conflicts nav | link `Conflicts` → `/conflicts` (heading `Conflicts`) |
-| App nav strip | sidebar row under Active brain; `overflow-x-auto` — scroll sideways if Conflicts is off-screen |
-| Conflicts status | sidebar buttons `Pending`, `Accepted`, `Rejected`, `All` |
-| Conflicts search | textbox placeholder `Search conflicts…` |
-| Conflicts refresh | button `Refresh` |
-| Conflict sheet | row click; title is the conflict title. Buttons `Keep left`, `Keep right`, `Merge`, `Approve`, `Reject` |
+| Conflicts nav | parked. No Conflicts link. `/conflicts` redirects to `/knowledge` |
+| App nav strip | sidebar row under Active brain: Knowledge, Suggestions, Sources, Brains |
 | Sources nav | link `Sources` → `/sources` (heading `Data sources`) |
 | Brains nav | link `Brains` → `/brains` |
 | New brain | button `New brain` (do not submit in a default run) |

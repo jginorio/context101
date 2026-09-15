@@ -23,6 +23,7 @@ test("empty catalog is the empty-stack case, not a stale default id", () => {
   assert.equal(copy.ctaVariant, "default");
   assert.equal(copy.body.includes("registered under default"), false);
   assert.equal(copy.body.includes("stale"), false);
+  assert.equal(copy.body.toLowerCase().includes("wiki"), false);
 });
 
 test("catalog with other brains and a missing id keeps the stale-link copy", () => {

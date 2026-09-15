@@ -116,4 +116,20 @@ test("full stack synths CodeCommit admin with Amplify and no circular dependency
     false,
     "SSR DefaultPolicy must not Ref BrainProvisionerFn / AutoIngestFn"
   );
+
+  const lambdas = template.findResources("AWS::Lambda::Function");
+
+  const githubSync = Object.values(lambdas).find((fn) =>
+    String(fn.Properties?.FunctionName ?? "").endsWith("-connector-sync-github")
+  );
+  assert.ok(githubSync, "expected connector-sync-github Lambda");
+  const githubEnv = githubSync.Properties?.Environment?.Variables ?? {};
+  assert.equal(githubEnv.AUTO_TRIGGER_CODE_WIKI, "false");
+
+  const rules = template.findResources("AWS::Events::Rule");
+  const wikiSchedule = Object.values(rules).find((rule) =>
+    String(rule.Properties?.Description ?? "").includes("wiki")
+  );
+  assert.ok(wikiSchedule, "expected WikiGenSchedule rule");
+  assert.equal(wikiSchedule.Properties?.State, "DISABLED");
 });
