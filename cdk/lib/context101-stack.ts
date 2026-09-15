@@ -878,6 +878,16 @@ export class Context101Stack extends cdk.Stack {
         : []),
     ];
 
+    if (appUrl) {
+      ingestFn.addEnvironment(
+        "CONFLICT_EVIDENCE_URL",
+        `${appUrl.replace(/\/$/, "")}/api/conflicts/evidence`
+      );
+    }
+    if (mcpTokenPepper) {
+      ingestFn.addEnvironment("CONFLICT_EVIDENCE_SECRET", mcpTokenPepper);
+    }
+
     const brainShared = new BrainShared(this, "BrainShared", {
       namePrefix,
       embedModelArn,
@@ -1319,6 +1329,13 @@ export class Context101Stack extends cdk.Stack {
       if (adminSource.seedMain) {
         mainBranch.node.addDependency(adminSource.seedMain);
       }
+      if (!appUrl) {
+        ingestFn.addEnvironment(
+          "CONFLICT_EVIDENCE_URL",
+          cdk.Fn.join("", [amplifyDefaultUrl, "/api/conflicts/evidence"])
+        );
+      }
+
       // d) SSR Compute role — the IAM role the Amplify Hosting compute
       //    Lambda assumes at runtime. Granting it S3 perms on the docs
       //    bucket means API routes don't need access keys, and any writes

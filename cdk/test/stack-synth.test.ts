@@ -118,14 +118,6 @@ test("full stack synths CodeCommit admin with Amplify and no circular dependency
   );
 
   const lambdas = template.findResources("AWS::Lambda::Function");
-  const allLambdaEnv = JSON.stringify(
-    Object.values(lambdas).map((fn) => fn.Properties?.Environment ?? {})
-  );
-  assert.equal(
-    allLambdaEnv.includes("CONFLICT_EVIDENCE"),
-    false,
-    "no Lambda may set CONFLICT_EVIDENCE_URL / SECRET"
-  );
 
   const githubSync = Object.values(lambdas).find((fn) =>
     String(fn.Properties?.FunctionName ?? "").endsWith("-connector-sync-github")

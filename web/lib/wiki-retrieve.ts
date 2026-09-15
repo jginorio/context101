@@ -163,6 +163,7 @@ export async function retrieveSources(opts: {
   query: string;
   includeRaw?: boolean;
   numberOfResults?: number;
+  conflictScope?: { orgId: string; brainId: string };
 }): Promise<RetrievedSource[]> {
   const limit = opts.numberOfResults ?? DEFAULT_NUM_RESULTS;
   const ret = await agentRuntime.send(
@@ -192,10 +193,22 @@ export async function retrieveSources(opts: {
   const filtered = opts.includeRaw
     ? mapped.slice(0, limit)
     : filterSearchHits(mapped, limit);
-  return filtered.map((h, i) => ({
+  const hits = filtered.map((h, i) => ({
     n: i + 1,
     key: h.key,
     score: h.score,
     text: h.text,
   }));
+  if (opts.conflictScope) {
+    void import("@/lib/conflicts")
+      .then(({ reportEvidence }) =>
+        reportEvidence(opts.conflictScope!, {
+          via: "query",
+          query: opts.query,
+          hits: hits.map((h) => ({ key: h.key, text: h.text })),
+        })
+      )
+      .catch((err) => console.error("conflict detect (query):", err));
+  }
+  return hits;
 }

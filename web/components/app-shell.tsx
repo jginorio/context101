@@ -8,6 +8,7 @@ import {
   Building2,
   ChevronUp,
   FolderTree,
+  GitCompare,
   LogOut,
   Menu,
   Plug,
@@ -41,6 +42,7 @@ import { APP_NAV_ITEMS } from "@/lib/app-nav";
 const NAV_ICONS = {
   "/knowledge": FolderTree,
   "/suggestions": Sparkles,
+  "/conflicts": GitCompare,
   "/sources": Plug,
   "/brains": Brain,
 } as const;
