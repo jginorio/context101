@@ -4,8 +4,14 @@ import {
 import { LambdaClient } from "@aws-sdk/client-lambda";
 import { and, desc, eq } from "drizzle-orm";
 
+import type {
+  ConnectorStatus,
+  ConnectorType,
+} from "@/lib/connectors/contract";
 import { db } from "@/lib/db/client";
 import { connectors as connectorsSchema } from "@/lib/db/schema";
+
+export type { ConnectorStatus, ConnectorType };
 
 const region = process.env.AWS_REGION ?? "us-east-1";
 
@@ -28,21 +34,6 @@ export const NOTION_OAUTH_CLIENT_SECRET_ID =
   process.env.NOTION_OAUTH_CLIENT_SECRET_ID ?? "";
 export const CONNECTOR_TOKEN_SECRET_PREFIX =
   process.env.CONNECTOR_TOKEN_SECRET_PREFIX ?? "context101-connector-";
-
-export type ConnectorStatus =
-  | "pending_auth"
-  | "connecting"
-  | "syncing"
-  | "connected"
-  | "error"
-  | "paused";
-
-export type ConnectorType =
-  | "sheets"
-  | "docs"
-  | "slides"
-  | "notion"
-  | "github";
 
 // Notion page hierarchy captured by the sync (for the Notion-style sidebar).
 export type NotionTreeNode = {

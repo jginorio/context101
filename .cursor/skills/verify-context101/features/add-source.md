@@ -1,6 +1,6 @@
 # Add source
 
-Add source opens a provider picker from Knowledge (header or sidebar) or the Sources page. Choosing a provider shows that connector’s fields. Submitting creates a real connector and starts OAuth / GitHub install — do not submit in a default verify run.
+Add source opens a provider picker from Knowledge (header or sidebar) or the Sources page. Choosing a provider shows that connector’s fields. Submitting creates a real connector and starts OAuth / GitHub install — do not submit in a default verify run. The v0 connector contract (auth / sync / S3 / retrieve canary) is [connector-contract](./connector-contract.md).
 
 GitHub’s form is no longer the same “label + URL” shape as Google/Notion. See [github-source](./github-source.md) for the App / repo-picker / PAT-fallback branches.
 

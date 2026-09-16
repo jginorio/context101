@@ -159,6 +159,8 @@ A successful `put`/`move`/`delete` JSON includes `"ok": true`. `list` after move
 
 A wait returns `"ok": true` when the key/canary condition holds. Default timeout is 480s (ingest is a full KB sync and may queue behind an in-flight job).
 
+Connector e2e (GitHub / Notion / Google) is the same retrieve canary, after a real sync. That is an **explicit track** — [connector-contract](features/connector-contract.md) and `bin/connector-matrix`. Default verify still must not submit **Connect**, **Add repository**, or **Sync now** on a shared brain.
+
 ## Evidence
 
 Write proof under `.cursor/skills/verify-context101/artifacts/<feature>/`. That directory is gitignored. Cleanup must not delete it.
@@ -196,6 +198,7 @@ All executable; invoke from the repo root:
 | `bin/cli` | forward to `context101` (or `npx -y context101-cli@0.1.2`) |
 | `bin/files` | authenticated list/get/put/move/delete |
 | `bin/retrieve` | Bedrock Retrieve via `/api/wiki/retrieve`; can wait on a key/canary |
+| `bin/connector-matrix` | print / gate the connector e2e matrix (default: steps only; `--live` needs `VERIFY_CONNECTOR_MATRIX=1`) |
 | `bin/cleanup` | remove `verify/` scratch keys; stop only our Next |
 
 Feature recipes live in [`features/`](features/README.md).
