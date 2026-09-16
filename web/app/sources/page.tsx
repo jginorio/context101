@@ -12,6 +12,12 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -36,6 +42,7 @@ import {
   type AddSourceKind,
   type ConnectorType,
 } from "@/lib/source-providers";
+import { summarizeConnectorError } from "@/lib/connector-error-summary";
 import { cn } from "@/lib/utils";
 
 type Status =
@@ -63,6 +70,25 @@ type Connector = {
   created_at: string;
   created_by?: string;
 };
+
+function ConnectorSyncError({ error }: { error: string }) {
+  return (
+    <Accordion className="rounded-md border border-destructive/30 bg-destructive/10 text-destructive">
+      <AccordionItem value="error" className="border-0">
+        <AccordionTrigger className="px-2 py-1.5 text-xs font-medium hover:no-underline">
+          <span className="min-w-0 flex-1 truncate">
+            {summarizeConnectorError(error)}
+          </span>
+        </AccordionTrigger>
+        <AccordionContent className="pb-2">
+          <pre className="px-2 font-mono text-[11px] leading-relaxed break-all whitespace-pre-wrap">
+            {error}
+          </pre>
+        </AccordionContent>
+      </AccordionItem>
+    </Accordion>
+  );
+}
 
 function StatusPill({ s }: { s: Status }) {
   const cls = cn(
@@ -358,9 +384,7 @@ function SourcesContent() {
                   </dl>
 
                   {c.status === "error" && c.last_error && (
-                    <div className="rounded-md border border-destructive/30 bg-destructive/10 p-2 text-xs text-destructive">
-                      {c.last_error}
-                    </div>
+                    <ConnectorSyncError error={c.last_error} />
                   )}
 
                   <div className="flex items-center justify-end gap-2 border-t pt-1">

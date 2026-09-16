@@ -102,6 +102,7 @@ Stable handles:
 | Conflicts nav | parked. No Conflicts link. `/conflicts` redirects to `/knowledge` |
 | App nav strip | sidebar row under Active brain: Knowledge, Suggestions, Sources, Brains |
 | Sources nav | link `Sources` → `/sources` (heading `Data sources`) |
+| Sources ERROR detail | accordion trigger named the one-line summary (e.g. `401 unauthorized — API token is invalid.`); panel is the full `last_error`. Closed by default |
 | Brains nav | link `Brains` → `/brains` |
 | New brain | button `New brain` (do not submit in a default run) |
 | Brain Advanced | button `Advanced` / `aria-label="Advanced settings"` on a ready row (opens `/settings`) |
