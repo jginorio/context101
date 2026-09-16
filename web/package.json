@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "predev": "cp ../scripts/install-mcps.sh public/install-mcps.sh",
+    "predev": "mkdir -p public && cp ../scripts/install-mcps.sh public/install-mcps.sh",
     "build": "next build",
-    "prebuild": "cp ../scripts/install-mcps.sh public/install-mcps.sh",
+    "prebuild": "mkdir -p public && cp ../scripts/install-mcps.sh public/install-mcps.sh",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "start": "next start",
