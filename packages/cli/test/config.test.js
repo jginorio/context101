@@ -15,9 +15,11 @@ test("formatConfig redacts secrets and leaves profile names", () => {
     CTX_TOKEN: secret,
     AWS_PROFILE: "findit",
     APP_MODE: "self_hosted",
+    GOOGLE_OAUTH_CLIENT_SECRET_ID: "context101-google-oauth-client",
   });
   assert.match(text, /AWS_PROFILE=findit/);
   assert.match(text, /APP_MODE=self_hosted/);
+  assert.match(text, /GOOGLE_OAUTH_CLIENT_SECRET_ID=context101-google-oauth-client/);
   assert.equal(text.includes(secret), false);
   assert.match(text, /CTX_TOKEN=/);
 });

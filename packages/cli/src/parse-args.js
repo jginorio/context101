@@ -11,6 +11,7 @@ const COMMAND_LINES = [
   ["destroy", "tear down a space"],
   ["config", "show deploy-env keys (values redacted)"],
   ["config set", "write one key (chmod 600; value is not printed)"],
+  ["connectors setup", "write instance OAuth/app secrets to SM (values not printed)"],
   ["help", "list commands"],
   ["version", "print the installed CLI version"],
 ];
@@ -102,6 +103,37 @@ const TOPIC_HELP = {
   --deploy-env <path>
   --home`,
 
+  connectors: `connectors setup <google|notion|github> [space] — write instance OAuth/app secrets to Secrets Manager
+  Google/Notion: { client_id, client_secret } at <NAME_PREFIX>-google-oauth-client (or notion-).
+  GitHub App: <NAME_PREFIX>-connector-github-app. PAT is per-connector in admin, not here.
+  Writes the SM name to deploy-env as GOOGLE_OAUTH_CLIENT_SECRET_ID / NOTION_OAUTH_CLIENT_SECRET_ID / GITHUB_APP_SECRET_ID.
+  Values are never printed. Next: context101 update, then Connect in admin.
+
+  --client-id
+  --client-secret        or env CONTEXT101_CONNECTOR_CLIENT_SECRET
+  --app-id               GitHub App id
+  --private-key-file     GitHub App PEM
+  --slug                 GitHub App slug (optional)
+  --html-url             GitHub App URL (optional)
+  --aws-profile <name>
+  --deploy-env <path>
+  --home
+  --dry-run
+  --yes, -y`,
+
+  "connectors setup": `connectors setup <google|notion|github> [space] — write instance OAuth/app secrets to Secrets Manager
+  Also: context101 connectors.
+
+  --client-id
+  --client-secret        or env CONTEXT101_CONNECTOR_CLIENT_SECRET
+  --app-id               GitHub App id
+  --private-key-file     GitHub App PEM
+  --aws-profile <name>
+  --deploy-env <path>
+  --home
+  --dry-run
+  --yes, -y`,
+
   help: `help [command] — list commands, or flags for one command`,
 
   version: `version - print the installed CLI version
@@ -145,7 +177,15 @@ const LIST_FROM_INIT = new Set([
 const CDK_FROM_INIT = new Set(["--dir"]);
 
 const CDK_COMMANDS = new Set(["deploy", "diff", "synth"]);
-const TARGET_COMMANDS = new Set(["init", "deploy", "diff", "synth", "destroy", "urls"]);
+const TARGET_COMMANDS = new Set([
+  "init",
+  "deploy",
+  "diff",
+  "synth",
+  "destroy",
+  "urls",
+  "connectors",
+]);
 
 const COMMANDS = {
   init: "init",
@@ -161,6 +201,7 @@ const COMMANDS = {
   remove: "destroy",
   rm: "destroy",
   config: "config",
+  connectors: "connectors",
   help: "help",
   version: "version",
 };
@@ -208,6 +249,14 @@ export function parseArgs(argv) {
     configAction: "show",
     configKey: null,
     configValue: null,
+    connectorsAction: null,
+    connectorsProvider: null,
+    clientId: null,
+    clientSecret: null,
+    appId: null,
+    slug: null,
+    htmlUrl: null,
+    privateKeyFile: null,
     helpTopic: null,
   };
 
@@ -249,6 +298,10 @@ export function parseArgs(argv) {
     opts.configValue = pair.slice(eq + 1);
   }
 
+  if (opts.command === "connectors") {
+    parseConnectorsArgs(opts, args);
+  }
+
   while (args.length) {
     const arg = args.shift();
     if (TARGET_COMMANDS.has(opts.command) && !arg.startsWith("-")) {
@@ -263,7 +316,11 @@ export function parseArgs(argv) {
     }
     if (!flagAllowed(opts.command, arg)) {
       const err = new Error(
-        opts.command === "init" ? `unknown flag: ${arg}` : `${arg} is an init option`
+        CONNECTOR_ONLY.has(arg)
+          ? `${arg} is a connectors option`
+          : opts.command === "init"
+            ? `unknown flag: ${arg}`
+            : `${arg} is an init option`
       );
       err.code = "USAGE";
       throw err;
@@ -344,6 +401,24 @@ export function parseArgs(argv) {
       case "--verbose":
         opts.verbose = true;
         break;
+      case "--client-id":
+        opts.clientId = needValue(arg, args);
+        break;
+      case "--client-secret":
+        opts.clientSecret = needValue(arg, args);
+        break;
+      case "--app-id":
+        opts.appId = needValue(arg, args);
+        break;
+      case "--slug":
+        opts.slug = needValue(arg, args);
+        break;
+      case "--html-url":
+        opts.htmlUrl = needValue(arg, args);
+        break;
+      case "--private-key-file":
+        opts.privateKeyFile = needValue(arg, args);
+        break;
       default: {
         const err = new Error(`unknown flag: ${arg}`);
         err.code = "USAGE";
@@ -362,6 +437,9 @@ function parseHelpArgs(opts, args) {
     if (topic === "config" && args[0] === "set") {
       args.shift();
       opts.helpTopic = "config set";
+    } else if (topic === "connectors" && args[0] === "setup") {
+      args.shift();
+      opts.helpTopic = "connectors setup";
     } else if (COMMANDS[topic] && topic !== "help") {
       opts.helpTopic = COMMANDS[topic];
     } else if (topic === "help") {
@@ -382,13 +460,44 @@ function parseHelpArgs(opts, args) {
   return opts;
 }
 
+const CONNECTOR_ONLY = new Set([
+  "--client-id",
+  "--client-secret",
+  "--app-id",
+  "--slug",
+  "--html-url",
+  "--private-key-file",
+]);
+
+function parseConnectorsArgs(opts, args) {
+  const action = args[0] && !args[0].startsWith("-") ? args.shift() : null;
+  if (!action) {
+    opts.help = true;
+    opts.helpTopic = "connectors";
+    return;
+  }
+  if (action !== "setup") {
+    const err = new Error("usage: context101 connectors setup <google|notion|github>");
+    err.code = "USAGE";
+    throw err;
+  }
+  opts.connectorsAction = "setup";
+  if (args[0] && !args[0].startsWith("-")) {
+    opts.connectorsProvider = args.shift();
+  }
+}
+
 function flagAllowed(command, arg) {
+  if (CONNECTOR_ONLY.has(arg)) return command === "connectors";
   if (!INIT_ONLY.has(arg)) return true;
   if (command === "init") return true;
   if (command === "destroy") return DESTROY_FROM_INIT.has(arg);
   if (CDK_COMMANDS.has(command)) return CDK_FROM_INIT.has(arg);
   if (command === "list" || command === "urls") return LIST_FROM_INIT.has(arg);
   if (command === "config") return arg === "--home";
+  if (command === "connectors") {
+    return LIST_FROM_INIT.has(arg) || arg === "--yes" || arg === "-y";
+  }
   return false;
 }
 

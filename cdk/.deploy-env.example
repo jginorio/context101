@@ -59,3 +59,14 @@ AWS_PROFILE="plateapr.com"
 # Magic-link sign-in reuses SES_* + APP_URL / BETTER_AUTH_URL (no extra
 # secrets). Optional Better Auth origin allow-list if a browser Origin is sent:
 # BETTER_AUTH_TRUSTED_ORIGINS="https://app.example.com"
+
+# OPTIONAL — instance connector OAuth / GitHub App. These are Secrets Manager
+# *names* (ids), not client_secret / PEM / PAT values. Create the provider
+# app, then `context101 connectors setup google|notion|github` writes the
+# SM secret and these keys. CDK defaults (NAME_PREFIX=context101):
+# GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"
+# NOTION_OAUTH_CLIENT_SECRET_ID="context101-notion-oauth-client"
+# GitHub App lives at <NAME_PREFIX>-connector-github-app (PAT is per-connector
+# in admin, not here).
+# GITHUB_APP_SECRET_ID="context101-connector-github-app"
+# After setup: `context101 update`, then Add source → Connect in admin.

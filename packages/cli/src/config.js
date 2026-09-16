@@ -11,6 +11,12 @@ import { listSpaces } from "./spaces.js";
 import { writers } from "./style.js";
 
 const SECRET_NAME = /TOKEN|SECRET|PASSWORD|PEPPER|KEY/i;
+const NAME_KEYS = new Set([
+  "GOOGLE_OAUTH_CLIENT_SECRET_ID",
+  "NOTION_OAUTH_CLIENT_SECRET_ID",
+  "GITHUB_APP_SECRET_ID",
+  "CONNECTOR_TOKEN_SECRET_PREFIX",
+]);
 const HOSTED_KEYS = new Set([
   "BETTER_AUTH_URL",
   "APP_URL",
@@ -18,6 +24,7 @@ const HOSTED_KEYS = new Set([
 ]);
 
 export function isSecretConfigKey(key) {
+  if (NAME_KEYS.has(key)) return false;
   return SECRET_KEYS.includes(key) || SECRET_NAME.test(key);
 }
 

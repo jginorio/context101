@@ -148,6 +148,20 @@ test("forwards CREATE_RDS and EMBED_MODEL_ID / githubToken", async () => {
   assert.match(watchArgs, /EMBED_MODEL_ID=amazon.titan-embed-text-v1/);
 });
 
+test("forwards GOOGLE_OAUTH_CLIENT_SECRET_ID as an SM name, not a client_secret", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-oauthid-"));
+  await makeRepoFixture(root);
+  const context = await contextFromFile(root, [
+    'CTX_TOKEN="ctx_testtoken_xx"',
+    'GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"',
+    'NOTION_OAUTH_CLIENT_SECRET_ID="context101-notion-oauth-client"',
+  ]);
+  const joined = buildCdkArgs({ action: "deploy", context }).join(" ");
+  assert.match(joined, /GOOGLE_OAUTH_CLIENT_SECRET_ID=context101-google-oauth-client/);
+  assert.match(joined, /NOTION_OAUTH_CLIENT_SECRET_ID=context101-notion-oauth-client/);
+  assert.equal(joined.includes("client_secret"), false);
+});
+
 test("env CTX_TOKEN wins over the file", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-win-"));
   await makeRepoFixture(root);

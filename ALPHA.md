@@ -31,7 +31,7 @@ Context101 is alpha software. It started as an internal proof of concept and is 
 - You need Bedrock model access for Titan embeddings and the Claude model used by improve/wiki flows.
 - You need Docker for CDK asset bundling.
 - You need CDK bootstrap in the target account and region.
-- Provider connectors need their own OAuth clients/secrets.
+- Provider connectors need their own OAuth clients/secrets. Self-host front door: `context101 connectors setup google|notion|github` (writes Secrets Manager; values never printed).
 - App Runner is used by the current MCP service path; future versions may migrate to ECS Express Mode or ECS Fargate.
 
 If you are evaluating Context101, start with one test brain and non-sensitive data. Treat the current release as a working alpha, not a hardened platform.

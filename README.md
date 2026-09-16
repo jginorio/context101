@@ -11,7 +11,7 @@ Alpha / trusted-team only. Not a wiki app. Retrieval is raw-first. Product focus
 ## context101
 
 ```bash
-npm i -g context101-cli@0.1.23
+npm i -g context101-cli@0.1.24
 ```
 
 Package `context101-cli`, bin `context101`. Pin the version — `@latest` is a no-op on some machines. Unscoped `npx context101` is Context7's MCP, unrelated.
@@ -22,6 +22,7 @@ context101 update acme
 context101 list
 context101 urls acme
 context101 destroy acme --dry-run
+context101 connectors setup google
 ```
 
 `acme` is the space name you choose, not a required token. Nameless `init` prompts. `init [space]` writes `~/.context101/spaces/<name>/`. `update` (`deploy`), `destroy`, `list`, and `urls` are space-aware. An existing `cdk/.deploy-env` is the `default` space.
