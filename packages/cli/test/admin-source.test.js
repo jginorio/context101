@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
-import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
+import { existsSync, lstatSync, symlinkSync } from "node:fs";
+import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
@@ -28,6 +29,8 @@ async function adminFixture() {
   await writeFile(path.join(root, "amplify.yml"), "version: 1\n", "utf8");
   await mkdir(path.join(root, "packages", "design"), { recursive: true });
   await writeFile(path.join(root, "packages", "design", "package.json"), '{"name":"@context101/design"}\n');
+  await writeFile(path.join(root, "packages", "design", "DESIGN.md"), "# design system\n");
+  symlinkSync("../packages/design/DESIGN.md", path.join(root, "web", "DESIGN.md"));
   return root;
 }
 
@@ -43,10 +46,31 @@ test("stageAdminSource copies web/ in the monorepo layout", async () => {
   const root = await adminFixture();
   const dest = await mkdtemp(path.join(tmpdir(), "ctx101-admin-stage-"));
   stageAdminSource(root, dest);
-  const { existsSync } = await import("node:fs");
   assert.equal(existsSync(path.join(dest, "web", "package.json")), true);
   assert.equal(existsSync(path.join(dest, "amplify.yml")), true);
   assert.equal(existsSync(path.join(dest, "package-lock.json")), true);
+  const stagedDesign = path.join(dest, "web", "DESIGN.md");
+  assert.equal(lstatSync(stagedDesign).isSymbolicLink(), false);
+  assert.equal(lstatSync(stagedDesign).isFile(), true);
+  assert.equal(await readFile(stagedDesign, "utf8"), "# design system\n");
+  assert.equal(
+    await readFile(path.join(dest, "packages", "design", "DESIGN.md"), "utf8"),
+    "# design system\n"
+  );
+
+  const { createExec } = await import("../src/exec.js");
+  const exec = createExec();
+  assert.equal(exec({ command: "git", args: ["init", "-b", "main"], cwd: dest }).ok, true);
+  assert.equal(exec({ command: "git", args: ["add", "-A"], cwd: dest }).ok, true);
+  const ls = exec({
+    command: "git",
+    args: ["ls-files", "-s", "web/DESIGN.md", "packages/design/DESIGN.md"],
+    cwd: dest,
+  });
+  assert.equal(ls.ok, true, ls.stderr);
+  assert.match(ls.stdout, /^100644 .+\tweb\/DESIGN.md$/m);
+  assert.match(ls.stdout, /^100644 .+\tpackages\/design\/DESIGN.md$/m);
+  assert.equal(ls.stdout.includes("120000"), false);
 });
 
 test("pushAdminSource runs git push --force to CodeCommit (mocked)", async () => {

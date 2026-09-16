@@ -48,7 +48,13 @@ export function stageAdminSource(
   for (const rel of ADMIN_SOURCE_RELS) {
     const from = path.join(stackRoot, rel);
     if (!exists(from)) continue;
-    copy(from, path.join(dest, rel), { recursive: true, filter: allowAdminCopy });
+    copy(from, path.join(dest, rel), {
+      recursive: true,
+      // web/DESIGN.md is a symlink in the monorepo. CodeCommit + Amplify
+      // `stat` the path; a 120000 gitlink is dropped or left dangling.
+      dereference: true,
+      filter: allowAdminCopy,
+    });
   }
   return dest;
 }

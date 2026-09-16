@@ -244,6 +244,7 @@ test("pack-stack ships cdk lockfile, web/, and the Amplify monorepo files", asyn
   assert.match(src, /cdk\/package-lock\.json/);
   assert.match(src, /"cdk\.out"/);
   assert.match(src, /copyRel\("web"/);
+  assert.match(src, /dereference: true/);
   assert.match(src, /copyRel\("amplify.yml"/);
   assert.match(src, /copyRel\("package-lock.json"/);
   assert.match(src, /copyRel\("packages\/cli"/);
