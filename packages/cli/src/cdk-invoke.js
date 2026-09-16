@@ -128,6 +128,12 @@ export function buildCdkArgs({
     NAME_PREFIX: namePrefix || "",
   };
 
+  const appMode = String(
+    (context.fileExists ? context.values.APP_MODE : context.values.APP_MODE || env.APP_MODE) ||
+      ""
+  ).trim();
+  const allowHostedProductUrls = appMode === "hosted";
+
   for (const key of CONTEXT_KEYS) {
     const forced = identity[key];
     if (forced) {
@@ -139,7 +145,7 @@ export function buildCdkArgs({
       ? context.values[key]
       : context.values[key] || env[key] || "";
     if (!value) continue;
-    if (isHostedContext101Url(value)) {
+    if (isHostedContext101Url(value) && !allowHostedProductUrls) {
       if (context.fileExists && context.declared.has(key)) {
         const error = new Error(
           `${key} in the env file is the hosted Context101 product, not a self-host URL. Omit it so CDK uses the Amplify default domain, or set a domain you own.`
