@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdirSync, writeFileSync } from "node:fs";
+import { existsSync, lstatSync, mkdirSync, symlinkSync, writeFileSync } from "node:fs";
 import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { test } from "node:test";
-import { copyRel, packStack, SKIP } from "../scripts/pack-stack.js";
+import { copyOpts, copyRel, packStack, SKIP } from "../scripts/pack-stack.js";
 
 function write(rel, contents, root) {
   const full = path.join(root, rel);
@@ -21,10 +21,14 @@ async function makePackFixture() {
   write("web/package.json", '{"name":"web"}\n', repoRoot);
   write("web/.next/cache", "skip-me\n", repoRoot);
   write("packages/design/package.json", '{"name":"@context101/design"}\n', repoRoot);
+  write("packages/design/DESIGN.md", "# design system\n", repoRoot);
+  write("packages/design/PRODUCT.md", "# product\n", repoRoot);
+  symlinkSync("../packages/design/DESIGN.md", path.join(repoRoot, "web", "DESIGN.md"));
+  symlinkSync("../packages/design/PRODUCT.md", path.join(repoRoot, "web", "PRODUCT.md"));
   write("packages/ui/package.json", '{"name":"@context101/ui"}\n', repoRoot);
   write(
     "packages/cli/package.json",
-    '{"name":"context101-cli","version":"0.1.21"}\n',
+    '{"name":"context101-cli","version":"0.1.22"}\n',
     repoRoot
   );
   write("packages/cli/bin/context101.js", "#!/usr/bin/env node\n", repoRoot);
@@ -55,7 +59,7 @@ test("copyRel packages/cli into dest under itself does not EINVAL or nest stack/
   assert.equal(existsSync(packedPkg), true);
   const pkg = JSON.parse(await readFile(packedPkg, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.21");
+  assert.equal(pkg.version, "0.1.22");
   assert.equal(existsSync(path.join(dest, "packages", "cli", "bin", "context101.js")), true);
   assert.equal(existsSync(path.join(dest, "packages", "cli", "src", "main.js")), true);
   assert.equal(existsSync(path.join(dest, "packages", "cli", "scripts", "pack-stack.js")), true);
@@ -90,6 +94,21 @@ test("packStack on a monorepo fixture writes stack/packages/cli without nesting 
   assert.equal(existsSync(path.join(dest, "stack")), false);
   assert.equal(existsSync(path.join(dest, "web", ".next")), false);
   assert.equal(existsSync(path.join(dest, "packages", "cli", "node_modules")), false);
+
+  const packedDesign = path.join(dest, "web", "DESIGN.md");
+  const packedProduct = path.join(dest, "web", "PRODUCT.md");
+  assert.equal(lstatSync(packedDesign).isSymbolicLink(), false);
+  assert.equal(lstatSync(packedDesign).isFile(), true);
+  assert.equal(lstatSync(packedProduct).isSymbolicLink(), false);
+  assert.equal(await readFile(packedDesign, "utf8"), "# design system\n");
+  assert.equal(await readFile(packedProduct, "utf8"), "# product\n");
+  assert.equal(await readFile(path.join(dest, "packages", "design", "DESIGN.md"), "utf8"), "# design system\n");
+});
+
+test("copyOpts dereferences so Amplify can stat web/DESIGN.md", () => {
+  const opts = copyOpts(() => true);
+  assert.equal(opts.recursive, true);
+  assert.equal(opts.dereference, true);
 });
 
 test("SKIP still excludes stack, node_modules, and build leftovers", () => {

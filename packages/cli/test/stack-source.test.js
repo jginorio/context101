@@ -18,7 +18,7 @@ import {
 } from "../src/stack-source.js";
 import { makePackedStackFixture, makeRepoFixture } from "./helpers.js";
 
-const VERSION = "0.1.21";
+const VERSION = "0.1.22";
 
 test("HOME leftover ~/context101 does not beat the packaged stack", async () => {
   const home = await mkdtemp(path.join(tmpdir(), "ctx101-home-clone-"));
@@ -244,6 +244,7 @@ test("pack-stack ships cdk lockfile, web/, and the Amplify monorepo files", asyn
   assert.match(src, /cdk\/package-lock\.json/);
   assert.match(src, /"cdk\.out"/);
   assert.match(src, /copyRel\("web"/);
+  assert.match(src, /dereference: true/);
   assert.match(src, /copyRel\("amplify.yml"/);
   assert.match(src, /copyRel\("package-lock.json"/);
   assert.match(src, /copyRel\("packages\/cli"/);

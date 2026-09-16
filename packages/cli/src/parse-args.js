@@ -17,6 +17,7 @@ const COMMAND_LINES = [
 
 const TOPIC_HELP = {
   init: `init [space] — name a space and write its deploy-env; TTY asks to deploy.
+  No name: TTY asks (files at ~/.context101/spaces/<name>/). --yes / --dry-run use default. non-TTY needs a name.
   Existing deploy-env: TTY asks to keep it. No continues the wizard (same secrets). --force starts over (new secrets).
   Update later: pin the new CLI, then context101 update <space>.
 

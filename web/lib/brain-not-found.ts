@@ -38,7 +38,7 @@ export function brainNotFoundCopy(opts: {
     return {
       kind: "empty-stack",
       title: "No brains yet",
-      body: "A brain is an isolated knowledge base. Create one to ingest sources and ask the wiki.",
+      body: "A brain is an isolated knowledge base. Create one to ingest sources.",
       ctaLabel: "Create a brain",
       href: "/brains?new=1",
       ctaVariant: "default",

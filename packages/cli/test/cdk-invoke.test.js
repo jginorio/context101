@@ -68,6 +68,30 @@ test("refuses a hosted product URL written in the env file", async () => {
   assert.throws(() => buildCdkArgs({ action: "deploy", context }), /hosted Context101 product/);
 });
 
+test("forwards hosted product URLs when APP_MODE=hosted", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-hosted-ok-"));
+  await makeRepoFixture(root);
+  const zone = ["context", "101", ".", "dev"].join("");
+  const appUrl = `https://app.${zone}`;
+  const marketing = `https://${zone}`;
+  const mcp = `https://mcp.${zone}`;
+  const context = await contextFromFile(root, [
+    'CTX_TOKEN="ctx_testtoken_xx"',
+    'APP_MODE="hosted"',
+    `BETTER_AUTH_URL="${appUrl}"`,
+    `APP_URL="${appUrl}"`,
+    `MARKETING_URL="${marketing}"`,
+    `MCP_PUBLIC_HOST="${mcp}"`,
+  ]);
+  const args = buildCdkArgs({ action: "deploy", context });
+  const joined = args.join(" ");
+  assert.match(joined, new RegExp(`BETTER_AUTH_URL=${appUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(joined, new RegExp(`APP_URL=${appUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(joined, new RegExp(`MARKETING_URL=${marketing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(joined, new RegExp(`MCP_PUBLIC_HOST=${mcp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.match(joined, /APP_MODE=hosted/);
+});
+
 test("deploys without githubToken on the CodeCommit path", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "ctx101-cdk-skipgh-"));
   await makeRepoFixture(root);

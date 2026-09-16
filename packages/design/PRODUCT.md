@@ -14,7 +14,7 @@ Engineers and ops on trusted teams. Two hands-on surfaces: `web/` admin (brains,
 
 Context101 is a thin self-hostable wrapper around Amazon Bedrock Knowledge Bases — S3 + S3 Vectors, FastMCP per-brain, Better Auth + Postgres control plane. Self-host now; paid hosting later (not there yet — alpha / trusted-team only). Do not invent hosted billing, public multi-tenant SaaS, or per-brain RBAC.
 
-Not a wiki app. Wiki generation is an optional paused/beta overlay. Retrieval is raw-first. Do not pitch Bedrock retrieve as a product feature they offer; do not pitch model access or BYO-LLM.
+Not a wiki app. Wiki generation is parked (not on admin chrome). Conflicts detection is parked (no Opus on query/ingest). Product focus is sources + retrieve. Retrieval is raw-first. Do not pitch Bedrock retrieve as a product feature they offer; do not pitch model access or BYO-LLM.
 
 Each "brain" is a sealed knowledge base — its own S3 bucket, Bedrock KB, vector index, suggestions queue, and MCP token — created from the admin UI and served to AI clients via `/brain/<id>/mcp`. Success: a trusted team can stand up, populate, and serve isolated brains with honest state.
 

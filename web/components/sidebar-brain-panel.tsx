@@ -4,11 +4,9 @@ import * as React from "react";
 import Link from "next/link";
 import {
   AlertCircle,
-  BookOpen,
   Brain,
   CheckCircle2,
   Loader2,
-  MessagesSquare,
 } from "lucide-react";
 
 import { useBrain } from "@/lib/brain-context";
@@ -16,7 +14,7 @@ import { brainSwitcherCopy } from "@/lib/brain-not-found";
 
 /**
  * Fills the otherwise-empty sidebar space on pages that don't supply a context
- * panel (Brains, Sources, Suggestions, Ask). Gives the user at-a-glance
+ * panel (Brains, Sources, Suggestions). Gives the user at-a-glance
  * orientation for the active brain — name, status, embedding model, a short
  * description — plus the most common cross-brain actions.
  */
@@ -96,12 +94,6 @@ export function SidebarBrainPanel({ onNavigate }: { onNavigate?: () => void }) {
       </div>
 
       <div className="space-y-0.5 border-t border-sidebar-border/60 pt-2">
-        <Link href="/wiki/ask" onClick={onNavigate} className={actionClass}>
-          <MessagesSquare className="h-4 w-4 shrink-0" /> Ask the brain
-        </Link>
-        <Link href="/wiki" onClick={onNavigate} className={actionClass}>
-          <BookOpen className="h-4 w-4 shrink-0" /> Go to wiki
-        </Link>
         <Link href="/brains" onClick={onNavigate} className={actionClass}>
           <Brain className="h-4 w-4 shrink-0" /> Manage brains
         </Link>

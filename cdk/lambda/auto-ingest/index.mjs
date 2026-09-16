@@ -110,7 +110,6 @@ async function ingestForBucket(bucket, keys) {
     console.log(
       `[brain=${brain.brainId}] started ingestion job ${res.ingestionJob?.ingestionJobId}`
     );
-    await postConflictEvidence(bucket, keys, brain);
     return {
       bucket,
       brainId: brain.brainId,
@@ -121,40 +120,9 @@ async function ingestForBucket(bucket, keys) {
       console.log(
         `[brain=${brain.brainId}] ingestion already in progress; new files will be picked up.`
       );
-      await postConflictEvidence(bucket, keys, brain);
       return { bucket, brainId: brain.brainId, conflict: true };
     }
     throw err;
-  }
-}
-
-async function postConflictEvidence(bucket, keys, brain) {
-  const url = process.env.CONFLICT_EVIDENCE_URL;
-  if (!url) return;
-  const secret = process.env.CONFLICT_EVIDENCE_SECRET;
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), 2500);
-  try {
-    await fetch(url, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        ...(secret ? { "x-conflict-ingest-secret": secret } : {}),
-        ...(brain?.brainId ? { "x-brain-id": brain.brainId } : {}),
-      },
-      body: JSON.stringify({
-        via: "ingest",
-        bucket,
-        keys,
-        orgId: brain?.orgId,
-        brainId: brain?.brainId,
-      }),
-      signal: ctrl.signal,
-    });
-  } catch (err) {
-    console.error("conflict evidence post failed:", err);
-  } finally {
-    clearTimeout(timer);
   }
 }
 

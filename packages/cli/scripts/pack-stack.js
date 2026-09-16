@@ -44,11 +44,20 @@ export function copyRel(rel, repoRoot, dest) {
       if (SKIP.has(name)) continue;
       const childFrom = path.join(from, name);
       if (isInside(childFrom, dest)) continue;
-      cpSync(childFrom, path.join(to, name), { recursive: true, filter: allow });
+      cpSync(childFrom, path.join(to, name), copyOpts(allow));
     }
     return;
   }
-  cpSync(from, to, { recursive: true, filter: allow });
+  cpSync(from, to, copyOpts(allow));
+}
+
+/**
+ * Follow symlinks (web/DESIGN.md → packages/design/DESIGN.md) so the
+ * packed tree has regular files. Amplify `stat`s the path; a git-mode
+ * 120000 link is dropped or left dangling after CodeCommit checkout.
+ */
+export function copyOpts(filter) {
+  return { recursive: true, dereference: true, filter };
 }
 
 export function packStack(repoRoot, dest) {
