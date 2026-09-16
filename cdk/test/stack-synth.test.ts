@@ -145,7 +145,6 @@ test("full stack synths CodeCommit admin with Amplify and no circular dependency
 test("hosted APP_MODE keeps context101.dev public URLs on Amplify", () => {
   const zone = ["context", "101", ".", "dev"].join("");
   const appUrl = `https://app.${zone}`;
-  const marketing = `https://${zone}`;
   const mcp = `https://mcp.${zone}`;
   const app = new cdk.App({
     context: {
@@ -156,7 +155,7 @@ test("hosted APP_MODE keeps context101.dev public URLs on Amplify", () => {
       APP_MODE: "hosted",
       APP_URL: appUrl,
       BETTER_AUTH_URL: appUrl,
-      MARKETING_URL: marketing,
+      MARKETING_URL: `https://${zone}`,
       MCP_PUBLIC_HOST: mcp,
       ALLOW_PUBLIC_SIGNUP: "false",
       BILLING_ENABLED: "false",
@@ -171,7 +170,11 @@ test("hosted APP_MODE keeps context101.dev public URLs on Amplify", () => {
   assert.equal(envValue(env, "APP_MODE"), "hosted");
   assert.equal(envValue(env, "APP_URL"), appUrl);
   assert.equal(envValue(env, "BETTER_AUTH_URL"), appUrl);
-  assert.equal(envValue(env, "MARKETING_URL"), marketing);
+  assert.equal(
+    env.some((item) => item.Name === "MARKETING_URL"),
+    false,
+    "MARKETING_URL must not be forwarded after site/ was removed"
+  );
   assert.equal(envValue(env, "ALLOW_PUBLIC_SIGNUP"), "false");
   assert.equal(envValue(env, "BILLING_ENABLED"), "false");
   const mcpHost = envValue(env, "NEXT_PUBLIC_MCP_HOST");

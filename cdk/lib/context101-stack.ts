@@ -832,10 +832,6 @@ export class Context101Stack extends cdk.Stack {
       this.node.tryGetContext("APP_URL") as string | undefined,
       { allowHosted: allowHostedProductUrls }
     );
-    const marketingUrl = ownPublicUrl(
-      this.node.tryGetContext("MARKETING_URL") as string | undefined,
-      { allowHosted: allowHostedProductUrls }
-    );
     const mcpPublicHost = ownPublicUrl(
       this.node.tryGetContext("MCP_PUBLIC_HOST") as string | undefined,
       { allowHosted: allowHostedProductUrls }
@@ -877,7 +873,6 @@ export class Context101Stack extends cdk.Stack {
         ? [{ name: "BILLING_ENABLED", value: billingEnabled }]
         : []),
       ...(appUrl ? [{ name: "APP_URL", value: appUrl }] : []),
-      ...(marketingUrl ? [{ name: "MARKETING_URL", value: marketingUrl }] : []),
       ...(sesRegion ? [{ name: "SES_REGION", value: sesRegion }] : []),
       ...(sesFromEmail
         ? [{ name: "SES_FROM_EMAIL", value: sesFromEmail }]
