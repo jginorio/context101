@@ -20,10 +20,10 @@ ENV PORT=8787
 WORKDIR /app
 
 # System deps kept minimal; fastmcp + boto3 are pure Python
-COPY requirements.txt .
+COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY server.py search_filter.py .
+COPY server.py search_filter.py ./
 
 EXPOSE 8787
 
