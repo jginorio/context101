@@ -2,7 +2,7 @@
 
 GitHub is no longer “paste a repo URL and a PAT, then sync.” The hosted path is an org-scoped GitHub App: the user connects GitHub (install + user OAuth), then picks a granted repository from a combobox. A personal access token is only the fallback when this instance has no GitHub App, the user opts out, or app access fails.
 
-Submitting **Add repository** or **Connect GitHub** writes a connector and/or starts GitHub’s install/OAuth. Do not submit or start install in a default verify run.
+Submitting **Add repository** or **Connect GitHub** writes a connector and/or starts GitHub’s install/OAuth. Do not submit or start install in a default verify run. The sync/retrieve contract and gated GitHub happy-path matrix are [connector-contract](./connector-contract.md).
 
 ## Sub-features
 

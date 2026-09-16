@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+# Connector e2e matrix. Default verify does NOT Connect / Sync on shared brains.
+#
+# Usage:
+#   connector-matrix --list
+#   connector-matrix --type github --row happy
+#   connector-matrix --type github --row happy --live
+#
+# --live requires VERIFY_CONNECTOR_MATRIX=1 and never prints secrets / PATs.
+# Without --live (or without the env flag) this only prints the encoded steps.
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "$0")" && pwd)"
+BASE="${VERIFY_BASE_URL:-http://localhost:3000}"
+
+list_only=0
+live=0
+type=""
+row="happy"
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --list) list_only=1; shift ;;
+    --live) live=1; shift ;;
+    --type) type="${2:?}"; shift 2 ;;
+    --row) row="${2:?}"; shift 2 ;;
+    -h|--help)
+      sed -n '2,12p' "$0"
+      exit 0
+      ;;
+    -*) echo "unknown flag $1" >&2; exit 2 ;;
+    *) echo "usage: connector-matrix [--list] [--type github] [--row happy] [--live]" >&2; exit 2 ;;
+  esac
+done
+
+print_matrix() {
+  python3 - <<'PY'
+rows = ("happy", "update", "delete", "bad-token")
+types = ("docs", "sheets", "slides", "notion", "github")
+print("type\trow\tdone-when")
+for t in types:
+    for r in rows:
+        done = "bin/retrieve canary (library-ingest template)"
+        if r == "delete":
+            done = "bin/retrieve --absent-key --absent-canary"
+        elif r == "bad-token":
+            done = "status=error; retrieve misses new key"
+        print(f"{t}\t{r}\t{done}")
+PY
+}
+
+print_github_happy() {
+  cat <<'EOF'
+# github / happy — library-ingest template (explicit track)
+
+1. connect  Add GitHub connector to a fixture repo whose synced .md contains a unique canary.
+            Dedicated verify brain only. PAT form when GET /api/connectors/github-app is
+            {"configured":false}. Never print the PAT.
+2. s3       bin/files list "sources/github/" until sources/github/<owner>-<repo>/<path>.md exists.
+3. retrieve bin/retrieve --expect-key "sources/github/<slug>/<path>.md" --canary "<CANARY>" --timeout 480 "<query CANARY>"
+            Proof: "ok": true (library-ingest create).
+4. update   Edit the fixture .md (new canary), Sync now.
+            bin/retrieve --expect-key <key> --canary "<NEW>" (library-ingest remap).
+5. delete   POST /api/connectors/delete. bin/retrieve --absent-key <key> --absent-canary "<NEW>"
+            (library-ingest delete). Sibling GitHub connectors on the same repo stay.
+
+Live gate: VERIFY_CONNECTOR_MATRIX=1 plus VERIFY_GITHUB_REPO (and PAT/App already in the env).
+Default verify stops before Connect / Sync.
+EOF
+}
+
+print_row() {
+  case "$type/$row" in
+    github/happy) print_github_happy ;;
+    */happy|*/update|*/delete|*/bad-token)
+      echo "# $type / $row"
+      echo
+      echo "See .cursor/skills/verify-context101/features/connector-contract.md"
+      echo "Done-when: bin/retrieve canary (library-ingest template)."
+      echo "Default verify does not submit Connect / Sync."
+      ;;
+    *)
+      echo "unknown type/row: ${type:-?} / $row (types: docs|sheets|slides|notion|github; rows: happy|update|delete|bad-token)" >&2
+      exit 2
+      ;;
+  esac
+}
+
+if [[ "$list_only" -eq 1 ]]; then
+  print_matrix
+  exit 0
+fi
+
+if [[ -z "$type" ]]; then
+  echo "usage: connector-matrix --type github --row happy   (or --list)" >&2
+  exit 2
+fi
+
+print_row
+
+if [[ "$live" -eq 0 ]]; then
+  exit 0
+fi
+
+if [[ "${VERIFY_CONNECTOR_MATRIX:-}" != "1" ]]; then
+  echo "connector-matrix: --live skipped (set VERIFY_CONNECTOR_MATRIX=1 on a dedicated verify brain)" >&2
+  exit 0
+fi
+
+if [[ "$type" != "github" || "$row" != "happy" ]]; then
+  echo "connector-matrix: live skeleton is github/happy only" >&2
+  exit 2
+fi
+
+repo="${VERIFY_GITHUB_REPO:-}"
+path="${VERIFY_GITHUB_PATH:-docs/verify-canary.md}"
+if [[ -z "$repo" ]]; then
+  echo "connector-matrix: live github/happy needs VERIFY_GITHUB_REPO=owner/repo (PAT stays in the env, never printed)" >&2
+  exit 2
+fi
+
+if [[ -z "${VERIFY_GITHUB_PAT:-}" ]]; then
+  echo "connector-matrix: live github/happy needs VERIFY_GITHUB_PAT in the environment (not printed)" >&2
+  exit 2
+fi
+
+cookie=$("$ROOT/auth-cookie")
+status_code=$(curl -sS -o /tmp/verify-github-app.json -w '%{http_code}' \
+  -H "Cookie: $cookie" "$BASE/api/connectors/github-app" || true)
+echo "github-app status_http=$status_code configured=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get("configured"))' /tmp/verify-github-app.json 2>/dev/null || echo unknown)"
+echo "live github/happy: fixture repo is set (name omitted here so artifacts stay tenant-safe)."
+echo "Next: create the connector on a dedicated verify brain, then:"
+echo "  $ROOT/files list \"sources/github/\""
+echo "  $ROOT/retrieve --expect-key <key> --canary <CANARY> --timeout 480 \"<query CANARY>\""
+echo "Stop. This skeleton does not POST /api/connectors/create (avoids writing a shared-brain connector)."
+exit 0

@@ -564,21 +564,27 @@ export class Context101Stack extends cdk.Stack {
     // ── Data source connectors (Google Sheets, …) ─────────────────────
     // OAuth client creds are stored by the admin in Secrets Manager as
     // `context101-google-oauth-client` with { client_id, client_secret }.
-    // We reference by name so CDK doesn't try to manage the secret value.
+    // `context101 connectors setup google` writes that secret. Override the
+    // name via GOOGLE_OAUTH_CLIENT_SECRET_ID (the SM name/id, not the
+    // client_secret). Referenced by name — CDK does not manage the value.
     const googleOAuthClientSecret =
       secretsmanager.Secret.fromSecretNameV2(
         this,
         "GoogleOauthClientSecret",
-        `${namePrefix}-google-oauth-client`
+        (this.node.tryGetContext("GOOGLE_OAUTH_CLIENT_SECRET_ID") as
+          | string
+          | undefined)?.trim() || `${namePrefix}-google-oauth-client`
       );
     // Notion OAuth client creds stored as
     // `context101-notion-oauth-client` with { client_id, client_secret }.
-    // Referenced by name — not managed by CDK.
+    // `context101 connectors setup notion` writes that secret.
     const notionOAuthClientSecret =
       secretsmanager.Secret.fromSecretNameV2(
         this,
         "NotionOauthClientSecret",
-        `${namePrefix}-notion-oauth-client`
+        (this.node.tryGetContext("NOTION_OAUTH_CLIENT_SECRET_ID") as
+          | string
+          | undefined)?.trim() || `${namePrefix}-notion-oauth-client`
       );
 
     // a) Per-type sync Lambda — Sheets

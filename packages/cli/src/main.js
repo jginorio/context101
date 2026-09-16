@@ -1,6 +1,7 @@
 import { isExitPromptError, printCancelled } from "./cancel.js";
 import { helpText, parseArgs } from "./parse-args.js";
 import { runConfig } from "./config.js";
+import { runConnectors } from "./connectors.js";
 import { runDeploy } from "./deploy.js";
 import { runInit } from "./init.js";
 import { runDestroy, runList } from "./stacks.js";
@@ -54,6 +55,9 @@ export async function main(argv, ctx) {
     }
     if (opts.command === "config") {
       return await runConfig(opts, ctx);
+    }
+    if (opts.command === "connectors") {
+      return await runConnectors(opts, ctx);
     }
 
     return await runInit(opts, ctx);

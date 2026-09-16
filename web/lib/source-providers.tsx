@@ -9,6 +9,14 @@ import {
   GoogleSlidesLogo,
   NotionLogo,
 } from "@/components/source-logos";
+import {
+  CONNECTOR_TYPES,
+  SOURCE_PREFIXES,
+  type AddSourceKind,
+  type ConnectorType,
+} from "@/lib/connectors/contract";
+
+export { CONNECTOR_TYPES, type AddSourceKind, type ConnectorType };
 
 // Any component that accepts a className — covers both the brand SVG marks
 // and Lucide icons.
@@ -16,11 +24,7 @@ export type SourceIcon = ComponentType<{ className?: string }>;
 
 // Connector types that surface in the UI. Mirrors the Postgres `source_type`
 // enum minus `manual` (manual files are uploaded through Add source, not a
-// connector row).
-export type ConnectorType = "sheets" | "docs" | "slides" | "notion" | "github";
-
-// Picker kind for Add source — connectors plus local markdown uploads.
-export type AddSourceKind = ConnectorType | "files";
+// connector row). Canonical types: `@/lib/connectors/contract`.
 
 export const FILES_SOURCE = {
   kind: "files" as const,
@@ -45,35 +49,35 @@ export const SOURCE_TYPES: Record<ConnectorType, SourceTypeMeta> = {
     label: "Docs",
     menuLabel: "Google Docs",
     icon: GoogleDocsLogo,
-    prefix: "sources/docs/",
+    prefix: SOURCE_PREFIXES.docs,
   },
   sheets: {
     type: "sheets",
     label: "Sheets",
     menuLabel: "Google Sheets",
     icon: GoogleSheetsLogo,
-    prefix: "sources/sheets/",
+    prefix: SOURCE_PREFIXES.sheets,
   },
   slides: {
     type: "slides",
     label: "Slides",
     menuLabel: "Google Slides",
     icon: GoogleSlidesLogo,
-    prefix: "sources/slides/",
+    prefix: SOURCE_PREFIXES.slides,
   },
   notion: {
     type: "notion",
     label: "Notion",
     menuLabel: "Notion",
     icon: NotionLogo,
-    prefix: "sources/notion/",
+    prefix: SOURCE_PREFIXES.notion,
   },
   github: {
     type: "github",
     label: "GitHub",
     menuLabel: "GitHub",
     icon: GithubLogo,
-    prefix: "sources/github/",
+    prefix: SOURCE_PREFIXES.github,
   },
 };
 
@@ -95,14 +99,8 @@ export const PROVIDER_GROUPS: ProviderGroup[] = [
 ];
 
 // Flat connector order for the knowledge sidebar (Google types first, then
-// single-provider connectors).
-export const CONNECTOR_TYPES: ConnectorType[] = [
-  "docs",
-  "sheets",
-  "slides",
-  "notion",
-  "github",
-];
+// single-provider connectors). `CONNECTOR_TYPES` is re-exported from the
+// contract module.
 
 export function TypeIcon({
   type,

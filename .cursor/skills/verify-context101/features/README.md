@@ -19,6 +19,7 @@ This directory is the maintained source for verifying user-facing Context101 beh
 - Right-click via `evaluate_script` `contextmenu` on the tree row, then click the menuitem.
 - After every mutation, confirm with `bin/files list` / `bin/files get`.
 - After create/rename/move/delete, prove the vector index with `bin/retrieve` (see [library-ingest](./library-ingest.md)).
+- Connector Connect / Sync is [connector-contract](./connector-contract.md) — an explicit track. Default verify does not submit those on a shared brain.
 - Restore by deleting the `verify/<run-id>/` prefix. Keep artifacts.
 
 ## Proof and skip reporting
@@ -37,6 +38,7 @@ This directory is the maintained source for verifying user-facing Context101 beh
 - [Add source](./add-source.md) — open the picker (do not submit a connector in a default run).
 - [Data sources list](./sources.md) — connector cards; ERROR last_error is an accordion (collapsed summary, full text on open).
 - [GitHub source](./github-source.md) — org-scoped GitHub App (Connect GitHub / repo picker); PAT is fallback only. Do not install or submit in a default run.
+- [Connector contract](./connector-contract.md) — v0 auth/sync/S3/delete/idempotent; done-when = `bin/retrieve` canary. E2E matrix is an explicit track (`bin/connector-matrix`); default verify still does not Connect/Sync on shared brains. Self-host OAuth/app secrets: `context101 connectors setup`.
 - [Login](./login.md) — email sign-in and session cookie. `/setup` is first admin only (skip when an org exists).
 - [Brains](./brains.md) — switch and inspect brains (do not provision, delete, or retry-delete brains in a default run).
 - [Wiki](./wiki.md) — parked on main; prove redirect + no nav. Retrieve is `bin/retrieve`.
