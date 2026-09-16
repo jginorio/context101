@@ -35,6 +35,7 @@ This directory is the maintained source for verifying user-facing Context101 beh
 - [Library ingest](./library-ingest.md) — wait until Bedrock Retrieve ranks the new key after those mutations.
 - [Knowledge viewer](./knowledge-viewer.md) — open a file, preview, edit, save.
 - [Add source](./add-source.md) — open the picker (do not submit a connector in a default run).
+- [Data sources list](./sources.md) — connector cards; ERROR last_error is an accordion (collapsed summary, full text on open).
 - [GitHub source](./github-source.md) — org-scoped GitHub App (Connect GitHub / repo picker); PAT is fallback only. Do not install or submit in a default run.
 - [Login](./login.md) — email sign-in and session cookie. `/setup` is first admin only (skip when an org exists).
 - [Brains](./brains.md) — switch and inspect brains (do not provision, delete, or retry-delete brains in a default run).
