@@ -88,7 +88,7 @@ export function materializePublishedStack(
 ) {
   if (isStackRoot(dest, exists)) return dest;
   mkdir(dest, { recursive: true });
-  copy(from, dest, { recursive: true, filter: allowStackCopy });
+  copy(from, dest, { recursive: true, dereference: true, filter: allowStackCopy });
   return dest;
 }
 
