@@ -1,14 +1,13 @@
 /**
  * Context101 — the one theme. Dark, hex, brain.
- * Imported by every app: `@import "@context101/design/tokens.css";`
+ * Imported by the admin app: `@import "@context101/design/tokens.css";`
  *
  * This is the single source of truth for design tokens (colors, fonts, the
- * Tailwind utility bridge). Surface palette = site's "Synaptic Dark" system;
- * web adopts it (see MIGRATION.md Phase 2.5).
+ * Tailwind utility bridge). Surface palette is the "Synaptic Dark" system
+ * used by `web/`.
  *
  * NOTE: the shadcn variable contract (--background, --primary, --border, …)
- * is added here in Phase 2.5 when web adopts this theme. For now this matches
- * site's existing tokens verbatim so site renders identically.
+ * is mapped in web/app/globals.css onto these brand primitives.
  */
 
 @theme inline {
