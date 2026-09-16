@@ -102,12 +102,6 @@ async function writeConfig(opts, { io, filePath }) {
     io.err("usage: context101 config set KEY=value");
     return 1;
   }
-  if (HOSTED_KEYS.has(key) && isHostedContext101Url(value)) {
-    io.err(
-      `${key} is the hosted Context101 product, not a self-host URL. Set a domain you own, or omit it.`
-    );
-    return 1;
-  }
   if (!filePath) {
     io.err("no deploy-env path. Pass --home or --deploy-env.");
     return 1;
@@ -116,6 +110,14 @@ async function writeConfig(opts, { io, filePath }) {
   let text = "";
   if (existsSync(filePath)) {
     text = await readFile(filePath, "utf8");
+  }
+  const existingMode = String(parseEnvFile(text).values.APP_MODE || "").trim();
+  const appMode = key === "APP_MODE" ? String(value || "").trim() : existingMode;
+  if (HOSTED_KEYS.has(key) && isHostedContext101Url(value) && appMode !== "hosted") {
+    io.err(
+      `${key} is the hosted Context101 product, not a self-host URL. Set a domain you own, or omit it.`
+    );
+    return 1;
   }
   const next = upsertEnvLine(text, key, value);
   await mkdir(dirname(filePath), { recursive: true });

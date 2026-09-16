@@ -49,9 +49,13 @@ function isHostedContext101Url(raw: string | undefined): boolean {
   }
 }
 
-function ownPublicUrl(raw: string | undefined): string | undefined {
+function ownPublicUrl(
+  raw: string | undefined,
+  opts: { allowHosted?: boolean } = {}
+): string | undefined {
   const value = raw?.trim();
-  if (!value || isHostedContext101Url(value)) return undefined;
+  if (!value) return undefined;
+  if (!opts.allowHosted && isHostedContext101Url(value)) return undefined;
   return value;
 }
 
@@ -809,13 +813,15 @@ export class Context101Stack extends cdk.Stack {
     const betterAuthSecret = this.node.tryGetContext("BETTER_AUTH_SECRET") as
       | string
       | undefined;
-    const betterAuthUrl = ownPublicUrl(
-      this.node.tryGetContext("BETTER_AUTH_URL") as string | undefined
-    );
     const mcpTokenPepper = this.node.tryGetContext("MCP_TOKEN_PEPPER") as
       | string
       | undefined;
     const appMode = this.node.tryGetContext("APP_MODE") as string | undefined;
+    const allowHostedProductUrls = String(appMode || "").trim() === "hosted";
+    const betterAuthUrl = ownPublicUrl(
+      this.node.tryGetContext("BETTER_AUTH_URL") as string | undefined,
+      { allowHosted: allowHostedProductUrls }
+    );
     const allowPublicSignup = this.node.tryGetContext(
       "ALLOW_PUBLIC_SIGNUP"
     ) as string | undefined;
@@ -823,13 +829,16 @@ export class Context101Stack extends cdk.Stack {
       | string
       | undefined;
     const appUrl = ownPublicUrl(
-      this.node.tryGetContext("APP_URL") as string | undefined
+      this.node.tryGetContext("APP_URL") as string | undefined,
+      { allowHosted: allowHostedProductUrls }
     );
     const marketingUrl = ownPublicUrl(
-      this.node.tryGetContext("MARKETING_URL") as string | undefined
+      this.node.tryGetContext("MARKETING_URL") as string | undefined,
+      { allowHosted: allowHostedProductUrls }
     );
     const mcpPublicHost = ownPublicUrl(
-      this.node.tryGetContext("MCP_PUBLIC_HOST") as string | undefined
+      this.node.tryGetContext("MCP_PUBLIC_HOST") as string | undefined,
+      { allowHosted: allowHostedProductUrls }
     );
     const sesRegion = this.node.tryGetContext("SES_REGION") as
       | string
