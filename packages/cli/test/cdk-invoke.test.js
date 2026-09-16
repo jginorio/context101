@@ -50,6 +50,8 @@ test("does not forward ambient BETTER_AUTH_URL when an env file is loaded", asyn
   assert.equal(joined.includes("hosted.example.test"), false);
   assert.equal(joined.includes("mcp.example.test"), false);
   assert.equal(joined.includes("BETTER_AUTH_URL"), false);
+  assert.equal(joined.includes("MARKETING_URL"), false);
+  assert.equal(joined.includes("www.example.test"), false);
   assert.match(joined, /DATABASE_URL=postgresql:\/\/user:file-secret@db.example\/app/);
   assert.match(joined, /APP_MODE=self_hosted/);
   const preview = formatCdkPreview({ action: "deploy", context, args });
@@ -87,7 +89,8 @@ test("forwards hosted product URLs when APP_MODE=hosted", async () => {
   const joined = args.join(" ");
   assert.match(joined, new RegExp(`BETTER_AUTH_URL=${appUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   assert.match(joined, new RegExp(`APP_URL=${appUrl.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
-  assert.match(joined, new RegExp(`MARKETING_URL=${marketing.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+  assert.equal(joined.includes("MARKETING_URL"), false);
+  assert.equal(joined.includes(marketing), false);
   assert.match(joined, new RegExp(`MCP_PUBLIC_HOST=${mcp.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
   assert.match(joined, /APP_MODE=hosted/);
 });
