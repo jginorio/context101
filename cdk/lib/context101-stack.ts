@@ -853,7 +853,6 @@ export class Context101Stack extends cdk.Stack {
       | undefined;
     let defaultBrainTokenSecret: secretsmanager.Secret | undefined;
     let mcpServiceUrl: string | undefined;
-    const mcpEnvVars: Array<{ name: string; value: string }> = [];
     const openSaasEnvVars: Array<{ name: string; value: string }> = [
       ...(databaseUrl ? [{ name: "DATABASE_URL", value: databaseUrl }] : []),
       ...(databaseDriver
@@ -1172,17 +1171,6 @@ export class Context101Stack extends cdk.Stack {
             "Legacy App Runner MCP endpoint. Requires Authorization: Bearer <token> header.",
         });
       }
-
-      // Expose to the Amplify build so /about can render a copy-pasteable
-      // MCP client config without a hardcoded URL/token in source. Prefers
-      // the stable public host (custom domain) when configured.
-      mcpEnvVars.push(
-        {
-          name: "NEXT_PUBLIC_MCP_URL",
-          value: cdk.Fn.join("", [mcpPublicHost ?? mcpServiceUrl, "/mcp"]),
-        },
-        { name: "NEXT_PUBLIC_MCP_TOKEN", value: teamToken }
-      );
     }
 
     // ── 9. Amplify Hosting for the web admin UI ───────────────────────
@@ -1254,7 +1242,7 @@ export class Context101Stack extends cdk.Stack {
           // connector Lambdas cycles: WebApp → Fn → AutoIngest →
           // WebApp, and the notified docs bucket sits on the same SCC.
           { name: "BRAIN_PROVISIONER_FN_NAME", value: `${namePrefix}-brain-provisioner` },
-          // MCP host (no /mcp suffix; the /about page appends /brain/<id>/mcp
+          // MCP host (no /mcp suffix; /brains appends /brain/<id>/mcp
           // per brain). Empty string when teamToken wasn't passed on this deploy.
           {
             name: "NEXT_PUBLIC_MCP_HOST",
@@ -1291,10 +1279,6 @@ export class Context101Stack extends cdk.Stack {
           { name: "CONNECTOR_TOKEN_SECRET_PREFIX", value: `${namePrefix}-connector-` },
           // Postgres + Better Auth env (DATABASE_URL, BETTER_AUTH_*, etc.).
           ...openSaasEnvVars,
-          // MCP URL + bearer token for the /about page snippets. Empty
-          // unless `-c token=` was also passed; the page falls back to
-          // placeholder strings.
-          ...mcpEnvVars,
         ],
       });
       if (adminSource.repo) {
