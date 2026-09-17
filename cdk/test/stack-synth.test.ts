@@ -73,6 +73,16 @@ test("full stack synths CodeCommit admin with Amplify and no circular dependency
   );
 
   const env = amplifyEnv(template);
+  assert.equal(
+    env.some((item) => item.Name === "NEXT_PUBLIC_MCP_URL"),
+    false,
+    "NEXT_PUBLIC_MCP_URL must not be forwarded after /about was removed"
+  );
+  assert.equal(
+    env.some((item) => item.Name === "NEXT_PUBLIC_MCP_TOKEN"),
+    false,
+    "NEXT_PUBLIC_MCP_TOKEN must not be forwarded after /about was removed"
+  );
   const knownFns: Record<string, string> = {
     BRAIN_PROVISIONER_FN_NAME: "context101-testingcontext101-brain-provisioner",
     START_WIKI_GEN_FN_NAME: "context101-testingcontext101-start-wiki-gen",
@@ -179,4 +189,14 @@ test("hosted APP_MODE keeps context101.dev public URLs on Amplify", () => {
   assert.equal(envValue(env, "BILLING_ENABLED"), "false");
   const mcpHost = envValue(env, "NEXT_PUBLIC_MCP_HOST");
   assert.equal(mcpHost, mcp);
+  assert.equal(
+    env.some((item) => item.Name === "NEXT_PUBLIC_MCP_URL"),
+    false,
+    "NEXT_PUBLIC_MCP_URL must not be forwarded after /about was removed"
+  );
+  assert.equal(
+    env.some((item) => item.Name === "NEXT_PUBLIC_MCP_TOKEN"),
+    false,
+    "NEXT_PUBLIC_MCP_TOKEN must not be forwarded after /about was removed"
+  );
 });
