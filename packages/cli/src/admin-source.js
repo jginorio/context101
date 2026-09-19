@@ -15,7 +15,6 @@ export const ADMIN_SOURCE_RELS = [
   "packages/design",
   "packages/ui",
   "packages/cli",
-  "scripts",
 ];
 
 export const ADMIN_COPY_SKIP = new Set([

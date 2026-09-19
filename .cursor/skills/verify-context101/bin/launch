@@ -31,8 +31,6 @@ if [[ -z "${AWS_ACCESS_KEY_ID:-}" ]]; then
 fi
 
 cd "$REPO/web"
-# Copy install-mcps.sh the same way predev does.
-cp ../scripts/install-mcps.sh public/install-mcps.sh 2>/dev/null || true
 
 nohup npm run dev >"$LOG" 2>&1 &
 echo $! > /tmp/verify-context101-next.pid

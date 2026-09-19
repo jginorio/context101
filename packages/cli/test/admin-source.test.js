@@ -73,32 +73,6 @@ test("stageAdminSource copies web/ in the monorepo layout", async () => {
   assert.equal(ls.stdout.includes("120000"), false);
 });
 
-test("prebuild mkdir -p public so Amplify can copy install-mcps.sh", async () => {
-  const root = await adminFixture();
-  await mkdir(path.join(root, "scripts"), { recursive: true });
-  await writeFile(path.join(root, "scripts", "install-mcps.sh"), "#!/bin/sh\n", "utf8");
-  const dest = await mkdtemp(path.join(tmpdir(), "ctx101-admin-public-"));
-  stageAdminSource(root, dest);
-  assert.equal(existsSync(path.join(dest, "web", "public")), false);
-  assert.equal(existsSync(path.join(dest, "scripts", "install-mcps.sh")), true);
-
-  const { createExec } = await import("../src/exec.js");
-  const exec = createExec();
-  const bare = exec({
-    command: "sh",
-    args: ["-c", "cp ../scripts/install-mcps.sh public/install-mcps.sh"],
-    cwd: path.join(dest, "web"),
-  });
-  assert.equal(bare.ok, false);
-  const mkdirCp = exec({
-    command: "sh",
-    args: ["-c", "mkdir -p public && cp ../scripts/install-mcps.sh public/install-mcps.sh"],
-    cwd: path.join(dest, "web"),
-  });
-  assert.equal(mkdirCp.ok, true, mkdirCp.stderr);
-  assert.equal(existsSync(path.join(dest, "web", "public", "install-mcps.sh")), true);
-});
-
 test("pushAdminSource runs git push --force to CodeCommit (mocked)", async () => {
   const root = await adminFixture();
   const calls = [];
