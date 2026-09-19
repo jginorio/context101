@@ -108,11 +108,11 @@ Instance clients are **not** in git. CDK references well-known Secrets Manager *
 Operator flow:
 
 1. Create the provider app (Google Web OAuth client, Notion public integration, or GitHub App). Redirect URI: `https://<admin>/api/connectors/oauth/callback` (GitHub App also needs `/api/connectors/github-app/oauth-callback` + install setup URL).
-2. `context101 connectors setup google|notion|github` writes the SM secret (values never printed) and sets the `*_SECRET_ID` **name** in that space's deploy-env.
+2. `context101 connectors` opens the TTY wizard (pick provider, see configured / not configured, paste credentials or update). `context101 connectors setup google|notion|github` still works for scripts.
 3. `context101 update` so Amplify/Lambdas see the names CDK already understands.
 4. In admin: **Add source** → Connect.
 
-`cdk/.deploy-env.example` lists the optional keys (names only). `context101 config` redacts secret values; `*_SECRET_ID` keys are names and may be shown. Default verify does not run `connectors setup` (it writes AWS). `context101 help connectors` is enough.
+`cdk/.deploy-env.example` lists the optional keys (names only). `context101 config` redacts secret values; `*_SECRET_ID` keys are names and may be shown. Default verify does not run `connectors` / `connectors setup` (they write AWS). `context101 help connectors` is enough.
 
 ## Gotchas
 

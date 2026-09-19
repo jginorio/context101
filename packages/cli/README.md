@@ -4,7 +4,7 @@ your context. every agent.
 
 Thin self-host CLI for [Context101](https://github.com/jginorio/context101) — a wrapper around Amazon Bedrock Knowledge Bases. Self-host now; hosted later (not there yet). Alpha / trusted-team.
 
-This is the AWS front door: init, update, list, urls, destroy, config, connectors setup. Not a wiki app.
+This is the AWS front door: init, update, list, urls, destroy, config, connectors. Not a wiki app.
 
 **`npx context101` (unscoped) is Context7's MCP — not this tool.** Use `context101-cli`.
 
@@ -35,6 +35,7 @@ npx -y context101-cli@0.1.24 <cmd>
 | `context101 destroy [space]` | tear down a space |
 | `context101 config` | show deploy-env keys (values redacted) |
 | `context101 config set KEY=value` | write one key (chmod 600; value is not printed) |
+| `context101 connectors` | TTY wizard to set up or update Google / Notion / GitHub App secrets |
 | `context101 connectors setup <google\|notion\|github>` | write instance OAuth/app secrets to Secrets Manager (values not printed) |
 | `context101 help` | list commands |
 | `context101 version` | print the installed CLI version (`-v`, `--version`) |
@@ -53,10 +54,11 @@ context101 urls platea
 context101 help
 context101 destroy platea --dry-run
 context101 update platea
+context101 connectors
 context101 connectors setup google --dry-run
 ```
 
-Google / Notion / GitHub App instance clients go in Secrets Manager. `connectors setup` writes the secret (never prints the value) and the SM **name** into deploy-env (`GOOGLE_OAUTH_CLIENT_SECRET_ID` / `NOTION_OAUTH_CLIENT_SECRET_ID` / `GITHUB_APP_SECRET_ID`). Then `context101 update` and Connect in admin. PAT for a single GitHub repo is still pasted in the admin, not here.
+Google / Notion / GitHub App instance clients go in Secrets Manager. `context101 connectors` on a TTY walks through provider status and setup. `connectors setup` is the script/CI path. Both write the secret (never print the value) and the SM **name** into deploy-env (`GOOGLE_OAUTH_CLIENT_SECRET_ID` / `NOTION_OAUTH_CLIENT_SECRET_ID` / `GITHUB_APP_SECRET_ID`). Then `context101 update` and Connect in admin. PAT for a single GitHub repo is still pasted in the admin, not here.
 
 ## Name collision
 

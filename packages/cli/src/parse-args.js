@@ -11,6 +11,7 @@ const COMMAND_LINES = [
   ["destroy", "tear down a space"],
   ["config", "show deploy-env keys (values redacted)"],
   ["config set", "write one key (chmod 600; value is not printed)"],
+  ["connectors", "TTY wizard to set up or update Google / Notion / GitHub App secrets"],
   ["connectors setup", "write instance OAuth/app secrets to SM (values not printed)"],
   ["help", "list commands"],
   ["version", "print the installed CLI version"],
@@ -103,7 +104,12 @@ const TOPIC_HELP = {
   --deploy-env <path>
   --home`,
 
-  connectors: `connectors setup <google|notion|github> [space] — write instance OAuth/app secrets to Secrets Manager
+  connectors: `connectors [space] — TTY wizard to set up or update Google / Notion / GitHub App secrets
+  TTY: pick a space (if several), then a provider. Status is configured when deploy-env has
+  the *_SECRET_ID key and/or Secrets Manager can describe the expected name (name only).
+  Not configured: steps to create the provider app, then prompts for credentials.
+  Configured: safe summary (env key, SM name, region), then update / leave / show steps.
+  No TTY: prints this help. Scripts: context101 connectors setup <google|notion|github>.
   Google/Notion: { client_id, client_secret } at <NAME_PREFIX>-google-oauth-client (or notion-).
   GitHub App: <NAME_PREFIX>-connector-github-app. PAT is per-connector in admin, not here.
   Writes the SM name to deploy-env as GOOGLE_OAUTH_CLIENT_SECRET_ID / NOTION_OAUTH_CLIENT_SECRET_ID / GITHUB_APP_SECRET_ID.
@@ -122,7 +128,7 @@ const TOPIC_HELP = {
   --yes, -y`,
 
   "connectors setup": `connectors setup <google|notion|github> [space] — write instance OAuth/app secrets to Secrets Manager
-  Also: context101 connectors.
+  Also: context101 connectors (TTY wizard).
 
   --client-id
   --client-secret        or env CONTEXT101_CONNECTOR_CLIENT_SECRET
@@ -470,21 +476,16 @@ const CONNECTOR_ONLY = new Set([
 ]);
 
 function parseConnectorsArgs(opts, args) {
-  const action = args[0] && !args[0].startsWith("-") ? args.shift() : null;
-  if (!action) {
-    opts.help = true;
-    opts.helpTopic = "connectors";
+  const action = args[0] && !args[0].startsWith("-") ? args[0] : null;
+  if (action === "setup") {
+    args.shift();
+    opts.connectorsAction = "setup";
+    if (args[0] && !args[0].startsWith("-")) {
+      opts.connectorsProvider = args.shift();
+    }
     return;
   }
-  if (action !== "setup") {
-    const err = new Error("usage: context101 connectors setup <google|notion|github>");
-    err.code = "USAGE";
-    throw err;
-  }
-  opts.connectorsAction = "setup";
-  if (args[0] && !args[0].startsWith("-")) {
-    opts.connectorsProvider = args.shift();
-  }
+  opts.connectorsAction = null;
 }
 
 function flagAllowed(command, arg) {

@@ -223,6 +223,7 @@ test("context101 help lists every command and exits 0", async () => {
     "destroy",
     "config",
     "config set",
+    "connectors",
     "connectors setup",
     "help",
     "version",
