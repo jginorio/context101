@@ -340,17 +340,17 @@ async function runConnectorWizard(opts, ctx, io) {
   }
 
   const adminHost = connectorAdminHost(context.values);
-  if (opts.dryRun) {
-    return previewConnectorWizard({
-      provider,
-      row,
-      adminHost,
-      io,
-      context,
-    });
-  }
 
   if (!row.configured) {
+    if (opts.dryRun) {
+      return previewConnectorWizard({
+        provider,
+        row,
+        adminHost,
+        io,
+        context,
+      });
+    }
     writeLines(io, formatProviderSetupSteps(provider, { adminHost }));
     io.write("");
     return promptAndWrite({
@@ -378,6 +378,8 @@ async function runConnectorWizard(opts, ctx, io) {
       return 0;
     }
     if (action === "update") {
+      writeLines(io, formatProviderSetupSteps(provider, { adminHost }));
+      io.write("");
       return promptAndWrite({
         provider,
         opts,

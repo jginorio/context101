@@ -58,7 +58,7 @@ context101 connectors
 context101 connectors setup google --dry-run
 ```
 
-Google / Notion / GitHub App instance clients go in Secrets Manager. `context101 connectors` on a TTY walks through provider status and setup. `context101 connectors --dry-run` is the demo/preview path (menus + setup steps + would-write names; no secret prompts, no SM write). `connectors setup` is the script/CI path. Setup writes the secret (never prints the value) and the SM **name** into deploy-env (`GOOGLE_OAUTH_CLIENT_SECRET_ID` / `NOTION_OAUTH_CLIENT_SECRET_ID` / `GITHUB_APP_SECRET_ID`). Then `context101 update` and Connect in admin. PAT for a single GitHub repo is still pasted in the admin, not here.
+Google / Notion / GitHub App instance clients go in Secrets Manager. `context101 connectors` on a TTY walks through provider status and setup. `context101 connectors --dry-run` is the demo/preview path (same menus; unconfigured skips secret prompts; configured Update prompts then would-write names; no SM write). `connectors setup` is the script/CI path. Setup writes the secret (never prints the value) and the SM **name** into deploy-env (`GOOGLE_OAUTH_CLIENT_SECRET_ID` / `NOTION_OAUTH_CLIENT_SECRET_ID` / `GITHUB_APP_SECRET_ID`). Then `context101 update` and Connect in admin. PAT for a single GitHub repo is still pasted in the admin, not here.
 
 ## Name collision
 

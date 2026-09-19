@@ -762,3 +762,52 @@ test("TTY connectors --dry-run shows menus and steps without prompting or writin
   const body = await readFile(path.join(root, "cdk", ".deploy-env"), "utf8");
   assert.equal(body.includes("GOOGLE_OAUTH_CLIENT_SECRET_ID"), false);
 });
+
+test("TTY connectors --dry-run Update prompts then would-write without SM write", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-conn-dry-upd-"));
+  const home = await tempHome();
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(
+    root,
+    'GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"'
+  );
+  const io = ttyIo();
+  const sm = smExec({
+    describeNames: new Set(["context101-google-oauth-client"]),
+  });
+  let prompted = false;
+  const code = await main(["connectors", "--dry-run"], {
+    cwd: root,
+    homeDir: home,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: sm.exec,
+    chooseConnectorProvider: async () => "google",
+    chooseConfiguredAction: async () => "update",
+    promptConnectorFields: async () => {
+      prompted = true;
+      return {
+        clientId: "cid.apps.googleusercontent.com",
+        clientSecret: CLIENT_SECRET,
+      };
+    },
+  });
+  assert.equal(code, 0);
+  assert.equal(prompted, true);
+  assert.match(io.stdoutText, /Google is configured/);
+  assert.match(io.stdoutText, /Google Cloud OAuth Web client/);
+  assert.match(io.stdoutText, /dry-run — write nothing/);
+  assert.match(io.stdoutText, /would write secret context101-google-oauth-client/);
+  assert.match(io.stdoutText, /would set GOOGLE_OAUTH_CLIENT_SECRET_ID/);
+  assert.equal(io.stdoutText.includes("updated secret"), false);
+  assert.equal(io.stdoutText.includes(CLIENT_SECRET), false);
+  assert.equal(
+    sm.calls.some((call) => ["create-secret", "put-secret-value"].includes(call.args[1])),
+    false
+  );
+  const envBody = await readFile(path.join(root, "cdk", ".deploy-env"), "utf8");
+  assert.match(envBody, /GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"/);
+  assert.equal(envBody.includes(CLIENT_SECRET), false);
+});
