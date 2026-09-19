@@ -1,6 +1,6 @@
 {
   "name": "context101-cli",
-  "version": "0.1.24",
+  "version": "0.1.25",
   "private": false,
   "description": "Context101 self-host CLI — your context. every agent. Use `npx context101-cli` or the `context101` bin. Unscoped `npx context101` is Context7's MCP, not this tool.",
   "license": "MIT",
