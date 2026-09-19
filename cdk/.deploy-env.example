@@ -62,7 +62,8 @@ AWS_PROFILE="plateapr.com"
 
 # OPTIONAL — instance connector OAuth / GitHub App. These are Secrets Manager
 # *names* (ids), not client_secret / PEM / PAT values. Create the provider
-# app, then `context101 connectors setup google|notion|github` writes the
+# app, then `context101 connectors` (TTY wizard) or
+# `context101 connectors setup google|notion|github` writes the
 # SM secret and these keys. CDK defaults (NAME_PREFIX=context101):
 # GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"
 # NOTION_OAUTH_CLIENT_SECRET_ID="context101-notion-oauth-client"
