@@ -109,6 +109,7 @@ const TOPIC_HELP = {
   the *_SECRET_ID key and/or Secrets Manager can describe the expected name (name only).
   Not configured: steps to create the provider app, then prompts for credentials.
   Configured: safe summary (env key, SM name, region), then update / leave / show steps.
+  --dry-run on a TTY: menus + setup steps + would-write names; no secret prompts, no SM write.
   No TTY: prints this help. Scripts: context101 connectors setup <google|notion|github>.
   Google/Notion: { client_id, client_secret } at <NAME_PREFIX>-google-oauth-client (or notion-).
   GitHub App: <NAME_PREFIX>-connector-github-app. PAT is per-connector in admin, not here.

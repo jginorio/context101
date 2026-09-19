@@ -340,6 +340,16 @@ async function runConnectorWizard(opts, ctx, io) {
   }
 
   const adminHost = connectorAdminHost(context.values);
+  if (opts.dryRun) {
+    return previewConnectorWizard({
+      provider,
+      row,
+      adminHost,
+      io,
+      context,
+    });
+  }
+
   if (!row.configured) {
     writeLines(io, formatProviderSetupSteps(provider, { adminHost }));
     io.write("");
@@ -379,6 +389,28 @@ async function runConnectorWizard(opts, ctx, io) {
     io.err("usage: context101 connectors setup <google|notion|github>");
     return 1;
   }
+}
+
+function previewConnectorWizard({ provider, row, adminHost, io, context }) {
+  if (row.configured) {
+    writeLines(io, formatConfiguredSummary(row));
+    io.write("");
+  }
+  writeLines(io, formatProviderSetupSteps(provider, { adminHost }));
+  io.write("");
+  io.dim("dry-run — write nothing");
+  io.write("");
+  writePlan(
+    io,
+    formatConnectorSetupPlan({
+      provider,
+      secretName: row.secretName || connectorSecretName(provider, context.namePrefix),
+      envKey: row.envKey || connectorDeployEnvKey(provider),
+      dryRun: true,
+    }),
+    []
+  );
+  return 0;
 }
 
 async function promptAndWrite({ provider, opts, ctx, io, context }) {

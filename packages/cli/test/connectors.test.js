@@ -106,6 +106,7 @@ test("parses connectors setup and help topic", () => {
   assert.equal(bare.command, "connectors");
   assert.equal(bare.connectorsAction, null);
   assert.equal(parseArgs(["connectors", "acme"]).space, "acme");
+  assert.equal(parseArgs(["connectors", "--dry-run"]).dryRun, true);
   assert.equal(parseArgs(["connectors", "--help"]).help, true);
   assert.equal(parseArgs(["help", "connectors"]).helpTopic, "connectors");
   assert.equal(parseArgs(["help", "connectors", "setup"]).helpTopic, "connectors setup");
@@ -123,6 +124,7 @@ test("help lists connectors wizard and never shows a fake secret", () => {
   assert.match(topic, /TTY wizard/);
   assert.match(topic, /Not configured/);
   assert.match(topic, /update \/ leave \/ show steps/);
+  assert.match(topic, /--dry-run on a TTY/);
   assert.equal(topic.includes("client_secret="), false);
   assert.equal(topic.includes(CLIENT_SECRET), false);
 });
@@ -716,4 +718,47 @@ test("TTY wizard picks a space when several exist", async () => {
   assert.match(io.stdoutText, /Google is configured/);
   assert.match(io.stdoutText, /context101-platea-google-oauth-client/);
   assert.equal(io.stdoutText.includes(CLIENT_SECRET), false);
+});
+
+test("TTY connectors --dry-run shows menus and steps without prompting or writing", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-conn-dry-wiz-"));
+  const home = await tempHome();
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
+  const io = ttyIo();
+  const sm = smExec();
+  const seen = [];
+  const code = await main(["connectors", "--dry-run"], {
+    cwd: root,
+    homeDir: home,
+    env: testEnv({ [CONNECTOR_CLIENT_SECRET_ENV]: CLIENT_SECRET }),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: sm.exec,
+    chooseConnectorProvider: async (statuses) => {
+      seen.push(statuses.map((row) => formatProviderChoice(row)));
+      return "google";
+    },
+    promptConnectorFields: async () => {
+      throw new Error("dry-run must not prompt for credentials");
+    },
+    chooseConfiguredAction: async () => {
+      throw new Error("dry-run must not ask update/leave");
+    },
+  });
+  assert.equal(code, 0);
+  assert.match(seen[0][0], /Google — not configured/);
+  assert.match(io.stdoutText, /Google Cloud OAuth Web client/);
+  assert.match(io.stdoutText, /https:\/\/<admin>\/api\/connectors\/oauth\/callback/);
+  assert.match(io.stdoutText, /dry-run — write nothing/);
+  assert.match(io.stdoutText, /would write secret context101-google-oauth-client/);
+  assert.match(io.stdoutText, /would set GOOGLE_OAUTH_CLIENT_SECRET_ID/);
+  assert.equal(io.stdoutText.includes(CLIENT_SECRET), false);
+  assert.equal(
+    sm.calls.some((call) => ["create-secret", "put-secret-value"].includes(call.args[1])),
+    false
+  );
+  const body = await readFile(path.join(root, "cdk", ".deploy-env"), "utf8");
+  assert.equal(body.includes("GOOGLE_OAUTH_CLIENT_SECRET_ID"), false);
 });
