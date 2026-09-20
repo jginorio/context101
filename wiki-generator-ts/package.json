@@ -2,6 +2,7 @@
   "name": "context101-wiki-generator-ts",
   "version": "0.1.0",
   "private": true,
+  "license": "Elastic-2.0",
   "type": "module",
   "description": "TypeScript port of the Context101 wiki generator (validation twin of wiki-generator/).",
   "scripts": {

@@ -3,5 +3,5 @@
   "version": "1.0.0",
   "description": "Zero-dependency Neon Postgres-over-HTTP helper shared across Context101 Lambdas.",
   "main": "index.js",
-  "license": "MIT"
+  "license": "Elastic-2.0"
 }

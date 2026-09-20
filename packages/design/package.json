@@ -2,6 +2,7 @@
   "name": "@context101/design",
   "version": "0.0.0",
   "private": true,
+  "license": "Elastic-2.0",
   "exports": {
     "./tokens.css": "./tokens.css"
   }

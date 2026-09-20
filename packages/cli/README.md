@@ -13,14 +13,14 @@ This is the AWS front door: init, update, list, urls, destroy, config, connector
 Pin the version. `@latest` is a no-op on some machines.
 
 ```bash
-npm i -g context101-cli@0.1.26
+npm i -g context101-cli@0.1.27
 context101 <cmd>
 ```
 
 or
 
 ```bash
-npx -y context101-cli@0.1.26 <cmd>
+npx -y context101-cli@0.1.27 <cmd>
 ```
 
 ## Commands
@@ -46,7 +46,7 @@ Deploy is quiet on a TTY (`deploying…`). `--verbose` dumps cdk / npm / docker.
 
 Spaces live in `~/.context101/spaces/<name>/`. Each has its own AWS profile, region, secrets, and CloudFormation stack name. `context101 init acme` uses the space name you choose (`acme` is an example); nameless `init` prompts. An existing `cdk/.deploy-env` or `~/.context101/deploy-env` is the `default` space.
 
-The next day: pin the new CLI (`context101` offers a pin-install, or `npm i -g context101-cli@0.1.26`), then `context101 update` / `context101 update platea`. The stack source is this CLI version — packaged stack copied to `~/.cache/context101/<version>/`, CDK `--output` beside it — not a git pull of your clone. Admin is Amplify SSR from a CodeCommit repo in the stack (no GitHub PAT). `--dry-run` is preview only.
+The next day: pin the new CLI (`context101` offers a pin-install, or `npm i -g context101-cli@0.1.27`), then `context101 update` / `context101 update platea`. The stack source is this CLI version — packaged stack copied to `~/.cache/context101/<version>/`, CDK `--output` beside it — not a git pull of your clone. Admin is Amplify SSR from a CodeCommit repo in the stack (no GitHub PAT). `--dry-run` is preview only.
 
 ```bash
 context101 list
@@ -67,6 +67,12 @@ Google Add source is one **Google** row (Drive picker for Docs / Sheets / Slides
 The publishable package is **context101-cli**. The bin name is `context101`.
 
 `npx context101` downloads Context7's MCP from npm. Unrelated.
+
+## License
+
+Copyright (c) 2026 Context101 contributors. Elastic License 2.0.
+
+Self-host and private/internal use are allowed. Offering Context101 as a paid hosted or managed service to third parties is not allowed. See the repo [LICENSE](https://github.com/jginorio/context101/blob/main/LICENSE).
 
 ## Repo
 
