@@ -21,13 +21,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Combobox } from "@/components/ui/combobox";
+import { AddGoogleSourceForm } from "@/components/add-google-source-form";
 import {
-  CONNECTOR_TYPES,
+  ADD_SOURCE_MENU,
   FILES_SOURCE,
+  isGoogleAddKind,
   SOURCE_TYPES,
-  TypeIcon,
   type AddSourceKind,
-  type ConnectorType,
 } from "@/lib/source-providers";
 import {
   describeUploadResult,
@@ -35,8 +35,6 @@ import {
 } from "@/lib/knowledge-upload";
 import { useExternalFileDrop } from "@/lib/use-external-file-drop";
 import { cn } from "@/lib/utils";
-
-type SourceType = ConnectorType;
 
 type Copy = {
   title: string;
@@ -68,31 +66,7 @@ type GithubStatus = {
   installations?: GithubInstallation[];
 };
 
-const COPY: Record<SourceType, Copy> = {
-  sheets: {
-    title: "Add a Google Sheet",
-    description:
-      "Paste a spreadsheet URL and give it a friendly label. You'll be redirected to Google to authorize read access. After you approve, every tab is pulled into the brain as markdown and re-synced every 6 hours.",
-    urlLabel: "Spreadsheet URL",
-    urlPlaceholder: "https://docs.google.com/spreadsheets/d/…",
-    labelPlaceholder: "Quarterly metrics dashboard",
-  },
-  docs: {
-    title: "Add a Google Doc",
-    description:
-      "Paste a doc URL and give it a friendly label. After you approve Google read access, the doc is rendered to markdown and re-synced every 6 hours.",
-    urlLabel: "Document URL",
-    urlPlaceholder: "https://docs.google.com/document/d/…",
-    labelPlaceholder: "Q2 strategy memo",
-  },
-  slides: {
-    title: "Add a Google Slides deck",
-    description:
-      "Paste a deck URL and give it a friendly label. After you approve Google read access, slide text + speaker notes are rendered to markdown and re-synced every 6 hours.",
-    urlLabel: "Presentation URL",
-    urlPlaceholder: "https://docs.google.com/presentation/d/…",
-    labelPlaceholder: "All-hands kickoff deck",
-  },
+const COPY: Record<"notion" | "github", Copy> = {
   notion: {
     title: "Add a Notion page or database",
     description:
@@ -137,7 +111,6 @@ function SourcePicker({
 }: {
   onSelect: (type: AddSourceKind) => void;
 }) {
-  const FilesIcon = FILES_SOURCE.icon;
   return (
     <>
       <DialogHeader>
@@ -147,19 +120,17 @@ function SourcePicker({
         </DialogDescription>
       </DialogHeader>
       <div className="flex flex-col gap-2">
-        <PickerRow
-          icon={<FilesIcon className="h-5 w-5 shrink-0" />}
-          label={FILES_SOURCE.menuLabel}
-          onClick={() => onSelect("files")}
-        />
-        {CONNECTOR_TYPES.map((t) => (
-          <PickerRow
-            key={t}
-            icon={<TypeIcon type={t} className="h-5 w-5 shrink-0" />}
-            label={SOURCE_TYPES[t].menuLabel}
-            onClick={() => onSelect(t)}
-          />
-        ))}
+        {ADD_SOURCE_MENU.map((item) => {
+          const Icon = item.icon;
+          return (
+            <PickerRow
+              key={item.kind}
+              icon={<Icon className="h-5 w-5 shrink-0" />}
+              label={item.menuLabel}
+              onClick={() => onSelect(item.kind)}
+            />
+          );
+        })}
       </div>
     </>
   );
@@ -301,7 +272,7 @@ function SourceParamsForm({
   onBack,
   onOpenChange,
 }: {
-  type: ConnectorType;
+  type: "notion" | "github";
   onBack: () => void;
   onOpenChange: (open: boolean) => void;
 }) {
@@ -753,16 +724,12 @@ function SourceParamsForm({
             </>
           ) : type === "notion" ? (
             "Connect Notion workspace"
-          ) : type === "github" ? (
-            githubLoading ? (
-              "Checking GitHub…"
-            ) : needsGithubInstall ? (
-              "Connect GitHub"
-            ) : (
-              "Add repository"
-            )
+          ) : githubLoading ? (
+            "Checking GitHub…"
+          ) : needsGithubInstall ? (
+            "Connect GitHub"
           ) : (
-            "Connect Google account"
+            "Add repository"
           )}
         </Button>
       </DialogFooter>
@@ -798,7 +765,13 @@ export function AddSourceDialog({
             onOpenChange={onOpenChange}
             onUploaded={onUploaded}
           />
-        ) : selected ? (
+        ) : isGoogleAddKind(selected) ? (
+          <AddGoogleSourceForm
+            onBack={() => setSelected(null)}
+            onOpenChange={onOpenChange}
+            initialType={selected === "google" ? undefined : selected}
+          />
+        ) : selected === "notion" || selected === "github" ? (
           <SourceParamsForm
             type={selected}
             onBack={() => setSelected(null)}

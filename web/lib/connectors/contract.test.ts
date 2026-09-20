@@ -43,9 +43,10 @@ test("auth kinds match the live Lambdas", () => {
   assert.deepEqual(authKindsFor("github"), ["github_app", "github_pat"]);
 });
 
-test("isConnectorType rejects files and unknown", () => {
+test("isConnectorType rejects files, google picker kind, and unknown", () => {
   assert.equal(isConnectorType("github"), true);
   assert.equal(isConnectorType("files"), false);
+  assert.equal(isConnectorType("google"), false);
   assert.equal(isConnectorType("wiki"), false);
 });
 

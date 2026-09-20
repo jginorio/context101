@@ -16,8 +16,12 @@ export const CONNECTOR_TYPES = [
 
 export type ConnectorType = (typeof CONNECTOR_TYPES)[number];
 
-/** Picker kinds. `files` is a local markdown upload, not a connector row. */
-export const ADD_SOURCE_KINDS = [...CONNECTOR_TYPES, "files"] as const;
+/**
+ * Picker kinds. `files` is a local markdown upload. `google` is the
+ * unified Drive picker (maps onto docs | sheets | slides at create).
+ * Neither writes a new `source_type` enum value.
+ */
+export const ADD_SOURCE_KINDS = [...CONNECTOR_TYPES, "files", "google"] as const;
 export type AddSourceKind = (typeof ADD_SOURCE_KINDS)[number];
 
 export const SOURCE_PREFIXES = {
@@ -161,7 +165,7 @@ const DONE_WHEN =
 function googleHappy(type: ConnectorType): string[] {
   const prefix = SOURCE_PREFIXES[type];
   return [
-    "Connect (OAuth) to a fixture doc that contains a unique canary. Do not use a shared-brain connector.",
+    "Add source → Google: pick a fixture via Drive picker (or paste URL). Creates a docs|sheets|slides row, not drive. Do not use a shared-brain connector.",
     `Wait until ${prefix}<slug>/…md exists (bin/files list).`,
     "bin/retrieve --expect-key <key> --canary <CANARY> — same wait as library-ingest create.",
   ];

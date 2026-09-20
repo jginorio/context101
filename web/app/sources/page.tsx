@@ -35,8 +35,7 @@ import { AddSourceDialog } from "@/components/add-source-dialog";
 import { AppShell } from "@/components/app-shell";
 import { BrainStatusGate } from "@/components/brain-status-gate";
 import {
-  FILES_SOURCE,
-  PROVIDER_GROUPS,
+  ADD_SOURCE_MENU,
   SOURCE_TYPES,
   TypeIcon,
   type AddSourceKind,
@@ -248,32 +247,26 @@ function SourcesContent() {
     </>
   );
 
-  const FilesIcon = FILES_SOURCE.icon;
   const sourcesPanel = (
     <div className="space-y-1">
       <p className="px-1.5 py-1 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
         Add a source
       </p>
       <nav className="flex flex-col gap-0.5">
-        <button
-          onClick={() => openAdd("files")}
-          className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-        >
-          <FilesIcon className="h-4 w-4 shrink-0" />
-          <span className="flex-1 truncate">{FILES_SOURCE.menuLabel}</span>
-          <Plus className="h-3.5 w-3.5 shrink-0 opacity-50 transition-opacity group-hover:opacity-100" />
-        </button>
-        {PROVIDER_GROUPS.flatMap((g) => g.types).map((t) => (
-          <button
-            key={t}
-            onClick={() => openAdd(t)}
-            className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
-          >
-            <TypeIcon type={t} className="h-4 w-4 shrink-0" />
-            <span className="flex-1 truncate">{SOURCE_TYPES[t].menuLabel}</span>
-            <Plus className="h-3.5 w-3.5 shrink-0 opacity-50 transition-opacity group-hover:opacity-100" />
-          </button>
-        ))}
+        {ADD_SOURCE_MENU.map((item) => {
+          const Icon = item.icon;
+          return (
+            <button
+              key={item.kind}
+              onClick={() => openAdd(item.kind)}
+              className="group flex items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm text-muted-foreground transition-colors hover:bg-muted/60 hover:text-foreground"
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="flex-1 truncate">{item.menuLabel}</span>
+              <Plus className="h-3.5 w-3.5 shrink-0 opacity-50 transition-opacity group-hover:opacity-100" />
+            </button>
+          );
+        })}
       </nav>
     </div>
   );
@@ -315,8 +308,7 @@ function SourcesContent() {
               <Card>
                 <CardContent className="p-6 text-center text-sm text-muted-foreground">
                   No data sources yet. Click <strong>Add new source</strong> to
-                  connect a Google Sheet, Doc, Slides deck, Notion workspace, or
-                  GitHub repo.
+                  connect a Google file, Notion workspace, or GitHub repo.
                 </CardContent>
               </Card>
             )}

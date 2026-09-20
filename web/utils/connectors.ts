@@ -154,6 +154,11 @@ export const parseGoogleResourceId = parseResourceId;
 
 const COMMON_IDENTITY_SCOPES = ["openid", "email", "profile"];
 
+/**
+ * Per-type Google scopes for the paste-URL OAuth redirect (no picker
+ * session). The unified Drive picker uses `oauthScopesForGooglePicker`
+ * (`drive.file` + all three readonly Workspace APIs) instead.
+ */
 export function oauthScopesFor(type: ConnectorType): string[] {
   switch (type) {
     case "sheets":

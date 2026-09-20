@@ -60,6 +60,8 @@ context101 connectors setup google --dry-run
 
 Google / Notion / GitHub App instance clients go in Secrets Manager. `context101 connectors` on a TTY walks through provider status and setup. `context101 connectors --dry-run` is the demo/preview path (same menus; unconfigured skips secret prompts; configured Update prompts then would-write names; no SM write). `connectors setup` is the script/CI path. Setup writes the secret (never prints the value) and the SM **name** into deploy-env (`GOOGLE_OAUTH_CLIENT_SECRET_ID` / `NOTION_OAUTH_CLIENT_SECRET_ID` / `GITHUB_APP_SECRET_ID`). Then `context101 update` and Connect in admin. PAT for a single GitHub repo is still pasted in the admin, not here.
 
+Google Add source is one **Google** row (Drive picker for Docs / Sheets / Slides). The picker needs a Browser API key + Cloud project number (`GOOGLE_PICKER_API_KEY` / `GOOGLE_PICKER_APP_ID`, or `picker_api_key` / `picker_app_id` on the OAuth secret). Enable Picker API + Drive API; add the admin origin as an Authorized JavaScript origin. Without those keys the dialog still accepts a pasted URL. Do not invent a `drive` connector type — rows stay `docs` / `sheets` / `slides`.
+
 ## Name collision
 
 The publishable package is **context101-cli**. The bin name is `context101`.
