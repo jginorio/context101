@@ -47,7 +47,7 @@ This directory is the maintained source for verifying user-facing Context101 beh
 
 ## Mapped PRs
 
-Maintain pass after Knowledge sidebar Docs visibility (this PR):
+Maintain pass after Knowledge sidebar Docs visibility ([#98](https://github.com/jginorio/context101/pull/98)):
 
 - **Mapped:** Knowledge → Sources shows synced Google trees under a **Google** disclosure as Docs / Sheets / Slides. A docs connector with `item_count > 0` still renders Docs when `sources/` has no `docs` folder. GitHub is unchanged.
 - **Prior mapped:** [#93](https://github.com/jginorio/context101/pull/93) Unify Google add-source behind a Drive picker. One **Google** row (not Docs / Sheets / Slides). Paste-URL (`Or paste a link`) is the safe default verify path. Live Drive picker (`Connect Google account` / `Browse Google Drive`) is optional/skip when `GET /api/connectors/google/picker-config` has `pickerConfigured: false` (local Cloud Agent). Hosted admin may be `pickerConfigured: true` — still do not click Connect / Browse / Add.
