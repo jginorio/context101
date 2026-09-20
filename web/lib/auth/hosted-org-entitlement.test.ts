@@ -106,6 +106,29 @@ test("hosted revokedAt without billingStatus is soft-locked", () => {
   );
 });
 
+test("hosted entitled statuses win over a leftover revokedAt", () => {
+  assert.equal(
+    isHostedOrgEntitled(
+      { billingStatus: "active", revokedAt: "2026-09-01T00:00:00.000Z" },
+      now,
+      hosted
+    ),
+    true
+  );
+  assert.equal(
+    isHostedOrgEntitled(
+      {
+        billingStatus: "grace",
+        periodEnd: futureEnd,
+        revokedAt: "2026-09-01T00:00:00.000Z",
+      },
+      now,
+      hosted
+    ),
+    true
+  );
+});
+
 test("hosted active or unstamped metadata stays entitled", () => {
   assert.equal(isHostedOrgEntitled(activeMeta, now, hosted), true);
   assert.equal(

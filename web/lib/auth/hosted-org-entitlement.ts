@@ -130,13 +130,23 @@ export function parsePeriodEnd(value: unknown): number | undefined {
   return Number.isFinite(ms) ? ms : undefined;
 }
 
+function locked(): HostedOrgAccess {
+  return {
+    entitled: false,
+    code: HOSTED_ORG_SOFT_LOCKED_CODE,
+    error: HOSTED_ORG_SOFT_LOCKED_ERROR,
+  };
+}
+
 /**
  * Given active-org metadata + now, return whether that org may use
- * the product. Self-host is never gated.
+ * the product. Gate only when `APP_MODE=hosted` — same rule as hosted
+ * storefront PR #7.
  *
- * Entitled: `active`, missing status, or `grace` with `periodEnd` in
- * the future. Soft-locked: `revoked`, `revokedAt` set, or `grace`
- * with periodEnd past / missing.
+ * Entitled: `billingStatus === "active"`, or `"grace"` with `periodEnd`
+ * in the future, or missing `billingStatus` (legacy checkout stamp).
+ * Soft-locked: `"revoked"`, `"grace"` with `periodEnd` missing/past,
+ * or `revokedAt` set when status is not an entitled state.
  */
 export function hostedOrgAccess(
   metadata: unknown,
@@ -148,25 +158,18 @@ export function hostedOrgAccess(
   const meta = parseOrganizationMetadata(metadata);
   const status = meta?.billingStatus;
 
-  if (status === "revoked" || parsePeriodEnd(meta?.revokedAt) != null) {
-    return {
-      entitled: false,
-      code: HOSTED_ORG_SOFT_LOCKED_CODE,
-      error: HOSTED_ORG_SOFT_LOCKED_ERROR,
-    };
-  }
+  if (status === "active") return { entitled: true };
 
   if (status === "grace") {
     const periodMs = parsePeriodEnd(meta?.periodEnd);
     if (periodMs != null && periodMs > now.getTime()) {
       return { entitled: true };
     }
-    return {
-      entitled: false,
-      code: HOSTED_ORG_SOFT_LOCKED_CODE,
-      error: HOSTED_ORG_SOFT_LOCKED_ERROR,
-    };
+    return locked();
   }
+
+  if (status === "revoked") return locked();
+  if (parsePeriodEnd(meta?.revokedAt) != null) return locked();
 
   return { entitled: true };
 }
