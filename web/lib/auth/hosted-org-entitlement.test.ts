@@ -95,6 +95,17 @@ test("hosted grace with past or missing periodEnd is soft-locked", () => {
   );
 });
 
+test("hosted revokedAt without billingStatus is soft-locked", () => {
+  assert.equal(
+    isHostedOrgEntitled(
+      { revokedAt: "2026-09-20T20:00:00.000Z" },
+      now,
+      hosted
+    ),
+    false
+  );
+});
+
 test("hosted active or unstamped metadata stays entitled", () => {
   assert.equal(isHostedOrgEntitled(activeMeta, now, hosted), true);
   assert.equal(

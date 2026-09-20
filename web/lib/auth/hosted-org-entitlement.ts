@@ -135,8 +135,8 @@ export function parsePeriodEnd(value: unknown): number | undefined {
  * the product. Self-host is never gated.
  *
  * Entitled: `active`, missing status, or `grace` with `periodEnd` in
- * the future. Soft-locked: `revoked`, or `grace` with periodEnd past
- * / missing.
+ * the future. Soft-locked: `revoked`, `revokedAt` set, or `grace`
+ * with periodEnd past / missing.
  */
 export function hostedOrgAccess(
   metadata: unknown,
@@ -148,7 +148,7 @@ export function hostedOrgAccess(
   const meta = parseOrganizationMetadata(metadata);
   const status = meta?.billingStatus;
 
-  if (status === "revoked") {
+  if (status === "revoked" || parsePeriodEnd(meta?.revokedAt) != null) {
     return {
       entitled: false,
       code: HOSTED_ORG_SOFT_LOCKED_CODE,
