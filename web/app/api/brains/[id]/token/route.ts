@@ -5,7 +5,7 @@ import {
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { getBrainByIdForOrg, readAuthContext } from "@/lib/brains-server";
+import { getBrainByIdForOrg, readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 
 const secrets = new SecretsManagerClient({
   region: process.env.AWS_REGION ?? "us-east-1",
@@ -30,9 +30,7 @@ export async function GET(
 ) {
   const { id } = await params;
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
   const brain = await getBrainByIdForOrg(auth.orgId, id);
   if (!brain) {
     return NextResponse.json({ error: "brain not found" }, { status: 404 });

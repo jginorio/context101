@@ -23,6 +23,7 @@ type Org = {
   slug: string;
   logo: string | null;
   role: string;
+  softLocked?: boolean;
 };
 
 function initials(name: string): string {
@@ -138,12 +139,16 @@ export function OrgChooser({
               <div className="min-w-0">
                 <div className="truncate text-sm font-medium">{org.name}</div>
                 <div className="text-xs capitalize text-muted-foreground">
-                  {org.role}
+                  {org.softLocked ? "subscription ended" : org.role}
                 </div>
               </div>
               {isActive ? (
                 <span className="absolute right-2 top-2 rounded-full bg-foreground px-1.5 py-0.5 text-[10px] font-medium text-background">
                   current
+                </span>
+              ) : org.softLocked ? (
+                <span className="absolute right-2 top-2 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+                  ended
                 </span>
               ) : null}
               {isPending ? (

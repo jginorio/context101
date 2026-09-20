@@ -2,6 +2,11 @@ import { and, desc, eq } from "drizzle-orm";
 import { cookies, headers } from "next/headers";
 import type { NextRequest } from "next/server";
 
+import {
+  HOSTED_ORG_SOFT_LOCKED_CODE,
+  hostedOrgAccess,
+  parseOrganizationMetadata,
+} from "@/lib/auth/hosted-org-entitlement";
 import { getAuth } from "@/lib/auth/server";
 import {
   COOKIE_NAME,
@@ -12,7 +17,7 @@ import {
 } from "@/lib/brain-id";
 import { db } from "@/lib/db/client";
 import { brains as postgresBrains } from "@/lib/db/schema";
-import { member } from "@/lib/db/auth-schema";
+import { member, organization } from "@/lib/db/auth-schema";
 
 /**
  * Server-side brain registry helpers.
@@ -63,6 +68,15 @@ export type AuthContext = {
   userEmail: string | null;
 };
 
+export type AuthDenied = {
+  ok: false;
+  status: 401 | 403;
+  error: string;
+  code?: string;
+};
+
+export type AuthRead = ({ ok: true } & AuthContext) | AuthDenied;
+
 function requireDb() {
   if (!db) throw new Error("DATABASE_URL is not configured");
   return db;
@@ -94,21 +108,56 @@ async function isOrgMember(userId: string, orgId: string): Promise<boolean> {
   return !!row;
 }
 
+export async function loadOrganizationMetadata(orgId: string): Promise<unknown> {
+  if (!db) return null;
+  const [row] = await db
+    .select({ metadata: organization.metadata })
+    .from(organization)
+    .where(eq(organization.id, orgId))
+    .limit(1);
+  return parseOrganizationMetadata(row?.metadata ?? null);
+}
+
+export function deniedAuthJson(denied: AuthDenied): Response {
+  return Response.json(
+    denied.code
+      ? { error: denied.error, code: denied.code }
+      : { error: denied.error },
+    { status: denied.status }
+  );
+}
+
 /**
  * Resolve the signed-in user's organization + identity from the Better Auth
- * session, verifying they are still a member of the active org. Returns null
- * when there's no session, no active org, or the user is no longer a member.
- * Routes that read/write org-scoped rows use this for `org_id` / `created_by`.
+ * session, verifying they are still a member of the active org. Hosted
+ * orgs that are soft-locked (revoked, or grace past periodEnd) return
+ * 403 HOSTED_ORG_SOFT_LOCKED instead of a usable context. Self-host is
+ * never gated. Other orgs the same user belongs to are not checked here.
  */
 export async function readAuthContext(
   request: NextRequest
-): Promise<AuthContext | null> {
+): Promise<AuthRead> {
   const session = await getSession(request);
   const orgId = session?.session?.activeOrganizationId ?? null;
   const userId = session?.user?.id ?? null;
-  if (!orgId || !userId) return null;
-  if (!(await isOrgMember(userId, orgId))) return null;
-  return { orgId, userId, userEmail: session?.user?.email ?? null };
+  if (!orgId || !userId) {
+    return { ok: false, status: 401, error: "not authenticated" };
+  }
+  if (!(await isOrgMember(userId, orgId))) {
+    return { ok: false, status: 401, error: "not authenticated" };
+  }
+
+  const access = hostedOrgAccess(await loadOrganizationMetadata(orgId));
+  if (!access.entitled) {
+    return {
+      ok: false,
+      status: 403,
+      error: access.error,
+      code: HOSTED_ORG_SOFT_LOCKED_CODE,
+    };
+  }
+
+  return { ok: true, orgId, userId, userEmail: session?.user?.email ?? null };
 }
 
 function dateString(value: Date | string | null | undefined): string {
@@ -223,7 +272,18 @@ export async function readRequestedBrainIdFromHeaders(): Promise<string | null> 
 
 export type ResolveResult =
   | { ok: true; brain: BrainConfig }
-  | { ok: false; status: number; error: string };
+  | { ok: false; status: number; error: string; code?: string };
+
+export function deniedResolveJson(
+  result: Extract<ResolveResult, { ok: false }>
+): Response {
+  return Response.json(
+    result.code
+      ? { error: result.error, code: result.code }
+      : { error: result.error },
+    { status: result.status }
+  );
+}
 
 /**
  * Resolve the active brain for a route. Returns the full registry row with
@@ -236,8 +296,13 @@ export async function resolveBrainFromRequest(
   request: NextRequest
 ): Promise<ResolveResult> {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return { ok: false, status: 401, error: "not authenticated" };
+  if (!auth.ok) {
+    return {
+      ok: false,
+      status: auth.status,
+      error: auth.error,
+      code: auth.code,
+    };
   }
   const requested = await readRequestedBrainId(request);
   const ready = requested

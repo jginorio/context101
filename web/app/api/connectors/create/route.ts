@@ -20,7 +20,7 @@ import {
   syncFnNameFor,
   type ConnectorType,
 } from "@/utils/connectors";
-import { readAuthContext, resolveBrainFromRequest } from "@/lib/brains-server";
+import { readAuthContext, resolveBrainFromRequest, deniedAuthJson, deniedResolveJson } from "@/lib/brains-server";
 import {
   getGithubAppConfig,
   installationCanAccessRepo,
@@ -82,12 +82,10 @@ function resourceHint(type: ConnectorType): string {
  */
 export async function POST(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
 
   const r = await resolveBrainFromRequest(request);
-  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  if (!r.ok) return deniedResolveJson(r);
   const brain = r.brain;
   const docsBucket = bucketForBrain(brain);
 

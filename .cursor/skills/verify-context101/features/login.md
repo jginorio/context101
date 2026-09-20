@@ -45,6 +45,7 @@ After sign-in, users without an active org land on `/orgs`.
 - Heading `Choose an organization`.
 - Self-host: tile `New organization` opens dialog `Create organization`. Do not submit on a shared instance.
 - Hosted (`APP_MODE=hosted`): no create tile. Empty-state copy is “You haven't been invited to an organization yet…”. Invites still go through `/accept-invitation/:id`.
+- Hosted soft-lock: if the active org’s `organization.metadata.billingStatus` is `revoked`, or `grace` with `periodEnd` in the past, `/knowledge` (and other org-gated pages) redirect to `/renew`. Heading `Subscription ended`. Link `Renew`. Other entitled orgs still open from `Switch organization`. Self-host never shows this. Skip on a shared verify instance.
 
 ## Gotchas
 

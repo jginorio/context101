@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 
-import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { resolveBrainFromRequest, deniedResolveJson } from "@/lib/brains-server";
 import { retrieveSources } from "@/lib/wiki-retrieve";
 
 /**
@@ -16,12 +16,7 @@ import { retrieveSources } from "@/lib/wiki-retrieve";
  */
 export async function POST(request: NextRequest) {
   const resolved = await resolveBrainFromRequest(request);
-  if (!resolved.ok) {
-    return NextResponse.json(
-      { error: resolved.error },
-      { status: resolved.status }
-    );
-  }
+  if (!resolved.ok) return deniedResolveJson(resolved);
   const brain = resolved.brain;
   if (!brain.kb_id) {
     return NextResponse.json(

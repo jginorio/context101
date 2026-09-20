@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { readAuthContext } from "@/lib/brains-server";
+import { readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 import {
   applyGoogleSessionCookie,
   exchangeGoogleAuthCode,
@@ -26,9 +26,7 @@ const GIS_POPUP_REDIRECT = "postmessage";
  */
 export async function GET(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
 
   const session = readGoogleSession(request);
   if (!session) {
@@ -75,9 +73,7 @@ export async function GET(request: NextRequest) {
  */
 export async function POST(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
 
   const body = await request.json().catch(() => null);
   const code = typeof body?.code === "string" ? body.code.trim() : "";
@@ -136,9 +132,7 @@ export async function POST(request: NextRequest) {
 /** DELETE /api/connectors/google/session — forget the picker session. */
 export async function DELETE(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
   const response = NextResponse.json({ connected: false });
   return applyGoogleSessionCookie(response, null);
 }

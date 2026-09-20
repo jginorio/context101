@@ -10,7 +10,7 @@ import {
   ListFoundationModelsCommand,
 } from "@aws-sdk/client-bedrock";
 
-import { readAuthContext } from "@/lib/brains-server";
+import { readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 import { db } from "@/lib/db/client";
 import { brains } from "@/lib/db/schema";
 
@@ -173,9 +173,7 @@ async function resolveKey(
  */
 export async function GET(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
 
   const provider = request.nextUrl.searchParams.get("provider") as Provider | null;
   const brainId = request.nextUrl.searchParams.get("brain");

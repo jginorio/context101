@@ -5,7 +5,7 @@ import {
   ListFoundationModelsCommand,
 } from "@aws-sdk/client-bedrock";
 
-import { readAuthContext } from "@/lib/brains-server";
+import { readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 import {
   CHUNKING_DEFAULTS,
   CHUNKING_STRATEGY_LABELS,
@@ -71,9 +71,7 @@ const fallback = () =>
  */
 export async function GET(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
 
   try {
     const res = await bedrock.send(

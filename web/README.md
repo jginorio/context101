@@ -51,6 +51,8 @@ When `ALLOW_PUBLIC_SIGNUP=true`, unknown emails also receive a link and Better A
 
 When `APP_MODE=hosted`, Better Auth `organization/create` is disabled. New orgs are created at Creem checkout (private hosted provision), not from the admin UI. Invites and accept-invitation still work. Self-host (`APP_MODE=self_hosted`, the default) can still create organizations.
 
+Hosted also soft-locks an org after its subscription ends: the org stays in the database (no member/data delete, sessions stay valid), but product APIs for that org return `403` with `HOSTED_ORG_SOFT_LOCKED`. Grace uses `organization.metadata.periodEnd` — the org stays usable until that timestamp. Other orgs the same user belongs to are not gated. The admin shows **Subscription ended** at `/renew` with a Renew link to the Hosted storefront (`HOSTED_RENEW_URL`, defaulting to the public marketing site). Sign-in itself is unchanged. Self-host is never gated.
+
 Call this from a **server** (no `Origin` header), the same way password sign-in works from curl. A browser `Origin` must match `BETTER_AUTH_URL` / `APP_URL`. Optional Better Auth env (names only): `BETTER_AUTH_TRUSTED_ORIGINS` (comma-separated origins). No new secrets; magic link reuses `SES_FROM_EMAIL`, `SES_REGION`, `APP_URL`, `BETTER_AUTH_URL`, and `BETTER_AUTH_SECRET`.
 
 The login page also has **Email me a sign-in link**.

@@ -2,7 +2,9 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { and, eq } from "drizzle-orm";
 
+import { hostedOrgAccess } from "@/lib/auth/hosted-org-entitlement";
 import { getAuth } from "@/lib/auth/server";
+import { loadOrganizationMetadata } from "@/lib/brains-server";
 import { db } from "@/lib/db/client";
 import { member } from "@/lib/db/auth-schema";
 
@@ -41,4 +43,7 @@ export async function requireActiveOrg(): Promise<void> {
     .where(and(eq(member.userId, userId), eq(member.organizationId, activeOrg)))
     .limit(1);
   if (!row) redirect("/orgs");
+
+  const access = hostedOrgAccess(await loadOrganizationMetadata(activeOrg));
+  if (!access.entitled) redirect("/renew");
 }
