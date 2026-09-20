@@ -10,6 +10,14 @@ A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases — S3 + S3 V
 
 The CLI is the front door. Deploying a space ships the admin UI with the stack.
 
+## Use case
+
+Analytics event docs live as markdown in your repo. Instead of emailing them around so everyone pastes into Claude, Cursor, or Grok, connect the repo to a brain and share that brain’s MCP URL. Same context for the whole team; doc updates land on the next sync (~6h).
+
+<p align="center">
+  <img width="1280" alt="One repo. One brain. Every agent." src="docs/assets/use-case-flow.png">
+</p>
+
 ## How it works
 
 <p align="center">
@@ -58,11 +66,7 @@ Deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. 
 
 ## Brains
 
-You can create multiple brains for different topics or projects — one for product docs, another for a customer account. Each brain is isolated: its own sources and docs, separate from the others.
-
-Each brain has its own MCP URL (`/brain/<id>/mcp`). Give that URL to an agent or harness and it only sees that brain’s context. Create brains in the admin, connect sources, then point the MCP client at that brain’s URL.
-
-Example: your site’s Google Analytics event docs live as markdown in the app repo (what each event is called, which props it sends, when it fires). Instead of emailing those files to analytics, PM, and eng so everyone can paste them into Claude, Cursor, or Grok, connect the repo as a source on one brain and share that brain’s MCP URL with the team. Everyone stays on the same context, and when you update the docs the next sync picks them up (about every 6 hours).
+You can create multiple brains for different topics or projects. Each is isolated — its own sources and docs — with its own MCP URL (`/brain/<id>/mcp`). Create brains in the admin, connect sources, then point the MCP client at that brain’s URL.
 
 ## Parked features
 
