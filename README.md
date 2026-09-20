@@ -20,7 +20,11 @@ The CLI is the front door. Deploying a space ships the admin UI with the stack.
 
 ### Example use case
 
-Analytics event docs live as markdown in your repo. Instead of emailing them around so everyone pastes into Claude, Cursor, or Grok, connect the repo to Context101 and share the MCP URL with the team. Same context for everyone; doc updates land on the next sync (~6h).
+Your GA event docs are markdown in the repo.
+
+- Connect the repo to Context101
+- Share the MCP URL with the team (Claude, Cursor, Grok, …)
+- Doc updates sync ~every 6h — no more emailing files around
 
 ## Install
 
