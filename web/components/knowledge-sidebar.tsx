@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  ChevronRight,
   FilePlus,
   FolderClosed,
   FolderPlus,
@@ -29,9 +30,14 @@ import {
   hasVisibleLibraryEntries,
 } from "@/lib/knowledge-library";
 import {
-  CONNECTOR_TYPES,
+  visibleConnectorTypes,
+  visibleProviderGroups,
+} from "@/lib/knowledge-sources";
+import { GoogleLogo } from "@/components/source-logos";
+import {
   SOURCE_TYPES,
   TypeIcon,
+  type ConnectorType,
 } from "@/lib/source-providers";
 import { useAppShell } from "@/components/app-shell";
 import type { Connector } from "@/utils/connectors";
@@ -75,6 +81,71 @@ function SourceRowsSkeleton() {
   );
 }
 
+function SourceTypeTree({
+  type,
+  ctx,
+  name,
+}: {
+  type: ConnectorType;
+  ctx: TreeContext;
+  name?: string;
+}) {
+  return (
+    <FolderNode
+      prefix={SOURCE_TYPES[type].prefix}
+      name={name ?? SOURCE_TYPES[type].menuLabel}
+      depth={0}
+      ctx={ctx}
+      forceHeader
+      defaultOpen={false}
+      headerIcon={
+        <TypeIcon type={type} className="h-3.5 w-3.5 shrink-0 opacity-90" />
+      }
+    />
+  );
+}
+
+function GoogleSourceGroup({
+  types,
+  ctx,
+}: {
+  types: ConnectorType[];
+  ctx: TreeContext;
+}) {
+  const [open, setOpen] = React.useState(true);
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-label="Google"
+        onClick={() => setOpen((prev) => !prev)}
+        className="my-px flex min-h-8 w-full items-center gap-1.5 rounded-md px-3 py-1.5 text-start text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+      >
+        <ChevronRight
+          className={cn(
+            "h-3.5 w-3.5 shrink-0 transition-transform",
+            open && "rotate-90"
+          )}
+        />
+        <GoogleLogo className="h-3.5 w-3.5 shrink-0 opacity-90" />
+        <span className="truncate">Google</span>
+      </button>
+      {open
+        ? types.map((type) => (
+            <div key={type} className="ps-3">
+              <SourceTypeTree
+                type={type}
+                ctx={ctx}
+                name={SOURCE_TYPES[type].label}
+              />
+            </div>
+          ))
+        : null}
+    </div>
+  );
+}
+
 export function KnowledgeSidebar({
   selectedKey,
   refreshKey,
@@ -103,9 +174,10 @@ export function KnowledgeSidebar({
   // previous values so the section doesn't collapse back to skeletons on
   // every upload.
   const [connectors, setConnectors] = React.useState<Connector[] | null>(null);
-  // Connector types with at least one synced file, from the folders directly
-  // under `sources/`. A connector with nothing synced yet stays hidden.
-  const [syncedTypes, setSyncedTypes] = React.useState<Set<string> | null>(
+  // Folders directly under `sources/` (docs, github, …). Combined with
+  // connector item_count so a synced Google Doc still appears when the
+  // parent listing omits `docs/`.
+  const [sourceFolders, setSourceFolders] = React.useState<string[] | null>(
     null
   );
   // Uploaded Files is just another source — hide the Library section until
@@ -123,10 +195,9 @@ export function KnowledgeSidebar({
       .catch(() => !cancelled && setConnectors([]));
     fetchList("sources/")
       .then(
-        (d) =>
-          !cancelled && setSyncedTypes(new Set(d.folders.map((f) => f.name)))
+        (d) => !cancelled && setSourceFolders(d.folders.map((f) => f.name))
       )
-      .catch(() => !cancelled && setSyncedTypes(new Set()));
+      .catch(() => !cancelled && setSourceFolders([]));
     fetchList("")
       .then(
         (d) => !cancelled && setLibraryHasFiles(hasVisibleLibraryEntries(d))
@@ -145,7 +216,19 @@ export function KnowledgeSidebar({
     [connectors]
   );
 
-  const sourcesLoading = connectors === null || syncedTypes === null;
+  const sourcesLoading = connectors === null || sourceFolders === null;
+  const visibleTypes = React.useMemo(
+    () =>
+      visibleConnectorTypes({
+        sourceFolders: sourceFolders ?? [],
+        connectors,
+      }),
+    [connectors, sourceFolders]
+  );
+  const sourceGroups = React.useMemo(
+    () => visibleProviderGroups(visibleTypes),
+    [visibleTypes]
+  );
 
   const openAddSource = () => {
     closeMobileNav(() => onAddSource?.());
@@ -235,9 +318,18 @@ export function KnowledgeSidebar({
         {sourcesLoading ? (
           <SourceRowsSkeleton />
         ) : (
-          CONNECTOR_TYPES.filter((type) => syncedTypes?.has(type)).map(
-            (type) =>
-              type === "notion" ? (
+          sourceGroups.map((group) => {
+            if (group.id === "google") {
+              return (
+                <GoogleSourceGroup
+                  key="google"
+                  types={group.types}
+                  ctx={browseCtx}
+                />
+              );
+            }
+            if (group.id === "notion") {
+              return (
                 <NotionSource
                   key="notion"
                   trees={notionTrees}
@@ -248,24 +340,16 @@ export function KnowledgeSidebar({
                   }}
                   onOpenInNewTab={onOpenInNewTab}
                 />
-              ) : (
-                <FolderNode
-                  key={type}
-                  prefix={SOURCE_TYPES[type].prefix}
-                  name={SOURCE_TYPES[type].menuLabel}
-                  depth={0}
-                  ctx={browseCtx}
-                  forceHeader
-                  defaultOpen={false}
-                  headerIcon={
-                    <TypeIcon
-                      type={type}
-                      className="h-3.5 w-3.5 shrink-0 opacity-90"
-                    />
-                  }
-                />
-              )
-          )
+              );
+            }
+            return (
+              <React.Fragment key={group.id}>
+                {group.types.map((type) => (
+                  <SourceTypeTree key={type} type={type} ctx={browseCtx} />
+                ))}
+              </React.Fragment>
+            );
+          })
         )}
         <p className="px-2 py-1.5 text-[11px] leading-snug text-muted-foreground">
           Manage connectors on the{" "}

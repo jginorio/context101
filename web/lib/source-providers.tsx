@@ -94,9 +94,11 @@ export type ProviderGroup = {
   types: ConnectorType[];
 };
 
-// Provider grouping drives the Knowledge sidebar sections (Google still
-// fans out to Docs / Sheets / Slides for synced trees). The add-source
-// menu uses ADD_SOURCE_MENU — one Google row, not three URL forms.
+// Provider grouping drives Knowledge → Sources (Google fans out to
+// Docs / Sheets / Slides). Visibility is `visibleConnectorTypes` in
+// knowledge-sources.ts — S3 folders under `sources/` union connectors
+// with item_count > 0. The add-source menu uses ADD_SOURCE_MENU — one
+// Google row, not three URL forms.
 export const PROVIDER_GROUPS: ProviderGroup[] = [
   { id: "google", label: "Google", icon: GoogleLogo, types: ["docs", "sheets", "slides"] },
   { id: "notion", label: "Notion", icon: NotionLogo, types: ["notion"] },
