@@ -6,7 +6,7 @@
 
 ## What it is
 
-A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases: S3 + S3 Vectors, FastMCP per brain, Better Auth + Postgres. You run it in your own AWS account.
+A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases — S3 + S3 Vectors, Better Auth + Postgres, and MCP for agents. You run it in your own AWS account.
 
 The CLI is the front door. Deploying a space ships the admin UI with the stack.
 
@@ -52,7 +52,7 @@ Deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. 
 
 ## Brains
 
-Each brain is a sealed knowledge base — its own S3 bucket, Bedrock KB, vector index, suggestions queue, and MCP token. Create brains in the admin. Each is served at `/brain/<id>/mcp`.
+Each brain is a sealed knowledge base — its own S3 bucket, Bedrock KB, vector index, suggestions queue, and MCP token. Create brains in the admin. Each brain gets its own MCP endpoint at `/brain/<id>/mcp`.
 
 ## Parked features
 
