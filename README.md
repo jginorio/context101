@@ -62,6 +62,8 @@ You can create multiple brains for different topics or projects — one for prod
 
 Each brain has its own MCP URL (`/brain/<id>/mcp`). Give that URL to an agent or harness and it only sees that brain’s context. Create brains in the admin, connect sources, then point the MCP client at that brain’s URL.
 
+Example: your site’s Google Analytics event docs live as markdown in the app repo (what each event is called, which props it sends, when it fires). Instead of emailing those files to analytics, PM, and eng so everyone can paste them into Claude, Cursor, or Grok, connect the repo as a source on one brain and share that brain’s MCP URL with the team. Everyone stays on the same context, and when you update the docs the next sync picks them up (about every 6 hours).
+
 ## Parked features
 
 - Wiki generation — [WIKI_PARKED.md](./WIKI_PARKED.md)
