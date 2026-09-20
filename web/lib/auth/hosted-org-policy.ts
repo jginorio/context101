@@ -1,13 +1,18 @@
 /**
- * Hosted org policy (app.context101.dev / APP_MODE=hosted):
- * only Creem checkout creates organizations. Invited members may join
- * an existing org. Self-host is unchanged — users may create orgs.
+ * Hosted org policy: gate `organization.create` only when
+ * `APP_MODE=hosted` (the one AWS space we operate). Self-host
+ * (`APP_MODE=self_hosted` or unset — the default) keeps full org create.
+ *
+ * Billing / public-signup flags and APP_URL do not flip this gate.
  *
  * Better Auth's `allowUserToCreateOrganization: false` still lets
  * privileged server calls (`auth.api.createOrganization` with no
  * session + explicit `userId`) through, so hosted provision can keep
- * using that path. Session / HTTP `organization/create` is rejected.
+ * using that path. Session / HTTP `organization/create` is rejected
+ * on Hosted only.
  */
+
+import { isHostedDeployment } from "@/lib/deployment/config";
 
 export const HOSTED_ORG_CREATE_ERROR =
   "Hosted organizations are created at checkout";
@@ -31,6 +36,18 @@ export type OrgUserAction =
 
 export function allowUserToCreateOrganization(isHosted: boolean): boolean {
   return !isHosted;
+}
+
+/** Resolve the create-org gate from env. Hosted only — self-host stays open. */
+export function organizationCreatePolicy(env: NodeJS.Dict<string> = process.env): {
+  isHosted: boolean;
+  allowUserToCreateOrganization: boolean;
+} {
+  const isHosted = isHostedDeployment(env);
+  return {
+    isHosted,
+    allowUserToCreateOrganization: allowUserToCreateOrganization(isHosted),
+  };
 }
 
 export function isHostedOrgActionAllowed(
