@@ -46,4 +46,4 @@ Please report suspected security issues privately. See `SECURITY.md`.
 
 ## License
 
-By contributing, you agree that your contribution will be licensed under the MIT License.
+By contributing, you agree that your contribution will be licensed under the Elastic License 2.0.

@@ -1,6 +1,7 @@
 {
   "name": "context101-monorepo",
   "private": true,
+  "license": "Elastic-2.0",
   "workspaces": [
     "web",
     "packages/*"

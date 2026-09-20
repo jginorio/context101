@@ -2,6 +2,8 @@
 
 Context101 is alpha software. It started as an internal proof of concept and is being opened so other teams can self-host, evaluate, and evolve it for their own trusted internal use.
 
+Licensed under the [Elastic License 2.0](./LICENSE). Self-host and private/internal use are allowed. Offering Context101 as a paid hosted or managed service to third parties is not allowed.
+
 ## Intended Use
 
 - Trusted internal teams running the stack in their own AWS account.

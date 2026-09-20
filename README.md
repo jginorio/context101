@@ -11,7 +11,7 @@ Alpha / trusted-team only. Not a wiki app. Retrieval is raw-first. Product focus
 ## context101
 
 ```bash
-npm i -g context101-cli@0.1.26
+npm i -g context101-cli@0.1.27
 ```
 
 Package `context101-cli`, bin `context101`. Pin the version — `@latest` is a no-op on some machines. Unscoped `npx context101` is Context7's MCP, unrelated.
@@ -46,3 +46,9 @@ Wiki generation is parked. Isolated restore: `cursor/wiki-isolated-de63`. Confli
 Trusted-team alpha. No per-brain RBAC. Not public multi-tenant SaaS. [ALPHA.md](./ALPHA.md)
 
 [wiki-generator-ts/README.md](./wiki-generator-ts/README.md) · [SECURITY.md](./SECURITY.md) · [CONTRIBUTING.md](./CONTRIBUTING.md)
+
+## License
+
+Copyright (c) 2026 Context101 contributors.
+
+Context101 is licensed under the [Elastic License 2.0](./LICENSE). You can self-host it and use it privately or internally. Offering Context101 as a paid hosted or managed service to third parties is not allowed.
