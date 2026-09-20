@@ -4,9 +4,9 @@ Connectors pull an external source into the brain's S3 prefix, then Bedrock Retr
 
 This file is the v0 contract: auth, sync, map to S3+metadata, delete, idempotent, done-when = `bin/retrieve` canary. The TypeScript interfaces live in `web/lib/connectors/contract.ts`. Sync implementations stay in `cdk/lambda/connector-sync-*`. Dispatch is already `cdk/lambda/connector-dispatch` `FN_BY_TYPE`.
 
-Default verify **must not** submit **Connect**, **Add Google file**, **Add repository**, or **Sync now** on a shared brain. The e2e matrix is an **explicit track** (`bin/connector-matrix`, env-gated live GitHub). Open the picker with [add-source](./add-source.md); do not create a row unless this track says so.
+Default verify **must not** submit **Connect**, **Connect Google account**, **Add Google file**, **Add repository**, or **Sync now** on a shared brain. The e2e matrix is an **explicit track** (`bin/connector-matrix`, env-gated live GitHub). Open the picker with [add-source](./add-source.md); do not create a row unless this track says so.
 
-Add source shows one **Google** row. The dialog uses Google Picker (when `GOOGLE_PICKER_API_KEY` + `GOOGLE_PICKER_APP_ID`, or `picker_api_key` / `picker_app_id` on the OAuth secret, are set) and maps the chosen MIME type onto `docs` | `sheets` | `slides`. There is no `drive` `source_type`. Paste-URL is the collapsed fallback. A picker session (`drive.file` + the three readonly Workspace APIs) can skip a second OAuth redirect on create; paste-URL without a session still uses the narrower per-type scopes.
+Add source shows one **Google** row. `GET /api/connectors/google/picker-config` (`pickerConfigured`) decides Drive picker vs paste-URL. MIME maps onto `docs` | `sheets` | `slides`. There is no `drive` `source_type`. Default verify uses paste (`Or paste a link`) and skips GIS / Drive picker when `pickerConfigured` is false. A picker session can skip a second OAuth redirect on create; paste-URL without a session still uses the narrower per-type scopes.
 
 ## Types
 
@@ -18,8 +18,9 @@ Add source shows one **Google** row. The dialog uses Google Picker (when `GOOGLE
 | `notion` | yes | `sources/notion/` |
 | `github` | yes | `sources/github/` |
 | `files` | no — local markdown upload | library root (not `sources/`) |
+| `google` | no — picker kind; create writes `docs` / `sheets` / `slides` | (those prefixes) |
 
-Prefixes match `web/lib/source-providers.tsx`. `files` is Add source → Upload files, not a connector.
+Prefixes match `web/lib/source-providers.tsx`. `files` is Add source → Upload files, not a connector. `google` is Add source → Google.
 
 Registry (already half-exists):
 
@@ -65,7 +66,7 @@ Happy / update / delete / bad-token per type. Done-when is retrieve, not the Sou
 
 | Type | happy | update | delete | bad-token |
 | --- | --- | --- | --- | --- |
-| docs / sheets / slides | OAuth Connect to a fixture with a unique canary → prefix object exists → retrieve ranks it | Change upstream canary, Sync now → retrieve ranks the new canary | Remove connector → retrieve `--absent-key` / `--absent-canary` | Revoked Google token → ERROR accordion; no new key |
+| docs / sheets / slides | Add source → **Google**: Drive picker or paste URL on a fixture with a unique canary → prefix object exists → retrieve ranks it. Creates that type’s row, not `drive` | Change upstream canary, Sync now → retrieve ranks the new canary | Remove connector → retrieve `--absent-key` / `--absent-canary` | Revoked Google token → ERROR accordion; no new key |
 | notion | OAuth Connect to a fixture page → `sources/notion/<workspace>/…md` → retrieve | Edit page, Sync now → retrieve new canary | Remove → retrieve absent (siblings in the same workspace stay) | Invalid Notion token → ERROR accordion (`401 unauthorized — API token is invalid.` is the known summary) |
 | github | PAT or App on a fixture repo `.md` with canary → `sources/github/<owner>-<repo>/<path>.md` → retrieve | Edit the `.md`, Sync now → retrieve new canary | Remove → retrieve absent (path-scoped siblings on the same repo stay) | Bad PAT / missing installation → ERROR accordion; no new key |
 
@@ -109,10 +110,10 @@ Instance clients are **not** in git. CDK references well-known Secrets Manager *
 
 Operator flow:
 
-1. Create the provider app (Google Web OAuth client, Notion public integration, or GitHub App). Redirect URI: `https://<admin>/api/connectors/oauth/callback` (GitHub App also needs `/api/connectors/github-app/oauth-callback` + install setup URL). For the Google Drive picker, enable Picker API + Drive API, add the admin origin as an Authorized JavaScript origin, and set `GOOGLE_PICKER_API_KEY` + `GOOGLE_PICKER_APP_ID` (Cloud project number) — or `picker_api_key` / `picker_app_id` on the Google OAuth secret. The Google wizard / `connectors setup google` prompts for those picker fields (`--picker-api-key` / `--picker-app-id`); omit or empty keeps existing SM values (writes merge). First Connect asks for `drive.file` plus Docs/Sheets/Slides readonly.
+1. Create the provider app (Google Web OAuth client, Notion public integration, or GitHub App). Redirect URI: `https://<admin>/api/connectors/oauth/callback` (GitHub App also needs `/api/connectors/github-app/oauth-callback` + install setup URL). Drive picker also needs Picker + Drive APIs and the admin origin as an Authorized JavaScript origin. `context101 connectors` / `connectors setup google` prompt for optional picker fields (`--picker-api-key` / `--picker-app-id`); omit or empty keeps existing SM values (writes merge). `cdk/.deploy-env.example` lists the optional picker key *names* (never commit values). First picker Connect asks for `drive.file` plus Docs/Sheets/Slides readonly.
 2. `context101 connectors` opens the TTY wizard (pick provider, see configured / not configured, paste credentials or update). `context101 connectors setup google|notion|github` still works for scripts.
 3. `context101 update` so Amplify/Lambdas see the names CDK already understands.
-4. In admin: **Add source** → **Google** (or Notion / GitHub) → Connect. Do not invent a `drive` connector type.
+4. In admin: **Add source** → **Google** (or Notion / GitHub). Live Connect is this explicit track only. Do not invent a `drive` connector type. Default verify does not submit.
 
 `cdk/.deploy-env.example` lists the optional keys (names only). `context101 config` redacts secret values; `*_SECRET_ID` keys are names and may be shown. Default verify does not run `connectors` / `connectors setup` (they write AWS). `context101 help connectors` is enough.
 
