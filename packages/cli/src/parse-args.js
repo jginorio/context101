@@ -112,13 +112,21 @@ const TOPIC_HELP = {
   --dry-run on a TTY: same menus. Unconfigured: steps + would-write names, no secret prompts.
   Configured Update: field prompts then would-write names. Never writes SM.
   No TTY: prints this help. Scripts: context101 connectors setup <google|notion|github>.
-  Google/Notion: { client_id, client_secret } at <NAME_PREFIX>-google-oauth-client (or notion-).
+  Google: { client_id, client_secret, optional picker_api_key / picker_app_id }
+  at <NAME_PREFIX>-google-oauth-client. Writes merge existing SM JSON (get first).
+  Omit picker flags / empty prompt keeps prior picker keys. --clear-picker drops them.
+  Notion: { client_id, client_secret } at <NAME_PREFIX>-notion-oauth-client.
   GitHub App: <NAME_PREFIX>-connector-github-app. PAT is per-connector in admin, not here.
   Writes the SM name to deploy-env as GOOGLE_OAUTH_CLIENT_SECRET_ID / NOTION_OAUTH_CLIENT_SECRET_ID / GITHUB_APP_SECRET_ID.
   Values are never printed. Next: context101 update, then Connect in admin.
 
   --client-id
   --client-secret        or env CONTEXT101_CONNECTOR_CLIENT_SECRET
+  --picker-api-key       Google Picker Browser API key (optional; omit keeps existing)
+                         or env CONTEXT101_GOOGLE_PICKER_API_KEY
+  --picker-app-id        Google Cloud project number (optional; omit keeps existing)
+                         or env CONTEXT101_GOOGLE_PICKER_APP_ID
+  --clear-picker         drop picker_api_key / picker_app_id from the Google secret
   --app-id               GitHub App id
   --private-key-file     GitHub App PEM
   --slug                 GitHub App slug (optional)
@@ -131,9 +139,14 @@ const TOPIC_HELP = {
 
   "connectors setup": `connectors setup <google|notion|github> [space] — write instance OAuth/app secrets to Secrets Manager
   Also: context101 connectors (TTY wizard).
+  Google writes merge existing SM JSON. --picker-api-key / --picker-app-id are optional;
+  omit or empty keeps prior picker keys. --clear-picker drops them. Values never printed.
 
   --client-id
   --client-secret        or env CONTEXT101_CONNECTOR_CLIENT_SECRET
+  --picker-api-key       or env CONTEXT101_GOOGLE_PICKER_API_KEY
+  --picker-app-id        or env CONTEXT101_GOOGLE_PICKER_APP_ID
+  --clear-picker
   --app-id               GitHub App id
   --private-key-file     GitHub App PEM
   --aws-profile <name>
@@ -261,6 +274,9 @@ export function parseArgs(argv) {
     connectorsProvider: null,
     clientId: null,
     clientSecret: null,
+    pickerApiKey: null,
+    pickerAppId: null,
+    clearPicker: false,
     appId: null,
     slug: null,
     htmlUrl: null,
@@ -415,6 +431,15 @@ export function parseArgs(argv) {
       case "--client-secret":
         opts.clientSecret = needValue(arg, args);
         break;
+      case "--picker-api-key":
+        opts.pickerApiKey = needValue(arg, args);
+        break;
+      case "--picker-app-id":
+        opts.pickerAppId = needValue(arg, args);
+        break;
+      case "--clear-picker":
+        opts.clearPicker = true;
+        break;
       case "--app-id":
         opts.appId = needValue(arg, args);
         break;
@@ -471,6 +496,9 @@ function parseHelpArgs(opts, args) {
 const CONNECTOR_ONLY = new Set([
   "--client-id",
   "--client-secret",
+  "--picker-api-key",
+  "--picker-app-id",
+  "--clear-picker",
   "--app-id",
   "--slug",
   "--html-url",
