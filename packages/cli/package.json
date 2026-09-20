@@ -1,8 +1,8 @@
 {
   "name": "context101-cli",
-  "version": "0.1.27",
+  "version": "0.1.28",
   "private": false,
-  "description": "Context101 self-host CLI — your context. every agent. Use `npx context101-cli` or the `context101` bin. Unscoped `npx context101` is Context7's MCP, not this tool.",
+  "description": "Thin self-host CLI for Context101 (Amazon Bedrock Knowledge Bases). Bin: context101. Use `npx context101-cli` — unscoped `npx context101` is Context7's MCP.",
   "license": "Elastic-2.0",
   "type": "module",
   "bin": {

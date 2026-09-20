@@ -1,27 +1,52 @@
 # context101-cli
 
-your context. every agent.
+Thin self-host CLI for [Context101](https://github.com/jginorio/context101) — a wrapper around Amazon Bedrock Knowledge Bases. You run it in your own AWS account. The bin is `context101`.
 
-Thin self-host CLI for [Context101](https://github.com/jginorio/context101) — a wrapper around Amazon Bedrock Knowledge Bases. Self-host now; hosted later (not there yet). Alpha / trusted-team.
-
-This is the AWS front door: init, update, list, urls, destroy, config, connectors. Not a wiki app.
-
-**`npx context101` (unscoped) is Context7's MCP — not this tool.** Use `context101-cli`.
+Unscoped `npx context101` is Context7's MCP — not this tool. Use `context101-cli`.
 
 ## Install
 
-Pin the version. `@latest` is a no-op on some machines.
-
 ```bash
-npm i -g context101-cli@0.1.27
-context101 <cmd>
+npm i -g context101-cli
 ```
 
-or
+That installs the `context101` command. Needs Node 20+, npm, AWS CLI v2, Docker, and an AWS account with Bedrock access.
+
+Or run a command without a global install:
 
 ```bash
-npx -y context101-cli@0.1.27 <cmd>
+npx -y context101-cli <cmd>
 ```
+
+## Quick start
+
+`context101 init` prompts for a space name. Lowercase letters, numbers, and hyphens; start with a letter.
+
+```bash
+context101 init
+```
+
+Or pass a name:
+
+```bash
+context101 init my-team
+```
+
+That writes `~/.context101/spaces/<name>/`. In a terminal it asks whether to deploy. After deploy, open the admin URL from `context101 urls` and create the first admin.
+
+```bash
+context101 list
+context101 urls my-team
+context101 update my-team
+context101 destroy my-team --dry-run
+context101 connectors setup google
+```
+
+`list`, `urls`, `help`, `version`, and `destroy --dry-run` work without a checkout. An existing `cdk/.deploy-env` is the `default` space.
+
+To update an existing space to the newest Context101, upgrade the CLI (`npm i -g context101-cli`), then run `context101 update <space>`.
+
+Deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose.
 
 ## Commands
 
@@ -30,7 +55,9 @@ npx -y context101-cli@0.1.27 <cmd>
 | `context101 init [space]` | name a space and write its deploy-env; nameless `init` prompts, then TTY asks to deploy |
 | `context101 update [space]` | update that space from this CLI version |
 | `context101 deploy [space]` | same as update |
-| `context101 list` | list spaces |
+| `context101 diff [space]` | cdk diff for a space |
+| `context101 synth [space]` | cdk synth for a space |
+| `context101 list` | list spaces (`ls`) |
 | `context101 urls [space]` | print public admin and MCP URLs (`url`) |
 | `context101 destroy [space]` | tear down a space |
 | `context101 config` | show deploy-env keys (values redacted) |
@@ -40,39 +67,19 @@ npx -y context101-cli@0.1.27 <cmd>
 | `context101 help` | list commands |
 | `context101 version` | print the installed CLI version (`-v`, `--version`) |
 
-`list`, `urls`, `help`, `version`, and `destroy --dry-run` work without a product clone. New deploys always create Amplify (`admin  https://main.…`). Stacks that have not been updated yet still print `admin  skipped` — there is no invented admin URL.
+Spaces live in `~/.context101/spaces/<name>/`. Each has its own AWS profile, region, secrets, and CloudFormation stack name.
 
-Deploy is quiet on a TTY (`deploying…`). `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose.
+Google / Notion / GitHub App instance clients go in Secrets Manager. `context101 connectors` on a TTY walks through provider status and setup. `connectors setup` is the script/CI path. Values are never printed. Then `context101 update` and Connect in admin. A GitHub PAT for a single repo is still pasted in the admin, not here.
 
-Spaces live in `~/.context101/spaces/<name>/`. Each has its own AWS profile, region, secrets, and CloudFormation stack name. `context101 init acme` uses the space name you choose (`acme` is an example); nameless `init` prompts. An existing `cdk/.deploy-env` or `~/.context101/deploy-env` is the `default` space.
+## Brains
 
-The next day: pin the new CLI (`context101` offers a pin-install, or `npm i -g context101-cli@0.1.27`), then `context101 update` / `context101 update platea`. The stack source is this CLI version — packaged stack copied to `~/.cache/context101/<version>/`, CDK `--output` beside it — not a git pull of your clone. Admin is Amplify SSR from a CodeCommit repo in the stack (no GitHub PAT). `--dry-run` is preview only.
-
-```bash
-context101 list
-context101 urls platea
-context101 help
-context101 destroy platea --dry-run
-context101 update platea
-context101 connectors
-context101 connectors setup google --dry-run
-```
-
-Google / Notion / GitHub App instance clients go in Secrets Manager. `context101 connectors` on a TTY walks through provider status and setup. `context101 connectors --dry-run` is the demo/preview path (same menus; unconfigured skips secret prompts; configured Update prompts then would-write names; no SM write). `connectors setup` is the script/CI path. Setup writes the secret (never prints the value) and the SM **name** into deploy-env (`GOOGLE_OAUTH_CLIENT_SECRET_ID` / `NOTION_OAUTH_CLIENT_SECRET_ID` / `GITHUB_APP_SECRET_ID`). Then `context101 update` and Connect in admin. PAT for a single GitHub repo is still pasted in the admin, not here.
-
-Google Add source is one **Google** row (Drive picker for Docs / Sheets / Slides). The picker needs a Browser API key + Cloud project number. The Google wizard / `connectors setup google` prompts for `picker_api_key` + `picker_app_id` (or `--picker-api-key` / `--picker-app-id`, or `CONTEXT101_GOOGLE_PICKER_*`). Writes merge the existing SM JSON — omit / empty keeps prior picker keys; `--clear-picker` drops them. You can still set `GOOGLE_PICKER_API_KEY` / `GOOGLE_PICKER_APP_ID` in deploy-env instead. Enable Picker API + Drive API; add the admin origin as an Authorized JavaScript origin. Without those keys the dialog still accepts a pasted URL. Do not invent a `drive` connector type — rows stay `docs` / `sheets` / `slides`.
-
-## Name collision
-
-The publishable package is **context101-cli**. The bin name is `context101`.
-
-`npx context101` downloads Context7's MCP from npm. Unrelated.
+A space can have multiple isolated knowledge bases (brains). Each has its own MCP URL. Product detail is in the [Context101 README](https://github.com/jginorio/context101#brains).
 
 ## License
 
-Copyright (c) 2026 Context101 contributors. Elastic License 2.0.
+Copyright (c) 2026 Context101 contributors.
 
-Self-host and private/internal use are allowed. Offering Context101 as a paid hosted or managed service to third parties is not allowed. See the repo [LICENSE](https://github.com/jginorio/context101/blob/main/LICENSE).
+Context101 is licensed under the [Elastic License 2.0](https://github.com/jginorio/context101/blob/main/LICENSE). You can self-host it and use it privately or internally. Offering Context101 as a paid hosted or managed service to third parties is not allowed.
 
 ## Repo
 
