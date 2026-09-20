@@ -1,0 +1,96 @@
+/**
+ * Hosted org policy (app.context101.dev / APP_MODE=hosted):
+ * only Creem checkout creates organizations. Invited members may join
+ * an existing org. Self-host is unchanged — users may create orgs.
+ *
+ * Better Auth's `allowUserToCreateOrganization: false` still lets
+ * privileged server calls (`auth.api.createOrganization` with no
+ * session + explicit `userId`) through, so hosted provision can keep
+ * using that path. Session / HTTP `organization/create` is rejected.
+ */
+
+export const HOSTED_ORG_CREATE_ERROR =
+  "Hosted organizations are created at checkout";
+
+export const HOSTED_ORG_CREATE_CODE = "HOSTED_ORG_CREATE_DISABLED";
+
+/** User-facing Better Auth organization plugin actions. */
+export type OrgUserAction =
+  | "create"
+  | "inviteMember"
+  | "acceptInvitation"
+  | "rejectInvitation"
+  | "cancelInvitation"
+  | "setActive"
+  | "listMembers"
+  | "listInvitations"
+  | "updateMemberRole"
+  | "removeMember"
+  | "updateOrganization"
+  | "getFullOrganization";
+
+export function allowUserToCreateOrganization(isHosted: boolean): boolean {
+  return !isHosted;
+}
+
+export function isHostedOrgActionAllowed(
+  action: OrgUserAction,
+  isHosted: boolean
+): boolean {
+  if (action === "create") return !isHosted;
+  return true;
+}
+
+/**
+ * Match Better Auth's POST `/organization/create` only — not
+ * `/organization/create-team` or `/organization/create-role`.
+ */
+export function isOrganizationCreatePath(pathname: string): boolean {
+  const normalized = pathname.replace(/\/+$/, "") || "/";
+  return (
+    normalized === "/organization/create" ||
+    normalized.endsWith("/organization/create")
+  );
+}
+
+export function hostedOrgCreateHttpResponse(
+  request: { method: string; url: string },
+  isHosted: boolean
+): Response | null {
+  if (!isHosted) return null;
+  if (request.method.toUpperCase() !== "POST") return null;
+  let pathname: string;
+  try {
+    pathname = new URL(request.url).pathname;
+  } catch {
+    return null;
+  }
+  if (!isOrganizationCreatePath(pathname)) return null;
+  return Response.json(
+    {
+      message: HOSTED_ORG_CREATE_ERROR,
+      code: HOSTED_ORG_CREATE_CODE,
+    },
+    { status: 403 }
+  );
+}
+
+export function orgsChooserCopy({
+  isHosted,
+  orgCount,
+}: {
+  isHosted: boolean;
+  orgCount: number;
+}): { heading: string; description: string; allowCreate: boolean } {
+  const allowCreate = allowUserToCreateOrganization(isHosted);
+  return {
+    heading: "Choose an organization",
+    allowCreate,
+    description:
+      orgCount === 0
+        ? allowCreate
+          ? "Create your first organization to get started."
+          : "You haven't been invited to an organization yet. Ask an admin to send you an invite."
+        : "Pick the workspace you want to open.",
+  };
+}

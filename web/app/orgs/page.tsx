@@ -3,7 +3,9 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 
+import { orgsChooserCopy } from "@/lib/auth/hosted-org-policy";
 import { getAuth } from "@/lib/auth/server";
+import { deploymentConfig } from "@/lib/deployment/config";
 import { db } from "@/lib/db/client";
 import { member, organization } from "@/lib/db/auth-schema";
 import { OrgChooser } from "@/components/org-chooser";
@@ -41,23 +43,27 @@ async function OrgsContent({ searchParams }: { searchParams: SearchParams }) {
     .innerJoin(organization, eq(member.organizationId, organization.id))
     .where(eq(member.userId, userId));
 
+  const copy = orgsChooserCopy({
+    isHosted: deploymentConfig.isHosted,
+    orgCount: orgs.length,
+  });
+
   return (
     <main className="flex min-h-screen items-center justify-center bg-background p-6">
       <div className="w-full max-w-2xl">
         <div className="mb-8 text-center">
           <h1 className="text-2xl font-semibold tracking-tight">
-            Choose an organization
+            {copy.heading}
           </h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {orgs.length === 0
-              ? "Create your first organization to get started."
-              : "Pick the workspace you want to open."}
+            {copy.description}
           </p>
         </div>
         <OrgChooser
           orgs={orgs}
           activeOrgId={session.session?.activeOrganizationId ?? null}
           next={dest}
+          allowCreate={copy.allowCreate}
         />
       </div>
     </main>

@@ -46,10 +46,12 @@ export function OrgChooser({
   orgs,
   activeOrgId,
   next,
+  allowCreate = true,
 }: {
   orgs: Org[];
   activeOrgId: string | null;
   next: string;
+  allowCreate?: boolean;
 }) {
   const router = useRouter();
   const [pendingId, setPendingId] = React.useState<string | null>(null);
@@ -75,6 +77,7 @@ export function OrgChooser({
 
   async function createOrg(e: React.FormEvent) {
     e.preventDefault();
+    if (!allowCreate) return;
     const name = orgName.trim();
     if (!name) return;
     setCreating(true);
@@ -152,20 +155,22 @@ export function OrgChooser({
           );
         })}
 
-        <button
-          type="button"
-          onClick={() => setCreateOpen(true)}
-          disabled={!!pendingId}
-          className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-dashed bg-background p-4 text-center text-muted-foreground transition hover:border-foreground/40 hover:text-foreground disabled:opacity-60"
-        >
-          <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-dashed">
-            <Plus className="h-6 w-6" />
-          </div>
-          <div className="text-sm font-medium">New organization</div>
-        </button>
+        {allowCreate ? (
+          <button
+            type="button"
+            onClick={() => setCreateOpen(true)}
+            disabled={!!pendingId}
+            className="flex aspect-square flex-col items-center justify-center gap-3 rounded-2xl border border-dashed bg-background p-4 text-center text-muted-foreground transition hover:border-foreground/40 hover:text-foreground disabled:opacity-60"
+          >
+            <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-dashed">
+              <Plus className="h-6 w-6" />
+            </div>
+            <div className="text-sm font-medium">New organization</div>
+          </button>
+        ) : null}
       </div>
 
-      <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+      <Dialog open={allowCreate && createOpen} onOpenChange={setCreateOpen}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>Create organization</DialogTitle>

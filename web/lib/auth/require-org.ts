@@ -9,8 +9,9 @@ import { member } from "@/lib/db/auth-schema";
 /**
  * Server guard for the authenticated app: require the signed-in user to have
  * an active organization they're still a member of, otherwise send them to the
- * org chooser. Brand-new users (e.g. public signup) have no org yet and must
- * create/join one at `/orgs` before reaching brain-scoped pages.
+ * org chooser. Brand-new users have no org yet and must join one at
+ * `/orgs` before reaching brain-scoped pages. Self-host may also create
+ * an org there; Hosted only allows joining an invited org.
  *
  * The proxy already redirects unauthenticated requests to `/login`; this adds
  * the org requirement on top of that.
