@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Context101">
+  <!-- Same hex mark as context101-hosted Context101IconMark (32px filled hex). -->
+  <rect width="32" height="32" fill="#060509"/>
+  <defs>
+    <linearGradient id="c101-hex" x1="7%" y1="7%" x2="93%" y2="93%">
+      <stop offset="0%" stop-color="#b855c9"/>
+      <stop offset="100%" stop-color="#8b5cf6"/>
+    </linearGradient>
+  </defs>
+  <polygon
+    fill="url(#c101-hex)"
+    points="16,3.52 27.05,9.76 27.05,22.24 16,28.48 4.95,22.24 4.95,9.76"
+  />
+</svg>

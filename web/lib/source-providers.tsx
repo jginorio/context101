@@ -41,7 +41,8 @@ export type SourceTypeMeta = {
   type: ConnectorType;
   // Short label used under a provider group, e.g. "Docs".
   label: string;
-  // Standalone label used in add-source menus, e.g. "Google Docs".
+  // Default connection name after a Drive pick / paste, e.g. "Google Docs".
+  // Not an add-source picker row — the picker is ADD_SOURCE_MENU (one Google).
   menuLabel: string;
   icon: SourceIcon;
   // S3 prefix where this connector's synced files land.

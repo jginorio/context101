@@ -24,6 +24,14 @@ test("add-source menu is files + one Google row + Notion + GitHub", () => {
     ADD_SOURCE_MENU.some((item) => item.kind === "slides"),
     false
   );
+  assert.deepEqual(
+    ADD_SOURCE_MENU.map((item) => item.menuLabel),
+    ["Upload files", "Google", "Notion", "GitHub"]
+  );
+  assert.equal(
+    ADD_SOURCE_MENU.some((item) => /docs/i.test(item.menuLabel)),
+    false
+  );
 });
 
 test("Knowledge sidebar still groups Google as docs / sheets / slides", () => {
