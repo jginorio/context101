@@ -19,7 +19,7 @@ This directory is the maintained source for verifying user-facing Context101 beh
 - Right-click via `evaluate_script` `contextmenu` on the tree row, then click the menuitem.
 - After every mutation, confirm with `bin/files list` / `bin/files get`.
 - After create/rename/move/delete, prove the vector index with `bin/retrieve` (see [library-ingest](./library-ingest.md)).
-- Connector Connect / Sync is [connector-contract](./connector-contract.md) — an explicit track. Default verify does not submit those on a shared brain.
+- Connector Connect / Sync is [connector-contract](./connector-contract.md) — an explicit track. Default verify does not submit **Connect**, **Connect Google account**, **Add Google file**, **Add repository**, or **Sync now** on a shared brain.
 - Restore by deleting the `verify/<run-id>/` prefix. Keep artifacts.
 
 ## Proof and skip reporting
@@ -35,8 +35,8 @@ This directory is the maintained source for verifying user-facing Context101 beh
 - [Library files](./library-files.md) — create, rename, drag-move, OS-upload, and delete uploaded files and folders (primary).
 - [Library ingest](./library-ingest.md) — wait until Bedrock Retrieve ranks the new key after those mutations.
 - [Knowledge viewer](./knowledge-viewer.md) — open a file, preview, edit, save.
-- [Add source](./add-source.md) — open the picker (do not submit a connector in a default run).
-- [Data sources list](./sources.md) — connector cards; ERROR last_error is an accordion (collapsed summary, full text on open).
+- [Add source](./add-source.md) — open the picker (Upload files / **Google** / Notion / GitHub). Google paste-URL is the default verify path; live Drive picker is optional/skip. Do not submit a connector.
+- [Data sources list](./sources.md) — connector cards; sidebar Add a source matches the picker (one Google row). ERROR last_error is an accordion (collapsed summary, full text on open).
 - [GitHub source](./github-source.md) — org-scoped GitHub App (Connect GitHub / repo picker); PAT is fallback only. Do not install or submit in a default run.
 - [Connector contract](./connector-contract.md) — v0 auth/sync/S3/delete/idempotent; done-when = `bin/retrieve` canary. E2E matrix is an explicit track (`bin/connector-matrix`); default verify still does not Connect/Sync on shared brains. Self-host OAuth/app secrets: `context101 connectors` (TTY wizard) or `connectors setup`.
 - [Login](./login.md) — email sign-in and session cookie. `/setup` is first admin only (skip when an org exists).
@@ -44,3 +44,11 @@ This directory is the maintained source for verifying user-facing Context101 beh
 - [Wiki](./wiki.md) — parked on main; prove redirect + no nav. Retrieve is `bin/retrieve`.
 - [Conflicts](./conflicts.md) — parked on main; prove redirect + no nav. No Opus judge on query/ingest.
 - [CLI](./cli.md) — context101-cli AWS front door: help / list / help urls / destroy --dry-run (no checkout). Live `urls <space>` is optional. Do not init --force or deploy in a default run.
+
+## Mapped PRs
+
+Maintain pass after [#93](https://github.com/jginorio/context101/pull/93):
+
+- **Mapped:** #93 Unify Google add-source behind a Drive picker. One **Google** row (not Docs / Sheets / Slides). Paste-URL (`Or paste a link`) is the safe default verify path. Live Drive picker (`Connect Google account` / `Browse Google Drive`) is optional/skip when `GET /api/connectors/google/picker-config` has `pickerConfigured: false` (local Cloud Agent). Hosted admin may be `pickerConfigured: true` — still do not click Connect / Browse / Add.
+- **CLI note kept from #95:** Google wizard / `connectors setup google` prompts for optional picker fields; omit or empty keeps existing SM values (writes merge). No new feature file.
+- **Infra skips (no new feature file):** #92 CLI package bump; #88 / #87 Amplify leftover `/about` MCP env; #85 marketing URL strip.

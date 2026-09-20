@@ -114,10 +114,15 @@ Stable handles:
 | Login magic link | `/login` — button `Email me a sign-in link` (do not submit in a default run) |
 | New file | button `New file` |
 | New folder | button `New folder` |
-| Add source | button `Add source` → dialog `Add a source` |
-| Upload files | button `Upload files` in the picker → dialog title `Upload files` |
-| Google provider | button `Google` → dialog title `Add a Google file`. Drive picker when configured (`Browse Google Drive` / `Connect Google account`); collapsed `Or paste a link`. Do not submit in a default run |
-| GitHub provider | button `GitHub` → dialog title `Add a GitHub repository` |
+| Add source | button `Add source` → dialog heading `Add a source` (desktop `sm+` toolbar, or Knowledge sidebar). Narrow Knowledge: button `Knowledge actions` → menuitem `Add source` |
+| Upload files | button `Upload files` in the picker → heading `Upload files` |
+| Google provider | button `Google` → heading `Add a Google file`. One row — not Docs / Sheets / Slides |
+| Google paste | summary `Or paste a link` (open when picker is unconfigured). Safe default verify path. Do not submit |
+| Connect Google | button `Connect Google account` — GIS popup when picker is configured, or paste-path submit. Do not click in a default run |
+| Browse Drive | button `Browse Google Drive` — only after a Google session when picker is configured. Optional/skip. Do not click in a default run |
+| Add Google file | footer after a Drive pick / session. Do not submit in a default run |
+| Notion provider | button `Notion` → heading `Add a Notion page or database` |
+| GitHub provider | button `GitHub` → heading `Add a GitHub repository` |
 | Back to types | button `Back to source types` |
 | Connect GitHub | button `Connect GitHub` → `/api/connectors/github-app/install` (do not click in a default run) |
 | Add repository | button `Add repository` (do not submit in a default run) |
@@ -160,7 +165,7 @@ A successful `put`/`move`/`delete` JSON includes `"ok": true`. `list` after move
 
 A wait returns `"ok": true` when the key/canary condition holds. Default timeout is 480s (ingest is a full KB sync and may queue behind an in-flight job).
 
-Connector e2e (GitHub / Notion / Google) is the same retrieve canary, after a real sync. That is an **explicit track** — [connector-contract](features/connector-contract.md) and `bin/connector-matrix`. Default verify still must not submit **Connect**, **Add repository**, or **Sync now** on a shared brain.
+Connector e2e (GitHub / Notion / Google) is the same retrieve canary, after a real sync. That is an **explicit track** — [connector-contract](features/connector-contract.md) and `bin/connector-matrix`. Default verify still must not submit **Connect**, **Connect Google account**, **Add Google file**, **Add repository**, or **Sync now** on a shared brain.
 
 ## Evidence
 

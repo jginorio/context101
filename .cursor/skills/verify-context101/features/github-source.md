@@ -15,7 +15,7 @@ Submitting **Add repository** or **Connect GitHub** writes a connector and/or st
 
 ## How to get to it (user POV)
 
-- Knowledge: **Add source** → **GitHub** (same picker as [add-source](./add-source.md)).
+- Knowledge: **Add source** → **GitHub** (same four-row picker as [add-source](./add-source.md): Upload files / Google / Notion / GitHub).
 - Sources (`/sources`): heading **Data sources**, toolbar **Add new source**, or the sidebar **GitHub** row.
 
 ## Driving it with Chrome DevTools + HTTP

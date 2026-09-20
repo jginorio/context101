@@ -11,15 +11,18 @@
 
 - App nav: link `Sources` → `/sources`.
 - Heading **Data sources**.
+- Sidebar **Add a source** panel: **Upload files**, **Google**, **Notion**, **GitHub** (same four rows as the picker). Not Docs / Sheets / Slides.
+- Empty list copy: “connect a Google file, Notion workspace, or GitHub repo.”
 
 ## Driving it with Chrome DevTools
 
-Preconditions: doctor healthy, cookie injected. Do **not** click **Sync now** or remove a source in a default run.
+Preconditions: doctor healthy, cookie injected. Do **not** click **Sync now**, **Add new source** (that opens the picker — drive it via [add-source](./add-source.md)), or remove a source in a default run.
 
-- **List.** Navigate to `/sources`. Cards render for each connector.
+- **List.** Navigate to `/sources`. Cards render for each connector. Sidebar shows the four add rows above.
 - **ERROR accordion (when a card is ERROR).** The trigger is the one-line summary, not the raw JSON. Click it to expand the full error; click again to collapse. Proof: screenshot `artifacts/sources/01-error-collapsed.png` with the summary visible and the JSON hidden; optional `02-error-open.png` after expand.
 
 ## Gotchas
 
 - Connected cards have no accordion. The error UI is the same component for every connector type.
-- Do not submit **Add new source** or **Sync now** in a default verify run.
+- Opening **Add new source** is the picker ([add-source](./add-source.md)); do not submit the Google / Notion / GitHub form. Do not **Sync now** or remove a source in a default run.
+- Knowledge sidebar still fans Google synced trees into Docs / Sheets / Slides. That is the library tree, not the add-source menu.
