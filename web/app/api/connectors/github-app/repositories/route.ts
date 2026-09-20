@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { readAuthContext } from "@/lib/brains-server";
+import { readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 import {
   getGithubAppConfig,
   listInstallationRepositories,
@@ -12,9 +12,7 @@ import { listGithubInstallations } from "@/utils/github-installations";
 /** Lists repositories granted to this Context101 organization's installations. */
 export async function GET(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
 
   try {
     const cfg = await getGithubAppConfig();

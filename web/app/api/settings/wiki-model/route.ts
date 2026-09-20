@@ -9,7 +9,7 @@ import {
   SecretsManagerClient,
 } from "@aws-sdk/client-secrets-manager";
 
-import { readAuthContext } from "@/lib/brains-server";
+import { readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 import { db } from "@/lib/db/client";
 import { brains } from "@/lib/db/schema";
 import { member } from "@/lib/db/auth-schema";
@@ -67,9 +67,7 @@ async function loadBrain(orgId: string, brainId: string) {
  */
 export async function GET(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
   const brainId = request.nextUrl.searchParams.get("brain");
   if (!brainId) {
     return NextResponse.json({ error: "brain is required" }, { status: 400 });
@@ -101,9 +99,7 @@ export async function POST(request: NextRequest) {
     );
   }
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
   if (!(await isPrivileged(auth.userId, auth.orgId))) {
     return NextResponse.json(
       { error: "only organization admins can change the wiki model" },

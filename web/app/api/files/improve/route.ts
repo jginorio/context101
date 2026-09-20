@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { deniedResolveJson, resolveBrainFromRequest } from "@/lib/brains-server";
 import { improveDocument } from "@/utils/bedrock";
 
 export const maxDuration = 60; // Opus can be slow; give it up to 60s
@@ -14,6 +15,9 @@ export const maxDuration = 60; // Opus can be slow; give it up to 60s
  * calls /api/files/put separately if the user accepts the changes.
  */
 export async function POST(request: NextRequest) {
+  const resolved = await resolveBrainFromRequest(request);
+  if (!resolved.ok) return deniedResolveJson(resolved);
+
   const body = await request.json().catch(() => null);
   if (
     !body ||

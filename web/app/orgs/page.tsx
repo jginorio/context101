@@ -3,6 +3,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { eq } from "drizzle-orm";
 
+import { hostedOrgAccess } from "@/lib/auth/hosted-org-entitlement";
 import { orgsChooserCopy } from "@/lib/auth/hosted-org-policy";
 import { getAuth } from "@/lib/auth/server";
 import { deploymentConfig } from "@/lib/deployment/config";
@@ -31,17 +32,23 @@ async function OrgsContent({ searchParams }: { searchParams: SearchParams }) {
   }
   const userId = session.user.id;
 
-  const orgs = await database
+  const rows = await database
     .select({
       id: organization.id,
       name: organization.name,
       slug: organization.slug,
       logo: organization.logo,
       role: member.role,
+      metadata: organization.metadata,
     })
     .from(member)
     .innerJoin(organization, eq(member.organizationId, organization.id))
     .where(eq(member.userId, userId));
+
+  const orgs = rows.map(({ metadata, ...org }) => ({
+    ...org,
+    softLocked: !hostedOrgAccess(metadata).entitled,
+  }));
 
   const copy = orgsChooserCopy({
     isHosted: deploymentConfig.isHosted,

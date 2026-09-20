@@ -112,6 +112,7 @@ Stable handles:
 | Brain stale gate | heading `Brain not found` + “registered under …”; outline button `Pick another brain` → `/brains`. Only when the catalog has other brains but this id 404s |
 | First-run setup | `/setup` — heading `Set up Context101`, card `Create first admin`. Redirects to `/login` when an org already exists. Skip on a shared instance |
 | Org chooser | `/orgs` — heading `Choose an organization`. Self-host: button `New organization` (dialog `Create organization`). Hosted (`APP_MODE=hosted`): no create button; empty copy is “You haven't been invited…”. Do not submit create on a shared instance |
+| Hosted renew | `/renew` — heading `Subscription ended`. Button/link `Renew` (Hosted storefront). Optional `Switch organization` + org tiles when the user belongs to another org. Sign-in itself stays allowed. Shared verify instances are self-host — do not expect this screen |
 | Login magic link | `/login` — button `Email me a sign-in link` (do not submit in a default run) |
 | New file | button `New file` |
 | New folder | button `New folder` |

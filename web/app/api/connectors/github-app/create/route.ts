@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { randomBytes } from "node:crypto";
 
-import { readAuthContext } from "@/lib/brains-server";
+import { readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 import { buildAppManifest, getGithubAppConfig } from "@/utils/github-app";
 import { getPublicOrigin, getPublicUrl } from "@/utils/public-origin";
 
@@ -17,9 +17,7 @@ import { getPublicOrigin, getPublicUrl } from "@/utils/public-origin";
  */
 export async function GET(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
   if (
     process.env.NODE_ENV === "production" &&
     process.env.GITHUB_APP_MANIFEST_SETUP_ENABLED !== "true"

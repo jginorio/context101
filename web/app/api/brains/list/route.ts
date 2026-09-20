@@ -6,6 +6,7 @@ import {
   listReadyBrainsForOrg,
   publicBrain,
   readAuthContext,
+  deniedAuthJson,
 } from "@/lib/brains-server";
 
 /**
@@ -22,9 +23,7 @@ import {
 export async function GET(request: NextRequest) {
   const status = request.nextUrl.searchParams.get("status") ?? "ready";
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
   try {
     const brains =
       status === "all"

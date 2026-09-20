@@ -6,7 +6,7 @@ import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { resolveBrainFromRequest, deniedResolveJson } from "@/lib/brains-server";
 
 const ecs = new ECSClient({ region: process.env.AWS_REGION ?? "us-east-1" });
 const lambdaClient = new LambdaClient({
@@ -62,7 +62,7 @@ async function invokeStartWikiGen(
  */
 export async function POST(request: NextRequest) {
   const r = await resolveBrainFromRequest(request);
-  if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+  if (!r.ok) return deniedResolveJson(r);
 
   try {
     const parsed = await invokeStartWikiGen({
@@ -107,7 +107,7 @@ export async function GET(request: NextRequest) {
 
   if (params.get("check") === "1") {
     const r = await resolveBrainFromRequest(request);
-    if (!r.ok) return NextResponse.json({ error: r.error }, { status: r.status });
+    if (!r.ok) return deniedResolveJson(r);
     try {
       const parsed = await invokeStartWikiGen({
         checkOnly: true,

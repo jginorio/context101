@@ -25,7 +25,10 @@ export async function GET(request: NextRequest) {
 
   try {
     const auth = await readAuthContext(request);
-    if (!auth) {
+    if (!auth.ok) {
+      if (auth.status === 403) {
+        return NextResponse.redirect(getPublicUrl(request, "/renew"));
+      }
       redirect.searchParams.set("githubapp", "not_authenticated");
       return NextResponse.redirect(redirect);
     }

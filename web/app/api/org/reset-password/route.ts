@@ -3,7 +3,7 @@ import type { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 
 import { hashPassword } from "@/lib/auth/server";
-import { readAuthContext } from "@/lib/brains-server";
+import { readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 import { db } from "@/lib/db/client";
 import { account, member, session } from "@/lib/db/auth-schema";
 
@@ -32,9 +32,7 @@ export async function POST(request: NextRequest) {
   const database = db;
 
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
 
   const body = await request.json().catch(() => null);
   const memberId =

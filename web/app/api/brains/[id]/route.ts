@@ -3,12 +3,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { and, eq } from "drizzle-orm";
 
-import { getAuth } from "@/lib/auth/server";
 import {
-  getBrainById,
   getBrainByIdForOrg,
   publicBrain,
   readAuthContext,
+  deniedAuthJson,
 } from "@/lib/brains-server";
 import { db } from "@/lib/db/client";
 import { brains as brainsTable } from "@/lib/db/schema";
@@ -19,27 +18,6 @@ const lambdaClient = new LambdaClient({
 });
 
 type RouteCtx = { params: Promise<{ id: string }> };
-
-type BetterAuthSession = {
-  user?: {
-    id?: string;
-  };
-  session?: {
-    activeOrganizationId?: string | null;
-  };
-} | null;
-
-function publicPostgresBrain(row: typeof brainsTable.$inferSelect) {
-  return {
-    brain_id: row.id,
-    display_name: row.displayName,
-    description: row.description,
-    status: row.status,
-    created_at: row.createdAt.toISOString(),
-    created_by_email: null,
-    error_msg: row.errorMsg,
-  };
-}
 
 /**
  * GET /api/brains/<id>
@@ -52,32 +30,14 @@ function publicPostgresBrain(row: typeof brainsTable.$inferSelect) {
  */
 export async function GET(request: NextRequest, { params }: RouteCtx) {
   const { id } = await params;
-  const session = (await getAuth()
-    .api.getSession({
-      headers: request.headers,
-    })
-    .catch(() => null)) as BetterAuthSession;
-  const userId = session?.user?.id;
-  const orgId = session?.session?.activeOrganizationId;
+  const auth = await readAuthContext(request);
+  if (!auth.ok) return deniedAuthJson(auth);
 
-  if (db && userId && orgId) {
-    const [row] = await db
-      .select()
-      .from(brainsTable)
-      .where(and(eq(brainsTable.orgId, orgId), eq(brainsTable.id, id)))
-      .limit(1);
-
-    if (!row) {
-      return NextResponse.json({ error: "not found" }, { status: 404 });
-    }
-    return NextResponse.json({ brain: publicPostgresBrain(row) });
-  }
-
-  const row = await getBrainById(id);
-  if (!row) {
+  const brain = await getBrainByIdForOrg(auth.orgId, id);
+  if (!brain) {
     return NextResponse.json({ error: "not found" }, { status: 404 });
   }
-  return NextResponse.json({ brain: publicBrain(row) });
+  return NextResponse.json({ brain: publicBrain(brain) });
 }
 
 /**
@@ -101,9 +61,7 @@ export async function DELETE(request: NextRequest, { params }: RouteCtx) {
     );
   }
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
   const { id } = await params;
   if (id === "default") {
     return NextResponse.json(

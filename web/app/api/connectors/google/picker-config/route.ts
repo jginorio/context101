@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { readAuthContext } from "@/lib/brains-server";
+import { readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 import {
   getGoogleOAuthClient,
   resolveGooglePickerKeys,
@@ -16,9 +16,7 @@ import {
  */
 export async function GET(request: NextRequest) {
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
 
   const client = await getGoogleOAuthClient();
   const { apiKey, appId } = resolveGooglePickerKeys(client);

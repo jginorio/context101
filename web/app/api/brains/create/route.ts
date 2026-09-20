@@ -2,7 +2,7 @@ import { LambdaClient, InvokeCommand } from "@aws-sdk/client-lambda";
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-import { publicBrain, readAuthContext } from "@/lib/brains-server";
+import { publicBrain, readAuthContext, deniedAuthJson } from "@/lib/brains-server";
 import { db } from "@/lib/db/client";
 import { brains as brainsTable } from "@/lib/db/schema";
 import {
@@ -63,9 +63,7 @@ export async function POST(request: NextRequest) {
   // which requires an owning org + creator. Both come from the Better Auth
   // session.
   const auth = await readAuthContext(request);
-  if (!auth) {
-    return NextResponse.json({ error: "not authenticated" }, { status: 401 });
-  }
+  if (!auth.ok) return deniedAuthJson(auth);
 
   const body = await request.json().catch(() => null);
   const displayName =

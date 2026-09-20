@@ -6,7 +6,7 @@ import {
   type Message,
 } from "@aws-sdk/client-bedrock-runtime";
 
-import { resolveBrainFromRequest } from "@/lib/brains-server";
+import { resolveBrainFromRequest, deniedResolveJson } from "@/lib/brains-server";
 import { retrieveSources } from "@/lib/wiki-retrieve";
 
 const region = process.env.AWS_REGION ?? "us-east-1";
@@ -47,9 +47,7 @@ RULES
  */
 export async function POST(request: NextRequest) {
   const resolved = await resolveBrainFromRequest(request);
-  if (!resolved.ok) {
-    return NextResponse.json({ error: resolved.error }, { status: resolved.status });
-  }
+  if (!resolved.ok) return deniedResolveJson(resolved);
   const brain = resolved.brain;
   if (!brain.kb_id) {
     return NextResponse.json(
