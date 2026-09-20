@@ -40,7 +40,7 @@ test("writer uses generated secrets and never the example token", async () => {
     DATABASE_PREPARE: true,
     APP_MODE: "self_hosted",
     ALLOW_PUBLIC_SIGNUP: "false",
-    BILLING_ENABLED: "false",
+    BILLING_ENABLED: "true",
     REPOSITORY: "https://github.com/acme/context101",
     AWS_REGION: SMOOTH_REGION,
   };
@@ -53,7 +53,7 @@ test("writer uses generated secrets and never the example token", async () => {
   assert.match(body, /CTX_TOKEN="generated-ctx-token-value"/);
   assert.match(body, /APP_MODE="self_hosted"/);
   assert.match(body, /ALLOW_PUBLIC_SIGNUP="false"/);
-  assert.match(body, /BILLING_ENABLED="false"/);
+  assert.equal(body.includes("BILLING_ENABLED"), false);
   assert.match(body, /REPOSITORY="https:\/\/github.com\/acme\/context101"/);
   assert.equal(body.includes("example-do-not-copy"), false);
   assert.equal(body.includes("site/"), false);
