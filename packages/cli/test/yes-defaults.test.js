@@ -65,7 +65,7 @@ test("--yes writes chmod 600 env and never prints secrets", async () => {
   assert.match(body, /DATABASE_DRIVER="postgres-js"/);
   assert.match(body, /APP_MODE="self_hosted"/);
   assert.match(body, /ALLOW_PUBLIC_SIGNUP="false"/);
-  assert.match(body, /BILLING_ENABLED="false"/);
+  assert.equal(body.includes("BILLING_ENABLED"), false);
   assert.match(body, /AWS_PROFILE="dev"/);
   assert.equal(body.includes("REPOSITORY="), false);
   assert.equal(body.includes("EMBED_MODEL_ID="), false);

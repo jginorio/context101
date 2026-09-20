@@ -3,7 +3,6 @@ import { dirname } from "node:path";
 import {
   ALLOW_PUBLIC_SIGNUP,
   APP_MODE,
-  BILLING_ENABLED,
   DRIVER_NEON,
   DRIVER_POSTGRES,
 } from "./defaults.js";
@@ -92,9 +91,6 @@ export function renderDeployEnv(values) {
   lines.push(`APP_MODE=${quoteShell(values.APP_MODE ?? APP_MODE)}`);
   lines.push(
     `ALLOW_PUBLIC_SIGNUP=${quoteShell(values.ALLOW_PUBLIC_SIGNUP ?? ALLOW_PUBLIC_SIGNUP)}`
-  );
-  lines.push(
-    `BILLING_ENABLED=${quoteShell(values.BILLING_ENABLED ?? BILLING_ENABLED)}`
   );
 
   if (values.REPOSITORY) {

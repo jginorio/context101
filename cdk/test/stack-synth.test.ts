@@ -186,7 +186,11 @@ test("hosted APP_MODE keeps context101.dev public URLs on Amplify", () => {
     "MARKETING_URL must not be forwarded after site/ was removed"
   );
   assert.equal(envValue(env, "ALLOW_PUBLIC_SIGNUP"), "false");
-  assert.equal(envValue(env, "BILLING_ENABLED"), "false");
+  assert.equal(
+    env.some((item) => item.Name === "BILLING_ENABLED"),
+    false,
+    "BILLING_ENABLED must not be forwarded — nothing reads billingEnabled"
+  );
   const mcpHost = envValue(env, "NEXT_PUBLIC_MCP_HOST");
   assert.equal(mcpHost, mcp);
   assert.equal(

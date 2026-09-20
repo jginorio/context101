@@ -53,7 +53,7 @@ export function formatDryRun(plan) {
           plan.databasePrepare ? "true" : "false"
         }`,
     `  7. Generate BETTER_AUTH_SECRET, MCP_TOKEN_PEPPER, CTX_TOKEN (not printed)`,
-    `     APP_MODE=self_hosted  ALLOW_PUBLIC_SIGNUP=false  BILLING_ENABLED=false`,
+    `     APP_MODE=self_hosted  ALLOW_PUBLIC_SIGNUP=false`,
     `     BETTER_AUTH_URL / APP_URL omitted — CDK uses the Amplify default domain`,
     "     or a domain you own. Never the hosted Context101 product.",
     `  8. Write ${plan.envDisplay} (chmod 600)`,

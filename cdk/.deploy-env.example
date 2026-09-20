@@ -43,10 +43,9 @@ AWS_PROFILE="plateapr.com"
 #
 # Deployment mode:
 # self_hosted = first-run setup/admin invite flow, no public signup by default
-# hosted      = public signup/onboarding/billing flow
+# hosted      = public signup/onboarding flow
 # APP_MODE="self_hosted"
 # ALLOW_PUBLIC_SIGNUP="false"
-# BILLING_ENABLED="false"
 # APP_URL="https://kb.example.com"
 # MCP_PUBLIC_HOST="https://mcp.example.com"
 #
