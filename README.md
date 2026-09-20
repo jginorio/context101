@@ -10,14 +10,6 @@ A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases — S3 + S3 V
 
 The CLI is the front door. Deploying a space ships the admin UI with the stack.
 
-## Use case
-
-Analytics event docs live as markdown in your repo. Instead of emailing them around so everyone pastes into Claude, Cursor, or Grok, connect the repo to a brain and share that brain’s MCP URL. Same context for the whole team; doc updates land on the next sync (~6h).
-
-<p align="center">
-  <img width="1280" alt="One repo. One brain. Every agent." src="docs/assets/use-case-flow.png">
-</p>
-
 ## How it works
 
 <p align="center">
@@ -25,6 +17,8 @@ Analytics event docs live as markdown in your repo. Instead of emailing them aro
 </p>
 
 <p align="center">Connect docs from Google, GitHub, Notion, or uploads. Agents pull that context over MCP.</p>
+
+Example: analytics event docs live as markdown in your repo. Instead of emailing them around so everyone pastes into Claude, Cursor, or Grok, connect the repo to a brain and share that brain’s MCP URL. Same context for the whole team; doc updates land on the next sync (~6h).
 
 ## Install
 
