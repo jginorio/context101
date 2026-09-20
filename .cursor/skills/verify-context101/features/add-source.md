@@ -18,7 +18,7 @@ Google is **one row** (not Docs / Sheets / Slides). The form is **Add a Google f
 
 - Knowledge header (desktop `sm+`): button `Add source`.
 - Knowledge header (narrow): button `Knowledge actions` → menuitem `Add source`.
-- Knowledge sidebar Sources: button `Add source`.
+- Knowledge sidebar Sources: button `Add source`. Synced Google files appear under **Google** → **Docs** / **Sheets** / **Slides** (not as add-source rows).
 - Sources page: heading **Data sources**, toolbar **Add new source** (narrow: **Add**), or a sidebar row (**Upload files**, **Google**, **Notion**, **GitHub**). There are no Docs / Sheets / Slides picker rows. Knowledge sidebar synced trees still group under Google as Docs / Sheets / Slides.
 
 ## Driving it with Chrome DevTools

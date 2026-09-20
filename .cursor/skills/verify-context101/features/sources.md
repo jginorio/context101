@@ -25,4 +25,4 @@ Preconditions: doctor healthy, cookie injected. Do **not** click **Sync now**, *
 
 - Connected cards have no accordion. The error UI is the same component for every connector type.
 - Opening **Add new source** is the picker ([add-source](./add-source.md)); do not submit the Google / Notion / GitHub form. Do not **Sync now** or remove a source in a default run.
-- Knowledge sidebar still fans Google synced trees into Docs / Sheets / Slides. That is the library tree, not the add-source menu.
+- Knowledge sidebar still fans Google synced trees into Docs / Sheets / Slides under a **Google** disclosure. That is the library tree, not the add-source menu. Docs stays visible when a docs connector has `item_count > 0` even if `GET /api/files/list?prefix=sources/` has no `docs` folder (KB/retrieve can still rank `sources/docs/<slug>/content.md`).
