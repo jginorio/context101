@@ -1,8 +1,7 @@
+# Context101
 <p align="center">
   <img width="1280" alt="your context. every agent." src="docs/assets/readme-hero.png">
 </p>
-
-# Context101
 
 ## What it is
 
