@@ -41,7 +41,7 @@ Preconditions:
 
 - Submitting writes a connector row and starts OAuth / GitHub install. Default verify stops at the empty (or status-loaded) form.
 - `google` is a picker kind only. Create still writes `docs` | `sheets` | `slides`. There is no `drive` `source_type`.
-- On viewports below `md`, the same dialog is a bottom drawer (swipe-to-dismiss on the grabber). Desktop is a centered dialog.
+- On viewports below `md`, the same dialog is a bottom drawer (swipe-to-dismiss on the grabber). Desktop is a centered dialog. A picked Google file shows name + `resource_url` under the Drive button; both truncate with ellipsis (`min-w-0` / `overflow-hidden`). A long Docs URL must not widen the sheet or create horizontal scroll. Do not submit **Add Google file** after a pick.
 - The picker stays mounted outside the brain status gate so the header button works while a brain is loading.
 - When `oauthConfigured` is false, a note says instance admins can run `context101 connectors setup google`. Paste still shows; do not treat that as a live picker. When `pickerConfigured` is true, do not treat the body `Connect Google account` as the default verify control.
 - GitHub is not “paste URL + PAT” first anymore. PAT appears when the instance has no GitHub App, the user chooses **Use a personal access token instead**, or app access fails. When the App is configured for this org, the primary control is **Connect GitHub** or a repository combobox.

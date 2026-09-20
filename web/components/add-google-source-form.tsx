@@ -235,7 +235,7 @@ export function AddGoogleSourceForm({
         </DialogDescription>
       </DialogHeader>
 
-      <div className="space-y-3 pb-2">
+      <div className="min-w-0 space-y-3 pb-2">
         {loading && (
           <div className="flex items-center gap-2 rounded-md border bg-muted/40 p-3 text-xs text-muted-foreground">
             <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -259,7 +259,7 @@ export function AddGoogleSourceForm({
         )}
 
         {!loading && pickerReady && (
-          <div className="space-y-2">
+          <div className="min-w-0 space-y-2">
             <Button
               type="button"
               className="w-full"
@@ -278,8 +278,10 @@ export function AddGoogleSourceForm({
               )}
             </Button>
             {session.email && (
-              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
-                <span>Connected as {session.email}</span>
+              <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                <span className="min-w-0 break-words">
+                  Connected as {session.email}
+                </span>
                 <button
                   type="button"
                   onClick={() => void disconnectGoogle()}
@@ -299,14 +301,23 @@ export function AddGoogleSourceForm({
         )}
 
         {picked && (
-          <div className="rounded-md border bg-muted/40 p-3">
-            <div className="flex items-start gap-2">
-              <TypeIcon type={picked.type} className="mt-0.5 h-4 w-4" />
-              <div className="min-w-0 flex-1">
+          <div
+            data-slot="google-picked-file"
+            className="min-w-0 overflow-hidden rounded-md border bg-muted/40 p-3"
+          >
+            <div className="flex min-w-0 items-start gap-2">
+              <TypeIcon
+                type={picked.type}
+                className="mt-0.5 h-4 w-4 shrink-0"
+              />
+              <div className="min-w-0 flex-1 overflow-hidden">
                 <p className="truncate text-sm font-medium">
                   {picked.name || SOURCE_TYPES[picked.type].menuLabel}
                 </p>
-                <p className="truncate font-mono text-[11px] text-muted-foreground">
+                <p
+                  className="truncate font-mono text-[11px] text-muted-foreground"
+                  title={picked.url}
+                >
                   {picked.url}
                 </p>
               </div>
@@ -332,7 +343,7 @@ export function AddGoogleSourceForm({
         </div>
 
         <details
-          className="rounded-md border bg-muted/20 px-3 py-2"
+          className="min-w-0 overflow-hidden rounded-md border bg-muted/20 px-3 py-2"
           open={pasteOpen || !pickerReady}
           onToggle={(event) =>
             setPasteOpen((event.target as HTMLDetailsElement).open)
