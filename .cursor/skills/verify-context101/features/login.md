@@ -38,6 +38,14 @@ Preconditions:
 - Missing `DATABASE_URL` shows heading `Database not configured`.
 - Do not submit setup on a shared verify instance (it creates a real Better Auth user + org). Doctor already assumes `CONTEXT101_USER` exists.
 
+## Org chooser (`/orgs`)
+
+After sign-in, users without an active org land on `/orgs`.
+
+- Heading `Choose an organization`.
+- Self-host: tile `New organization` opens dialog `Create organization`. Do not submit on a shared instance.
+- Hosted (`APP_MODE=hosted`): no create tile. Empty-state copy is “You haven't been invited to an organization yet…”. Invites still go through `/accept-invitation/:id`.
+
 ## Gotchas
 
 - Hosted `BETTER_AUTH_URL` rejects browser fetches from `http://localhost:3000` (`INVALID_ORIGIN`). Curl without Origin works.

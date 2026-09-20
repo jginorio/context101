@@ -9,6 +9,7 @@ import {
   rewriteMagicLinkUrl,
   shouldSendMagicLink,
 } from "@/lib/auth/magic-link";
+import { allowUserToCreateOrganization } from "@/lib/auth/hosted-org-policy";
 import { deploymentConfig } from "@/lib/deployment/config";
 import { db } from "@/lib/db/client";
 import * as authSchema from "@/lib/db/auth-schema";
@@ -122,6 +123,13 @@ function createAuthRuntime({ disableSignUp }: { disableSignUp: boolean }) {
     plugins: [
       organization({
         creatorRole: "admin",
+        // Hosted: Creem checkout (provisionHostedOrg) creates orgs. Session
+        // users must not call organization.create. Invite + accept stay on.
+        // Better Auth still allows a no-session + userId system call so
+        // hosted provision can keep creating the checkout org.
+        allowUserToCreateOrganization: allowUserToCreateOrganization(
+          deploymentConfig.isHosted
+        ),
         // We surface invite links manually (no email infra) and have no email
         // verification flow, so don't block invitation accept on a verified
         // email — this plugin option defaults to `true`.

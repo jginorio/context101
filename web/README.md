@@ -47,6 +47,10 @@ When `ALLOW_PUBLIC_SIGNUP=false` (Hosted production):
 
 When `ALLOW_PUBLIC_SIGNUP=true`, unknown emails also receive a link and Better Auth will create the user on verify.
 
+### Hosted organizations
+
+When `APP_MODE=hosted`, Better Auth `organization/create` is disabled. New orgs are created at Creem checkout (private hosted provision), not from the admin UI. Invites and accept-invitation still work. Self-host (`APP_MODE=self_hosted`, the default) can still create organizations.
+
 Call this from a **server** (no `Origin` header), the same way password sign-in works from curl. A browser `Origin` must match `BETTER_AUTH_URL` / `APP_URL`. Optional Better Auth env (names only): `BETTER_AUTH_TRUSTED_ORIGINS` (comma-separated origins). No new secrets; magic link reuses `SES_FROM_EMAIL`, `SES_REGION`, `APP_URL`, `BETTER_AUTH_URL`, and `BETTER_AUTH_SECRET`.
 
 The login page also has **Email me a sign-in link**.
