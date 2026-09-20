@@ -347,7 +347,7 @@ test("workspace package is context101-cli with bin context101", async () => {
   const pkgPath = fileURLToPath(new URL("../package.json", import.meta.url));
   const pkg = JSON.parse(await readFile(pkgPath, "utf8"));
   assert.equal(pkg.name, "context101-cli");
-  assert.equal(pkg.version, "0.1.27");
+  assert.equal(pkg.version, "0.1.28");
   assert.equal(pkg.private, false);
   assert.equal(pkg.license, "Elastic-2.0");
   assert.equal(pkg.bin.context101, "./bin/context101.js");
@@ -356,6 +356,7 @@ test("workspace package is context101-cli with bin context101", async () => {
   assert.equal(pkg.repository?.url, "https://github.com/jginorio/context101.git");
   assert.match(pkg.description, /Context7/);
   assert.equal(pkg.description.includes("npx context101-cli"), true);
+  assert.equal(/alpha/i.test(pkg.description), false);
 });
 
 test("npm README is on-brand and warns about the Context7 name collision", async () => {
@@ -364,21 +365,30 @@ test("npm README is on-brand and warns about the Context7 name collision", async
   const readmePath = fileURLToPath(new URL("../README.md", import.meta.url));
   const text = await readFile(readmePath, "utf8");
   assert.match(text, /^# context101-cli/m);
-  assert.match(text, /your context\. every agent\./);
-  assert.match(text, /npx -y context101-cli@0\.1\.27/);
-  assert.match(text, /npm i -g context101-cli@0\.1\.27/);
+  assert.match(text, /npm i -g context101-cli\n/);
+  assert.match(text, /npx -y context101-cli <cmd>/);
   assert.match(text, /Elastic License 2\.0/);
-  assert.equal(text.includes("context101-cli@latest"), false);
+  assert.equal(text.includes("context101-cli@"), false);
+  assert.equal(text.includes("@latest"), false);
+  assert.equal(/alpha/i.test(text), false);
+  assert.equal(/trusted-team/i.test(text), false);
+  assert.equal(/wiki app/i.test(text), false);
   assert.match(text, /Context7/);
   assert.match(text, /https:\/\/github.com\/jginorio\/context101/);
   assert.match(text, /spaces\/<name>/);
   assert.match(text, /nameless `init` prompts/);
-  assert.match(text, /\.cache\/context101/);
-  assert.match(text, /update platea/);
+  assert.match(text, /context101 init my-team/);
+  assert.match(text, /context101 list/);
+  assert.match(text, /context101 urls my-team/);
+  assert.match(text, /context101 update my-team/);
+  assert.match(text, /destroy my-team --dry-run/);
   assert.match(text, /connectors setup/);
   assert.match(text, /--verbose/);
-  assert.match(text, /not a git pull/);
+  assert.match(text, /context101 diff \[space\]/);
+  assert.match(text, /context101 synth \[space\]/);
+  assert.match(text, /own MCP URL/);
   assert.equal(text.includes("npx context101"), true);
+  assert.equal(text.includes("GA event"), false);
   assert.equal(text.includes("billing"), false);
   assert.equal(text.includes("SaaS"), false);
   assert.equal(text.includes("deploy.sh"), false);
