@@ -49,5 +49,5 @@ This directory is the maintained source for verifying user-facing Context101 beh
 
 Maintain pass after [#93](https://github.com/jginorio/context101/pull/93):
 
-- **Mapped:** #93 Unify Google add-source behind a Drive picker. One **Google** row (not Docs / Sheets / Slides). Paste-URL (`Or paste a link`) is the safe default verify path. Live Drive picker (`Connect Google account` / `Browse Google Drive`) is optional/skip when `GET /api/connectors/google/picker-config` has `pickerConfigured: false`.
+- **Mapped:** #93 Unify Google add-source behind a Drive picker. One **Google** row (not Docs / Sheets / Slides). Paste-URL (`Or paste a link`) is the safe default verify path. Live Drive picker (`Connect Google account` / `Browse Google Drive`) is optional/skip when `GET /api/connectors/google/picker-config` has `pickerConfigured: false` (local Cloud Agent). Hosted admin may be `pickerConfigured: true` — still do not click Connect / Browse / Add.
 - **Infra skips (no new feature file):** #92 CLI package bump; #88 / #87 Amplify leftover `/about` MCP env; #85 marketing URL strip.
