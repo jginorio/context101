@@ -9,6 +9,14 @@ import { BrainProvider } from "@/lib/brain-context";
 export const metadata: Metadata = {
   title: "Context101",
   description: "Self-hosted MCP knowledge base admin app",
+  icons: {
+    icon: [
+      { url: "/favicon.ico", sizes: "48x48" },
+      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/icon.png", type: "image/png", sizes: "32x32" },
+    ],
+    apple: [{ url: "/apple-touch-icon.png", sizes: "180x180" }],
+  },
 };
 
 export const viewport: Viewport = {
