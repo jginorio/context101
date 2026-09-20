@@ -10,7 +10,7 @@ The self-host CLI (`packages/cli`, npm `context101-cli`, bin `context101`) is th
 - `cli-urls` (optional) runs `context101 urls <space> [--aws-profile <name>]`. Expect `admin` plus `mcp` (or `mcp (legacy)`). Spaces deployed with CLI ≥ 0.1.15 print `admin  https://main.…`. Older Amplify-skipped stacks still print `admin  skipped` — do not invent an admin URL. Never print `CTX_TOKEN` or a bearer hint. Skip if `list` has no space or describe-stacks fails.
 - `cli-destroy-dry-run` runs `context101 destroy <space-or-stack> --dry-run [--aws-profile <name>]`. Must print `dry-run — destroy nothing` and `Would destroy <name>`. Must not destroy.
 - `cli-init-deploy` exists (`init`, `update` / `deploy`, `diff`, `synth`, real `destroy`). Out of a default run — document only.
-- `cli-connectors-help` runs `context101 help connectors` (TTY wizard + setup google|notion|github — instance OAuth/app secrets into Secrets Manager; values never printed). Optional in a default run.
+- `cli-connectors-help` runs `context101 help connectors` (TTY wizard + setup google|notion|github — instance OAuth/app secrets into Secrets Manager; Google picker keys optional and merged; values never printed). Optional in a default run.
 - `cli-connectors-setup` writes SM + `*_SECRET_ID` names into deploy-env. Out of a default run — it talks to AWS. See [connector-contract](./connector-contract.md).
 
 ## How to get to it (user POV)

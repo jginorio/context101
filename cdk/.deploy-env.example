@@ -78,7 +78,10 @@ AWS_PROFILE="plateapr.com"
 # project as the OAuth web client (`context101-connectors` on hosted).
 # Add the admin origin as an Authorized JavaScript origin on that client.
 # Consent: first Connect asks for drive.file + Docs/Sheets/Slides readonly.
-# Alternative: add picker_api_key / picker_app_id to the OAuth SM secret.
+# Alternative: `context101 connectors setup google` prompts for
+# picker_api_key / picker_app_id (or --picker-api-key / --picker-app-id)
+# and merges them onto the OAuth SM secret. Omit / empty keeps existing.
+# --clear-picker drops those fields. Never commit real keys.
 # GOOGLE_PICKER_API_KEY=""
 # GOOGLE_PICKER_APP_ID=""
 # NEXT_PUBLIC_GOOGLE_PICKER_API_KEY and NEXT_PUBLIC_GOOGLE_PICKER_APP_ID

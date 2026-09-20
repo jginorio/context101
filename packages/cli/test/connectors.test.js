@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -6,6 +7,8 @@ import { test } from "node:test";
 import {
   CONNECTOR_CLIENT_SECRET_ENV,
   CONNECTOR_PROVIDERS,
+  GOOGLE_PICKER_API_KEY_ENV,
+  GOOGLE_PICKER_APP_ID_ENV,
   connectorAdminHost,
   connectorDeployEnvKey,
   connectorRedirectUri,
@@ -17,8 +20,10 @@ import {
   formatProviderChoice,
   formatProviderSetupSteps,
   githubAppPayload,
+  mergeSecretPayload,
   oauthClientPayload,
   parseConnectorProvider,
+  parseSecretString,
   secretExistsInManager,
 } from "../src/connectors.js";
 import { SMOOTH_REGION } from "../src/defaults.js";
@@ -27,6 +32,8 @@ import { main } from "./run-main.js";
 import { fakeExec, makeRepoFixture, memoryIo, tempHome, testEnv, writeTestDeployEnv } from "./helpers.js";
 
 const CLIENT_SECRET = "oauth-client-secret-must-never-appear";
+const PICKER_API_KEY = "picker-api-key-must-never-appear";
+const PICKER_APP_ID = "123456789012";
 const PEM = `-----BEGIN RSA PRIVATE KEY-----
 test-pem-must-never-appear
 -----END RSA PRIVATE KEY-----
@@ -64,6 +71,27 @@ test("payload builders never put secrets in the plan text", () => {
   assert.match(plan, /GOOGLE_OAUTH_CLIENT_SECRET_ID/);
   assert.match(plan, /context101 update/);
   assert.equal(oauth.client_secret, CLIENT_SECRET);
+  assert.equal("picker_api_key" in oauth, false);
+  assert.equal("picker_app_id" in oauth, false);
+
+  const googlePicker = oauthClientPayload({
+    clientId: "google-client-id.apps.googleusercontent.com",
+    clientSecret: CLIENT_SECRET,
+    pickerApiKey: PICKER_API_KEY,
+    pickerAppId: PICKER_APP_ID,
+  });
+  assert.equal(googlePicker.picker_api_key, PICKER_API_KEY);
+  assert.equal(googlePicker.picker_app_id, PICKER_APP_ID);
+  assert.equal(
+    "picker_api_key" in
+      oauthClientPayload({
+        clientId: "cid",
+        clientSecret: CLIENT_SECRET,
+        pickerApiKey: "  ",
+        pickerAppId: "",
+      }),
+    false
+  );
 
   const app = githubAppPayload({
     appId: "12345",
@@ -99,8 +127,30 @@ test("parses connectors setup and help topic", () => {
   assert.equal(opts.connectorsProvider, "google");
   assert.equal(opts.space, "acme");
   assert.equal(opts.clientId, "cid.apps.googleusercontent.com");
+  assert.equal(opts.pickerApiKey, null);
+  assert.equal(opts.pickerAppId, null);
+  assert.equal(opts.clearPicker, false);
   assert.equal(opts.dryRun, true);
   assert.equal(opts.awsProfile, "findit");
+  const withPicker = parseArgs([
+    "connectors",
+    "setup",
+    "google",
+    "--client-id",
+    "cid.apps.googleusercontent.com",
+    "--picker-api-key",
+    PICKER_API_KEY,
+    "--picker-app-id",
+    PICKER_APP_ID,
+    "--clear-picker",
+  ]);
+  assert.equal(withPicker.pickerApiKey, PICKER_API_KEY);
+  assert.equal(withPicker.pickerAppId, PICKER_APP_ID);
+  assert.equal(withPicker.clearPicker, true);
+  assert.throws(
+    () => parseArgs(["init", "--picker-api-key", "x"]),
+    /connectors option/
+  );
   const bare = parseArgs(["connectors"]);
   assert.equal(bare.help, false);
   assert.equal(bare.command, "connectors");
@@ -121,28 +171,49 @@ test("help lists connectors wizard and never shows a fake secret", () => {
   const topic = helpText("connectors");
   assert.match(topic, /Secrets Manager/);
   assert.match(topic, /CONTEXT101_CONNECTOR_CLIENT_SECRET/);
+  assert.match(topic, /--picker-api-key/);
+  assert.match(topic, /--picker-app-id/);
+  assert.match(topic, /--clear-picker/);
+  assert.match(topic, /CONTEXT101_GOOGLE_PICKER_API_KEY/);
+  assert.match(topic, /picker_api_key/);
   assert.match(topic, /TTY wizard/);
   assert.match(topic, /Not configured/);
   assert.match(topic, /update \/ leave \/ show steps/);
   assert.match(topic, /--dry-run on a TTY/);
   assert.equal(topic.includes("client_secret="), false);
   assert.equal(topic.includes(CLIENT_SECRET), false);
+  assert.equal(topic.includes(PICKER_API_KEY), false);
+  const setupTopic = helpText("connectors setup");
+  assert.match(setupTopic, /--picker-api-key/);
+  assert.match(setupTopic, /--clear-picker/);
+  assert.equal(setupTopic.includes(PICKER_API_KEY), false);
 });
 
-function smExec({ describeOk = false, describeNames = null } = {}) {
+function smExec({
+  describeOk = false,
+  describeNames = null,
+  existingSecrets = {},
+} = {}) {
   const calls = [];
+  const written = [];
   const inner = fakeExec();
   return {
     calls,
+    written,
     exec({ command, args = [], env, cwd, timeout } = {}) {
       calls.push({ command, args: [...args] });
       if (command === "aws" && args[0] === "secretsmanager") {
+        const id = args.includes("--secret-id")
+          ? args[args.indexOf("--secret-id") + 1]
+          : args.includes("--name")
+            ? args[args.indexOf("--name") + 1]
+            : "";
         if (args[1] === "describe-secret") {
-          const id = args[args.indexOf("--secret-id") + 1];
           const ok =
             describeNames != null
               ? describeNames.has(id)
-              : describeOk;
+              : describeOk ||
+                Object.prototype.hasOwnProperty.call(existingSecrets, id);
           if (ok) {
             return { ok: true, code: 0, stdout: '{"Name":"ok"}', stderr: "", error: null };
           }
@@ -153,6 +224,39 @@ function smExec({ describeOk = false, describeNames = null } = {}) {
             stderr: "ResourceNotFoundException",
             error: null,
           };
+        }
+        if (args[1] === "get-secret-value") {
+          if (!Object.prototype.hasOwnProperty.call(existingSecrets, id)) {
+            return {
+              ok: false,
+              code: 254,
+              stdout: "",
+              stderr: "ResourceNotFoundException",
+              error: null,
+            };
+          }
+          return {
+            ok: true,
+            code: 0,
+            stdout: JSON.stringify({
+              Name: id,
+              SecretString: JSON.stringify(existingSecrets[id]),
+            }),
+            stderr: "",
+            error: null,
+          };
+        }
+        if (args[1] === "create-secret" || args[1] === "put-secret-value") {
+          const secretArg = args[args.indexOf("--secret-string") + 1];
+          if (String(secretArg || "").startsWith("file://")) {
+            const filePath = secretArg.slice("file://".length);
+            written.push({
+              name: id,
+              op: args[1],
+              payload: JSON.parse(readFileSync(filePath, "utf8")),
+            });
+          }
+          return { ok: true, code: 0, stdout: '{"Name":"ok"}', stderr: "", error: null };
         }
         return { ok: true, code: 0, stdout: '{"Name":"ok"}', stderr: "", error: null };
       }
@@ -234,6 +338,11 @@ test("context101 connectors setup google writes SM via file:// and the env id", 
   const secretArg = create.args[create.args.indexOf("--secret-string") + 1];
   assert.match(secretArg, /^file:\/\//);
   assert.equal(create.args.includes(CLIENT_SECRET), false);
+  assert.equal(sm.written.length, 1);
+  assert.deepEqual(sm.written[0].payload, {
+    client_id: "cid.apps.googleusercontent.com",
+    client_secret: CLIENT_SECRET,
+  });
   const body = await readFile(path.join(root, "cdk", ".deploy-env"), "utf8");
   assert.match(body, /GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"/);
   assert.equal(body.includes(CLIENT_SECRET), false);
@@ -293,6 +402,8 @@ test("cdk/.deploy-env.example documents connector ids without fake secrets", asy
   assert.match(text, /GITHUB_APP_SECRET_ID="context101-connector-github-app"/);
   assert.match(text, /GOOGLE_PICKER_API_KEY/);
   assert.match(text, /GOOGLE_PICKER_APP_ID/);
+  assert.match(text, /--picker-api-key/);
+  assert.match(text, /picker_api_key/);
   assert.match(text, /context101 connectors setup/);
   assert.equal(text.includes("client_secret="), false);
   assert.equal(/ghp_[A-Za-z0-9]/.test(text), false);
@@ -429,6 +540,8 @@ test("setup steps include redirect URI hints and never print secrets", () => {
   assert.match(google, /Google Cloud OAuth Web client/);
   assert.match(google, /https:\/\/<admin>\/api\/connectors\/oauth\/callback/);
   assert.match(google, /GOOGLE_PICKER_API_KEY/);
+  assert.match(google, /--picker-api-key/);
+  assert.match(google, /picker_api_key/);
   assert.match(google, /Authorized JavaScript origins/);
   assert.match(notion, /Notion public integration/);
   assert.match(github, /GitHub App/);
@@ -570,6 +683,14 @@ test("TTY wizard updates an existing SM secret without printing it", async () =>
   const io = ttyIo();
   const sm = smExec({
     describeNames: new Set(["context101-google-oauth-client"]),
+    existingSecrets: {
+      "context101-google-oauth-client": {
+        client_id: "old-cid.apps.googleusercontent.com",
+        client_secret: "old-secret-must-never-appear",
+        picker_api_key: PICKER_API_KEY,
+        picker_app_id: PICKER_APP_ID,
+      },
+    },
   });
   const code = await main(["connectors"], {
     cwd: root,
@@ -590,6 +711,8 @@ test("TTY wizard updates an existing SM secret without printing it", async () =>
   assert.match(io.stdoutText, /Google is configured/);
   assert.match(io.stdoutText, /updated secret context101-google-oauth-client/);
   assert.equal(io.stdoutText.includes(CLIENT_SECRET), false);
+  assert.equal(io.stdoutText.includes(PICKER_API_KEY), false);
+  assert.equal(io.stdoutText.includes("old-secret-must-never-appear"), false);
   const put = sm.calls.find(
     (call) => call.command === "aws" && call.args[1] === "put-secret-value"
   );
@@ -597,10 +720,17 @@ test("TTY wizard updates an existing SM secret without printing it", async () =>
   const secretArg = put.args[put.args.indexOf("--secret-string") + 1];
   assert.match(secretArg, /^file:\/\//);
   assert.equal(put.args.includes(CLIENT_SECRET), false);
+  assert.equal(put.args.includes(PICKER_API_KEY), false);
   assert.equal(
     sm.calls.some((call) => call.args.includes("get-secret-value")),
-    false
+    true
   );
+  assert.deepEqual(sm.written[0].payload, {
+    client_id: "cid.apps.googleusercontent.com",
+    client_secret: CLIENT_SECRET,
+    picker_api_key: PICKER_API_KEY,
+    picker_app_id: PICKER_APP_ID,
+  });
 });
 
 test("TTY wizard can reprint setup steps without writing", async () => {
@@ -814,4 +944,342 @@ test("TTY connectors --dry-run Update prompts then would-write without SM write"
   const envBody = await readFile(path.join(root, "cdk", ".deploy-env"), "utf8");
   assert.match(envBody, /GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"/);
   assert.equal(envBody.includes(CLIENT_SECRET), false);
+});
+
+test("mergeSecretPayload preserves omitted picker keys and clearPicker drops them", () => {
+  const existing = {
+    client_id: "old-cid",
+    client_secret: "old-secret",
+    picker_api_key: PICKER_API_KEY,
+    picker_app_id: PICKER_APP_ID,
+    extra: "keep-me",
+  };
+  assert.deepEqual(
+    mergeSecretPayload(existing, {
+      client_id: "new-cid",
+      client_secret: CLIENT_SECRET,
+    }),
+    {
+      client_id: "new-cid",
+      client_secret: CLIENT_SECRET,
+      picker_api_key: PICKER_API_KEY,
+      picker_app_id: PICKER_APP_ID,
+      extra: "keep-me",
+    }
+  );
+  assert.deepEqual(
+    mergeSecretPayload(existing, {
+      client_id: "new-cid",
+      client_secret: CLIENT_SECRET,
+      picker_api_key: "",
+      picker_app_id: "  ",
+    }),
+    {
+      client_id: "new-cid",
+      client_secret: CLIENT_SECRET,
+      picker_api_key: PICKER_API_KEY,
+      picker_app_id: PICKER_APP_ID,
+      extra: "keep-me",
+    }
+  );
+  assert.deepEqual(
+    mergeSecretPayload(existing, {
+      client_id: "new-cid",
+      client_secret: CLIENT_SECRET,
+      picker_api_key: "new-picker-key-must-never-appear",
+    }),
+    {
+      client_id: "new-cid",
+      client_secret: CLIENT_SECRET,
+      picker_api_key: "new-picker-key-must-never-appear",
+      picker_app_id: PICKER_APP_ID,
+      extra: "keep-me",
+    }
+  );
+  assert.deepEqual(
+    mergeSecretPayload(
+      existing,
+      { client_id: "new-cid", client_secret: CLIENT_SECRET },
+      { clearPicker: true }
+    ),
+    {
+      client_id: "new-cid",
+      client_secret: CLIENT_SECRET,
+      extra: "keep-me",
+    }
+  );
+  assert.deepEqual(
+    mergeSecretPayload(
+      existing,
+      {
+        client_id: "new-cid",
+        client_secret: CLIENT_SECRET,
+        picker_api_key: "replacement-picker-key-must-never-appear",
+      },
+      { clearPicker: true }
+    ),
+    {
+      client_id: "new-cid",
+      client_secret: CLIENT_SECRET,
+      extra: "keep-me",
+      picker_api_key: "replacement-picker-key-must-never-appear",
+    }
+  );
+  assert.deepEqual(
+    parseSecretString(
+      JSON.stringify({
+        Name: "context101-google-oauth-client",
+        SecretString: JSON.stringify(existing),
+      })
+    ),
+    existing
+  );
+  assert.deepEqual(parseSecretString("{}"), {});
+  assert.equal(parseSecretString("not-json"), null);
+});
+
+test("context101 connectors setup google writes optional picker keys", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-conn-picker-"));
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
+  const io = memoryIo();
+  const sm = smExec();
+  const code = await main(
+    [
+      "connectors",
+      "setup",
+      "google",
+      "--client-id",
+      "cid.apps.googleusercontent.com",
+      "--client-secret",
+      CLIENT_SECRET,
+      "--picker-api-key",
+      PICKER_API_KEY,
+      "--picker-app-id",
+      PICKER_APP_ID,
+    ],
+    {
+      cwd: root,
+      env: testEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      exec: sm.exec,
+    }
+  );
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /wrote secret context101-google-oauth-client/);
+  assert.equal(io.stdoutText.includes(CLIENT_SECRET), false);
+  assert.equal(io.stdoutText.includes(PICKER_API_KEY), false);
+  assert.equal(io.stderrText.includes(PICKER_API_KEY), false);
+  assert.deepEqual(sm.written[0].payload, {
+    client_id: "cid.apps.googleusercontent.com",
+    client_secret: CLIENT_SECRET,
+    picker_api_key: PICKER_API_KEY,
+    picker_app_id: PICKER_APP_ID,
+  });
+  const create = sm.calls.find(
+    (c) => c.command === "aws" && c.args[1] === "create-secret"
+  );
+  assert.equal(create.args.includes(PICKER_API_KEY), false);
+});
+
+test("context101 connectors setup google reads picker keys from env", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-conn-picker-env-"));
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
+  const io = memoryIo();
+  const sm = smExec();
+  const code = await main(
+    [
+      "connectors",
+      "setup",
+      "google",
+      "--client-id",
+      "cid.apps.googleusercontent.com",
+    ],
+    {
+      cwd: root,
+      env: testEnv({
+        [CONNECTOR_CLIENT_SECRET_ENV]: CLIENT_SECRET,
+        [GOOGLE_PICKER_API_KEY_ENV]: PICKER_API_KEY,
+        [GOOGLE_PICKER_APP_ID_ENV]: PICKER_APP_ID,
+      }),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      exec: sm.exec,
+    }
+  );
+  assert.equal(code, 0);
+  assert.equal(io.stdoutText.includes(PICKER_API_KEY), false);
+  assert.deepEqual(sm.written[0].payload, {
+    client_id: "cid.apps.googleusercontent.com",
+    client_secret: CLIENT_SECRET,
+    picker_api_key: PICKER_API_KEY,
+    picker_app_id: PICKER_APP_ID,
+  });
+});
+
+test("update credentials without picker flags preserves live picker keys", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-conn-merge-"));
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(
+    root,
+    'GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"'
+  );
+  const io = memoryIo();
+  const sm = smExec({
+    existingSecrets: {
+      "context101-google-oauth-client": {
+        client_id: "old-cid.apps.googleusercontent.com",
+        client_secret: "old-secret-must-never-appear",
+        picker_api_key: PICKER_API_KEY,
+        picker_app_id: PICKER_APP_ID,
+      },
+    },
+  });
+  const code = await main(
+    [
+      "connectors",
+      "setup",
+      "google",
+      "--client-id",
+      "cid.apps.googleusercontent.com",
+      "--client-secret",
+      CLIENT_SECRET,
+    ],
+    {
+      cwd: root,
+      env: testEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      exec: sm.exec,
+    }
+  );
+  assert.equal(code, 0);
+  assert.match(io.stdoutText, /updated secret context101-google-oauth-client/);
+  assert.equal(io.stdoutText.includes(PICKER_API_KEY), false);
+  assert.equal(io.stdoutText.includes("old-secret-must-never-appear"), false);
+  assert.equal(
+    sm.calls.some((call) => call.args.includes("get-secret-value")),
+    true
+  );
+  assert.deepEqual(sm.written[0].op, "put-secret-value");
+  assert.deepEqual(sm.written[0].payload, {
+    client_id: "cid.apps.googleusercontent.com",
+    client_secret: CLIENT_SECRET,
+    picker_api_key: PICKER_API_KEY,
+    picker_app_id: PICKER_APP_ID,
+  });
+});
+
+test("setup google --clear-picker drops picker keys from an existing secret", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-conn-clear-"));
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
+  const io = memoryIo();
+  const sm = smExec({
+    existingSecrets: {
+      "context101-google-oauth-client": {
+        client_id: "old-cid.apps.googleusercontent.com",
+        client_secret: "old-secret-must-never-appear",
+        picker_api_key: PICKER_API_KEY,
+        picker_app_id: PICKER_APP_ID,
+      },
+    },
+  });
+  const code = await main(
+    [
+      "connectors",
+      "setup",
+      "google",
+      "--client-id",
+      "cid.apps.googleusercontent.com",
+      "--client-secret",
+      CLIENT_SECRET,
+      "--clear-picker",
+    ],
+    {
+      cwd: root,
+      env: testEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      exec: sm.exec,
+    }
+  );
+  assert.equal(code, 0);
+  assert.equal(io.stdoutText.includes(PICKER_API_KEY), false);
+  assert.deepEqual(sm.written[0].payload, {
+    client_id: "cid.apps.googleusercontent.com",
+    client_secret: CLIENT_SECRET,
+  });
+});
+
+test("picker flags are Google-only", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-conn-picker-gh-"));
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
+  const io = memoryIo();
+  const sm = smExec();
+  const code = await main(
+    [
+      "connectors",
+      "setup",
+      "notion",
+      "--client-id",
+      "notion-cid",
+      "--client-secret",
+      CLIENT_SECRET,
+      "--picker-api-key",
+      PICKER_API_KEY,
+    ],
+    {
+      cwd: root,
+      env: testEnv(),
+      stdout: io.stdout,
+      stderr: io.stderr,
+      stdin: io.stdin,
+      exec: sm.exec,
+    }
+  );
+  assert.equal(code, 1);
+  assert.match(io.stderrText, /Google flags/);
+  assert.equal(io.stderrText.includes(PICKER_API_KEY), false);
+  assert.equal(sm.written.length, 0);
+});
+
+test("TTY wizard can write picker keys from the Google prompts", async () => {
+  const root = await mkdtemp(path.join(tmpdir(), "ctx101-conn-wiz-picker-"));
+  const home = await tempHome();
+  await makeRepoFixture(root);
+  await writeTestDeployEnv(root);
+  const io = ttyIo();
+  const sm = smExec();
+  const code = await main(["connectors"], {
+    cwd: root,
+    homeDir: home,
+    env: testEnv(),
+    stdout: io.stdout,
+    stderr: io.stderr,
+    stdin: io.stdin,
+    exec: sm.exec,
+    chooseConnectorProvider: async () => "google",
+    promptConnectorFields: async () => ({
+      clientId: "cid.apps.googleusercontent.com",
+      clientSecret: CLIENT_SECRET,
+      pickerApiKey: PICKER_API_KEY,
+      pickerAppId: PICKER_APP_ID,
+    }),
+  });
+  assert.equal(code, 0);
+  assert.equal(io.stdoutText.includes(PICKER_API_KEY), false);
+  assert.deepEqual(sm.written[0].payload, {
+    client_id: "cid.apps.googleusercontent.com",
+    client_secret: CLIENT_SECRET,
+    picker_api_key: PICKER_API_KEY,
+    picker_app_id: PICKER_APP_ID,
+  });
 });

@@ -14,6 +14,9 @@ import { writers } from "./style.js";
 export const CONNECTOR_PROVIDERS = ["google", "notion", "github"];
 
 export const CONNECTOR_CLIENT_SECRET_ENV = "CONTEXT101_CONNECTOR_CLIENT_SECRET";
+export const GOOGLE_PICKER_API_KEY_ENV = "CONTEXT101_GOOGLE_PICKER_API_KEY";
+export const GOOGLE_PICKER_APP_ID_ENV = "CONTEXT101_GOOGLE_PICKER_APP_ID";
+export const GOOGLE_PICKER_SECRET_KEYS = ["picker_api_key", "picker_app_id"];
 
 export const OAUTH_CALLBACK_PATH = "/api/connectors/oauth/callback";
 export const GITHUB_OAUTH_CALLBACK_PATH =
@@ -28,7 +31,8 @@ const PROVIDER_META = {
     label: "Google",
     envKey: "GOOGLE_OAUTH_CLIENT_SECRET_ID",
     secretSuffix: "google-oauth-client",
-    description: "Context101 Google OAuth client (client_id + client_secret)",
+    description:
+      "Context101 Google OAuth client (client_id, client_secret, optional picker_api_key / picker_app_id)",
   },
   notion: {
     label: "Notion",
@@ -153,8 +157,9 @@ export function formatProviderSetupSteps(provider, { adminHost } = {}) {
       "  Enable Google Picker API + Google Drive API on this Cloud project",
       "  Create a Browser API key (Application restrictions: HTTP referrers for the admin host)",
       "  Project number (APIs & Services → Google Cloud project → Project number) is the Picker app id",
-      "  Set GOOGLE_PICKER_API_KEY + GOOGLE_PICKER_APP_ID in deploy-env, or add",
-      "  picker_api_key / picker_app_id on the google-oauth-client secret",
+      "  Optional: picker_api_key + picker_app_id on the google-oauth-client secret",
+      "  (CLI prompts / --picker-api-key / --picker-app-id; empty keeps existing).",
+      "  Or set GOOGLE_PICKER_API_KEY + GOOGLE_PICKER_APP_ID in deploy-env.",
       "  Consent screen: Drive File + Docs/Sheets/Slides readonly (unified picker).",
       "  Paste-URL without a picker session still uses the narrower per-type scopes.",
       "  Copy client_id and client_secret",
@@ -180,7 +185,12 @@ export function formatProviderSetupSteps(provider, { adminHost } = {}) {
   ].join("\n");
 }
 
-export function oauthClientPayload({ clientId, clientSecret }) {
+export function oauthClientPayload({
+  clientId,
+  clientSecret,
+  pickerApiKey,
+  pickerAppId,
+} = {}) {
   const client_id = String(clientId ?? "").trim();
   const client_secret = String(clientSecret ?? "").trim();
   if (!client_id) {
@@ -195,7 +205,91 @@ export function oauthClientPayload({ clientId, clientSecret }) {
     err.code = "USAGE";
     throw err;
   }
-  return { client_id, client_secret };
+  const payload = { client_id, client_secret };
+  const picker_api_key = String(pickerApiKey ?? "").trim();
+  const picker_app_id = String(pickerAppId ?? "").trim();
+  if (picker_api_key) payload.picker_api_key = picker_api_key;
+  if (picker_app_id) payload.picker_app_id = picker_app_id;
+  return payload;
+}
+
+export function parseSecretString(stdout) {
+  if (stdout == null) return null;
+  const rawOut = String(stdout).trim();
+  if (!rawOut) return {};
+  let parsed;
+  try {
+    parsed = JSON.parse(rawOut);
+  } catch {
+    return null;
+  }
+  const raw =
+    parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed.SecretString !== undefined
+        ? parsed.SecretString
+        : parsed
+      : parsed;
+  if (raw == null || raw === "") return {};
+  if (typeof raw === "object" && !Array.isArray(raw)) return { ...raw };
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (!trimmed) return {};
+  try {
+    const obj = JSON.parse(trimmed);
+    if (obj && typeof obj === "object" && !Array.isArray(obj)) return { ...obj };
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+export function mergeSecretPayload(
+  existing,
+  incoming,
+  { clearPicker = false } = {}
+) {
+  const base =
+    existing && typeof existing === "object" && !Array.isArray(existing)
+      ? { ...existing }
+      : {};
+  if (clearPicker) {
+    for (const key of GOOGLE_PICKER_SECRET_KEYS) delete base[key];
+  }
+  for (const [key, value] of Object.entries(incoming ?? {})) {
+    if (value === undefined) continue;
+    if (
+      GOOGLE_PICKER_SECRET_KEYS.includes(key) &&
+      String(value ?? "").trim() === ""
+    ) {
+      continue;
+    }
+    base[key] = value;
+  }
+  return base;
+}
+
+export function getSecretJson({ exec, env, region, name } = {}) {
+  if (!exec || !name) return null;
+  try {
+    const result = exec({
+      command: "aws",
+      args: [
+        "secretsmanager",
+        "get-secret-value",
+        "--secret-id",
+        name,
+        "--region",
+        region || SMOOTH_REGION,
+        "--output",
+        "json",
+      ],
+      env,
+    });
+    if (!result?.ok) return null;
+    return parseSecretString(result.stdout);
+  } catch {
+    return null;
+  }
 }
 
 export function githubAppPayload({
@@ -578,6 +672,17 @@ export async function promptConnectorCredentials(provider, ctx = {}) {
     mask: true,
     validate: (value) => (value ? true : "needed"),
   });
+  if (provider === "google") {
+    const pickerApiKey = await password({
+      message: "picker_api_key (optional; empty keeps existing)",
+      mask: true,
+    });
+    const pickerAppId = await input({
+      message: "picker_app_id (project number; optional; empty keeps existing)",
+      default: "",
+    });
+    return { clientId, clientSecret, pickerApiKey, pickerAppId };
+  }
   if (provider !== "github") {
     return { clientId, clientSecret };
   }
@@ -662,6 +767,7 @@ async function writeConnectorFromOpts({
       name: secretName,
       description: meta.description,
       payload,
+      clearPicker: Boolean(opts.clearPicker),
     });
   } catch (error) {
     io.err(error.message || "secretsmanager write failed");
@@ -719,6 +825,8 @@ function collectPayloadSecrets(payload) {
   const secrets = [];
   if (payload.client_secret) secrets.push(payload.client_secret);
   if (payload.private_key) secrets.push(payload.private_key);
+  if (payload.picker_api_key) secrets.push(payload.picker_api_key);
+  if (payload.picker_app_id) secrets.push(payload.picker_app_id);
   return secrets;
 }
 
@@ -738,11 +846,32 @@ async function resolveClientSecret(opts, ctx) {
   });
 }
 
+function resolveOptionalEnvField(optsValue, envKey, ctx) {
+  const fromFlag = String(optsValue ?? "").trim();
+  if (fromFlag) return fromFlag;
+  return String(ctx.env?.[envKey] || "").trim();
+}
+
 async function buildPayload(provider, opts, ctx) {
   const clientId = String(opts.clientId || "").trim();
   const clientSecret = await resolveClientSecret(opts, ctx);
+  const pickerApiKey = resolveOptionalEnvField(
+    opts.pickerApiKey,
+    GOOGLE_PICKER_API_KEY_ENV,
+    ctx
+  );
+  const pickerAppId = resolveOptionalEnvField(
+    opts.pickerAppId,
+    GOOGLE_PICKER_APP_ID_ENV,
+    ctx
+  );
 
   if (provider === "github") {
+    if (opts.pickerApiKey || opts.pickerAppId || opts.clearPicker) {
+      usageError(
+        "--picker-api-key / --picker-app-id / --clear-picker are Google flags"
+      );
+    }
     const privateKey = opts.privateKeyFile
       ? await readFile(opts.privateKeyFile, "utf8")
       : "";
@@ -759,32 +888,66 @@ async function buildPayload(provider, opts, ctx) {
   if (opts.appId || opts.privateKeyFile || opts.slug || opts.htmlUrl) {
     usageError("--app-id / --private-key-file / --slug / --html-url are GitHub App flags");
   }
-  return oauthClientPayload({ clientId, clientSecret });
+
+  if (provider !== "google") {
+    if (opts.pickerApiKey || opts.pickerAppId || opts.clearPicker) {
+      usageError(
+        "--picker-api-key / --picker-app-id / --clear-picker are Google flags"
+      );
+    }
+    return oauthClientPayload({ clientId, clientSecret });
+  }
+
+  return oauthClientPayload({
+    clientId,
+    clientSecret,
+    pickerApiKey,
+    pickerAppId,
+  });
 }
 
-async function putSecret({ exec, env, region, name, description, payload }) {
+async function putSecret({
+  exec,
+  env,
+  region,
+  name,
+  description,
+  payload,
+  clearPicker = false,
+}) {
+  const describe = exec({
+    command: "aws",
+    args: [
+      "secretsmanager",
+      "describe-secret",
+      "--secret-id",
+      name,
+      "--region",
+      region,
+      "--output",
+      "json",
+    ],
+    env,
+  });
+  const existed = Boolean(describe?.ok);
+  let next = payload;
+  if (existed) {
+    const existing = getSecretJson({ exec, env, region, name });
+    if (existing == null) {
+      throw new Error("secretsmanager get-secret-value failed");
+    }
+    next = mergeSecretPayload(existing, payload, { clearPicker });
+  } else {
+    next = mergeSecretPayload({}, payload, { clearPicker });
+  }
+
   const dir = await mkdtemp(path.join(tmpdir(), "ctx101-sm-"));
   const filePath = path.join(dir, "secret.json");
-  await writeFile(filePath, JSON.stringify(payload), {
+  await writeFile(filePath, JSON.stringify(next), {
     encoding: "utf8",
     mode: 0o600,
   });
   try {
-    const describe = exec({
-      command: "aws",
-      args: [
-        "secretsmanager",
-        "describe-secret",
-        "--secret-id",
-        name,
-        "--region",
-        region,
-        "--output",
-        "json",
-      ],
-      env,
-    });
-    const existed = describe.ok;
     const args = existed
       ? [
           "secretsmanager",
