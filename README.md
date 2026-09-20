@@ -28,7 +28,7 @@ That installs the `context101` command. Needs Node 20+, npm, AWS CLI v2, Docker,
 
 ## Quick start
 
-`context101 init` prompts for a space name. That name is yours — not a license key or reserved token. Lowercase letters, numbers, and hyphens; start with a letter.
+`context101 init` prompts for a space name. Lowercase letters, numbers, and hyphens; start with a letter.
 
 ```bash
 context101 init
@@ -40,7 +40,7 @@ Or pass a name:
 context101 init my-team
 ```
 
-That writes `~/.context101/spaces/<name>/` and, on a TTY, asks whether to deploy. After deploy, `context101 urls` prints the admin URL and MCP endpoints. First admin is created at `/setup`.
+That writes `~/.context101/spaces/<name>/`. When you run it in a terminal, it asks whether to deploy. After deploy, open the admin URL from `context101 urls` and create the first admin.
 
 ```bash
 context101 list
