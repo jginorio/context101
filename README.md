@@ -58,7 +58,9 @@ Deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. 
 
 ## Brains
 
-A brain is an isolated knowledge base for your docs — the thing agents search. Create one in the admin, connect sources (uploads, Google, GitHub, and others), then point an MCP client at it. Each brain has its own endpoint at `/brain/<id>/mcp`.
+You can create multiple brains for different topics or projects — one for product docs, another for a customer account. Each brain is isolated: its own sources and docs, separate from the others.
+
+Each brain has its own MCP URL (`/brain/<id>/mcp`). Give that URL to an agent or harness and it only sees that brain’s context. Create brains in the admin, connect sources, then point the MCP client at that brain’s URL.
 
 ## Parked features
 
