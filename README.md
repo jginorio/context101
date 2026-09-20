@@ -1,54 +1,68 @@
+<p align="center">
+  <img width="1280" alt="your context. every agent." src="docs/assets/readme-hero.png">
+</p>
+
 # Context101
 
-**your context. every agent.**
+## What it is
 
-A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases — S3 + S3 Vectors, FastMCP per-brain, Better Auth + Postgres. Self-host in your AWS. Paid hosting later is not shipped.
+A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases: S3 + S3 Vectors, FastMCP per brain, Better Auth + Postgres. You run it in your own AWS account.
 
-This repo is the self-host product: `packages/cli` (`context101-cli`), `cdk/`, and `web/` (the admin that ships inside the CLI). Marketing and later paid hosting are not here.
+The CLI is the front door. Deploying a space ships the admin UI with the stack.
 
-Alpha / trusted-team only. Not a wiki app. Retrieval is raw-first. Product focus is sources + retrieve. Wiki generation and Conflicts are parked ([WIKI_PARKED.md](./WIKI_PARKED.md)).
-
-## context101
+## Install
 
 ```bash
 npm i -g context101-cli@0.1.27
 ```
 
-Package `context101-cli`, bin `context101`. Pin the version — `@latest` is a no-op on some machines. Unscoped `npx context101` is Context7's MCP, unrelated.
+Pin the version — `@latest` is a no-op on some machines. The package is `context101-cli` (bin `context101`). Unscoped `npx context101` is Context7's MCP, unrelated.
+
+Needs Node 20+, npm, AWS CLI v2, Docker, and an AWS account with Bedrock access.
+
+## Quick start
+
+`context101 init` prompts for a space name. That name is yours — not a license key or reserved token. Lowercase letters, numbers, and hyphens; start with a letter.
 
 ```bash
-context101 init acme
-context101 update acme
+context101 init
+```
+
+Or pass a name:
+
+```bash
+context101 init my-team
+```
+
+That writes `~/.context101/spaces/<name>/` and, on a TTY, asks whether to deploy. After deploy, `context101 urls` prints the admin URL and MCP endpoints. First admin is created at `/setup`.
+
+```bash
 context101 list
-context101 urls acme
-context101 destroy acme --dry-run
+context101 urls my-team
+context101 update my-team
+context101 destroy my-team --dry-run
 context101 connectors setup google
 ```
 
-`acme` is the space name you choose, not a required token. Nameless `init` prompts. `init [space]` writes `~/.context101/spaces/<name>/`. `update` (`deploy`), `destroy`, `list`, and `urls` are space-aware. An existing `cdk/.deploy-env` is the `default` space.
+`list`, `urls`, `help`, `version`, and `destroy --dry-run` work without a checkout. An existing `cdk/.deploy-env` is the `default` space.
 
-Default deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose. A successful deploy prints `✓ deployed <stack>` then the same public URL block as `urls`.
+The stack source is this CLI version (`~/.cache/context101/<version>/`). Later updates: pin the new CLI, then `context101 update [space]` — not `git pull`.
 
-`list`, `urls`, `help`, `version`, and `destroy --dry-run` need no checkout.
-
-The stack is this CLI version — packaged source copied to `~/.cache/context101/<version>/`, CDK `--output` beside it. Next time: pin the new CLI, then `context101 update [space]`. Not `git pull` on `~/context101`.
-
-CDK fails closed without `CTX_TOKEN` (plus `CTX_GH_TOKEN` only if Amplify watches an external repo). Admin always ships on Amplify via a CodeCommit repo in the stack — no GitHub PAT. `cdk/deploy.sh` is a shim. Never run bare `cdk deploy`. Never print deploy-env or MCP bearers.
-
-Commands and flags: [packages/cli/README.md](./packages/cli/README.md).
+Deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose. Never run bare `cdk deploy`. Never print deploy-env or MCP bearers.
 
 ## Brains
 
-Each brain is a sealed knowledge base — its own S3 bucket, Bedrock KB, vector index, suggestions queue, and MCP token — created in the admin (`web/`) and served at `/brain/<id>/mcp`.
+Each brain is a sealed knowledge base — its own S3 bucket, Bedrock KB, vector index, suggestions queue, and MCP token. Create brains in the admin. Each is served at `/brain/<id>/mcp`.
 
-Wiki generation is parked. Isolated restore: `cursor/wiki-isolated-de63`. Conflicts isolated restore: `cursor/conflicts-isolated-de63`. See [WIKI_PARKED.md](./WIKI_PARKED.md).
+## Parked features
 
-Trusted-team alpha. No per-brain RBAC. Not public multi-tenant SaaS. [ALPHA.md](./ALPHA.md)
-
-[wiki-generator-ts/README.md](./wiki-generator-ts/README.md) · [SECURITY.md](./SECURITY.md) · [CONTRIBUTING.md](./CONTRIBUTING.md)
+- Wiki generation — [WIKI_PARKED.md](./WIKI_PARKED.md)
+- Conflicts detection — [ALPHA.md](./ALPHA.md)
 
 ## License
 
 Copyright (c) 2026 Context101 contributors.
 
 Context101 is licensed under the [Elastic License 2.0](./LICENSE). You can self-host it and use it privately or internally. Offering Context101 as a paid hosted or managed service to third parties is not allowed.
+
+[SECURITY.md](./SECURITY.md) · [CONTRIBUTING.md](./CONTRIBUTING.md) · [CLI flags](./packages/cli/README.md)
