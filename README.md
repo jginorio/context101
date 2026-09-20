@@ -10,6 +10,14 @@ A thin self-hostable wrapper around Amazon Bedrock Knowledge Bases — S3 + S3 V
 
 The CLI is the front door. Deploying a space ships the admin UI with the stack.
 
+## How it works
+
+<p align="center">
+  <img width="1280" alt="Connect sources. Expose context to any agent." src="docs/assets/how-it-works.png">
+</p>
+
+<p align="center">Connect docs from Google, GitHub, Notion, or uploads. Agents pull that context over MCP.</p>
+
 ## Install
 
 ```bash
