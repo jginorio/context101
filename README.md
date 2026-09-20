@@ -13,12 +13,10 @@ The CLI is the front door. Deploying a space ships the admin UI with the stack.
 ## Install
 
 ```bash
-npm i -g context101-cli@0.1.27
+npm i -g context101-cli
 ```
 
-Pin the version — `@latest` is a no-op on some machines. The package is `context101-cli` (bin `context101`). Unscoped `npx context101` is Context7's MCP, unrelated.
-
-Needs Node 20+, npm, AWS CLI v2, Docker, and an AWS account with Bedrock access.
+That installs the `context101` command. Needs Node 20+, npm, AWS CLI v2, Docker, and an AWS account with Bedrock access.
 
 ## Quick start
 
@@ -46,13 +44,13 @@ context101 connectors setup google
 
 `list`, `urls`, `help`, `version`, and `destroy --dry-run` work without a checkout. An existing `cdk/.deploy-env` is the `default` space.
 
-The stack source is this CLI version (`~/.cache/context101/<version>/`). Later updates: pin the new CLI, then `context101 update [space]` — not `git pull`.
+To update an existing space to the newest Context101, upgrade the CLI (`npm i -g context101-cli`), then run `context101 update <space>`.
 
 Deploy is a quiet `deploying…` spinner. `--verbose` dumps cdk / npm / docker. `-v` is version, not verbose. Never run bare `cdk deploy`. Never print deploy-env or MCP bearers.
 
 ## Brains
 
-Each brain is a sealed knowledge base — its own S3 bucket, Bedrock KB, vector index, suggestions queue, and MCP token. Create brains in the admin. Each brain gets its own MCP endpoint at `/brain/<id>/mcp`.
+A brain is an isolated knowledge base for your docs — the thing agents search. Create one in the admin, connect sources (uploads, Google, GitHub, and others), then point an MCP client at it. Each brain has its own endpoint at `/brain/<id>/mcp`.
 
 ## Parked features
 
