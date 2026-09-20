@@ -18,7 +18,9 @@ The CLI is the front door. Deploying a space ships the admin UI with the stack.
 
 <p align="center">Connect docs from Google, GitHub, Notion, or uploads. Agents pull that context over MCP.</p>
 
-Example: analytics event docs live as markdown in your repo. Instead of emailing them around so everyone pastes into Claude, Cursor, or Grok, connect the repo to a brain and share that brain’s MCP URL. Same context for the whole team; doc updates land on the next sync (~6h).
+### Example use case
+
+Analytics event docs live as markdown in your repo. Instead of emailing them around so everyone pastes into Claude, Cursor, or Grok, connect the repo to Context101 and share the MCP URL with the team. Same context for everyone; doc updates land on the next sync (~6h).
 
 ## Install
 
