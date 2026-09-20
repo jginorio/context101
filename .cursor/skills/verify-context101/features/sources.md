@@ -4,7 +4,7 @@
 
 ## Sub-features
 
-- `src-list` shows each connector card (label, status pill, Added by, account/workspace, Last synced, Items).
+- `src-list` shows each connector card (label, status pill, Added by, account/workspace, Last synced, Items). Footer actions (**Open source**, **Sync now**, delete) sit below a divider with the same `pt-3` gap used on other in-card action rows — not flush against the rule.
 - `src-error-accordion` — when status is `error` and `last_error` is set, the raw blob is **not** shown open. An accordion trigger shows a one-line summary (status + short message, e.g. `401 unauthorized — API token is invalid.`). Opening the item reveals the full `last_error` in monospace / pre-wrap. Closed by default. Shared by Notion and any other connector that uses this card.
 
 ## How to get to it (user POV)

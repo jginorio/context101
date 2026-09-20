@@ -379,7 +379,7 @@ function SourcesContent() {
                     <ConnectorSyncError error={c.last_error} />
                   )}
 
-                  <div className="flex items-center justify-end gap-2 border-t pt-1">
+                  <div className="flex items-center justify-end gap-2 border-t pt-3">
                     <a
                       href={c.resource_url}
                       target="_blank"

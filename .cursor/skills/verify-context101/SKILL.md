@@ -121,6 +121,7 @@ Stable handles:
 | Connect Google | button `Connect Google account` — GIS popup when picker is configured, or paste-path submit. Do not click in a default run |
 | Browse Drive | button `Browse Google Drive` — only after a Google session when picker is configured. Optional/skip. Do not click in a default run |
 | Add Google file | footer after a Drive pick / session. Do not submit in a default run |
+| Google picked file | `[data-slot="google-picked-file"]` — title + truncated Drive URL. Must not create horizontal scroll on the mobile sheet |
 | Notion provider | button `Notion` → heading `Add a Notion page or database` |
 | GitHub provider | button `GitHub` → heading `Add a GitHub repository` |
 | Back to types | button `Back to source types` |

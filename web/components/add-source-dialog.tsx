@@ -758,7 +758,7 @@ export function AddSourceDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="md:max-w-md">
+      <DialogContent className="min-w-0 md:max-w-md">
         {selected === "files" ? (
           <UploadFilesForm
             onBack={() => setSelected(null)}
