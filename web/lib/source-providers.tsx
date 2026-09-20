@@ -15,8 +15,13 @@ import {
   type AddSourceKind,
   type ConnectorType,
 } from "@/lib/connectors/contract";
+import {
+  isGoogleConnectorType,
+  type GoogleConnectorType,
+} from "@/lib/google-source";
 
 export { CONNECTOR_TYPES, type AddSourceKind, type ConnectorType };
+export { isGoogleConnectorType, type GoogleConnectorType };
 
 // Any component that accepts a className — covers both the brand SVG marks
 // and Lucide icons.
@@ -89,13 +94,45 @@ export type ProviderGroup = {
   types: ConnectorType[];
 };
 
-// Provider grouping drives the Knowledge sidebar sections and the
-// add-source menus. Google fans out to three document types; Notion and
-// GitHub each map to a single connector type.
+// Provider grouping drives the Knowledge sidebar sections (Google still
+// fans out to Docs / Sheets / Slides for synced trees). The add-source
+// menu uses ADD_SOURCE_MENU — one Google row, not three URL forms.
 export const PROVIDER_GROUPS: ProviderGroup[] = [
   { id: "google", label: "Google", icon: GoogleLogo, types: ["docs", "sheets", "slides"] },
   { id: "notion", label: "Notion", icon: NotionLogo, types: ["notion"] },
   { id: "github", label: "GitHub", icon: GithubLogo, types: ["github"] },
+];
+
+export const GOOGLE_SOURCE = {
+  kind: "google" as const,
+  menuLabel: "Google",
+  icon: GoogleLogo,
+};
+
+export function isGoogleAddKind(
+  kind: AddSourceKind | null | undefined
+): kind is "google" | GoogleConnectorType {
+  return kind === "google" || isGoogleConnectorType(kind);
+}
+
+/** Rows in the Add source picker and the Sources “Add a source” panel. */
+export const ADD_SOURCE_MENU: {
+  kind: AddSourceKind;
+  menuLabel: string;
+  icon: SourceIcon;
+}[] = [
+  FILES_SOURCE,
+  GOOGLE_SOURCE,
+  {
+    kind: "notion",
+    menuLabel: SOURCE_TYPES.notion.menuLabel,
+    icon: SOURCE_TYPES.notion.icon,
+  },
+  {
+    kind: "github",
+    menuLabel: SOURCE_TYPES.github.menuLabel,
+    icon: SOURCE_TYPES.github.icon,
+  },
 ];
 
 // Flat connector order for the knowledge sidebar (Google types first, then

@@ -155,10 +155,12 @@ test("forwards GOOGLE_OAUTH_CLIENT_SECRET_ID as an SM name, not a client_secret"
     'CTX_TOKEN="ctx_testtoken_xx"',
     'GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"',
     'NOTION_OAUTH_CLIENT_SECRET_ID="context101-notion-oauth-client"',
+    'GOOGLE_PICKER_APP_ID="123456789012"',
   ]);
   const joined = buildCdkArgs({ action: "deploy", context }).join(" ");
   assert.match(joined, /GOOGLE_OAUTH_CLIENT_SECRET_ID=context101-google-oauth-client/);
   assert.match(joined, /NOTION_OAUTH_CLIENT_SECRET_ID=context101-notion-oauth-client/);
+  assert.match(joined, /GOOGLE_PICKER_APP_ID=123456789012/);
   assert.equal(joined.includes("client_secret"), false);
 });
 

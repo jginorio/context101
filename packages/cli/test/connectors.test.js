@@ -291,6 +291,8 @@ test("cdk/.deploy-env.example documents connector ids without fake secrets", asy
   assert.match(text, /GOOGLE_OAUTH_CLIENT_SECRET_ID="context101-google-oauth-client"/);
   assert.match(text, /NOTION_OAUTH_CLIENT_SECRET_ID="context101-notion-oauth-client"/);
   assert.match(text, /GITHUB_APP_SECRET_ID="context101-connector-github-app"/);
+  assert.match(text, /GOOGLE_PICKER_API_KEY/);
+  assert.match(text, /GOOGLE_PICKER_APP_ID/);
   assert.match(text, /context101 connectors setup/);
   assert.equal(text.includes("client_secret="), false);
   assert.equal(/ghp_[A-Za-z0-9]/.test(text), false);
@@ -426,6 +428,8 @@ test("setup steps include redirect URI hints and never print secrets", () => {
   });
   assert.match(google, /Google Cloud OAuth Web client/);
   assert.match(google, /https:\/\/<admin>\/api\/connectors\/oauth\/callback/);
+  assert.match(google, /GOOGLE_PICKER_API_KEY/);
+  assert.match(google, /Authorized JavaScript origins/);
   assert.match(notion, /Notion public integration/);
   assert.match(github, /GitHub App/);
   assert.match(

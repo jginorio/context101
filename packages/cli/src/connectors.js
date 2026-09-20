@@ -149,6 +149,14 @@ export function formatProviderSetupSteps(provider, { adminHost } = {}) {
       "Create a Google Cloud OAuth Web client",
       "  APIs & Services → Credentials → Create OAuth client ID (Web application)",
       `  Redirect URI: ${oauth}`,
+      `  Authorized JavaScript origins: https://${host}  (and http://localhost:3000 for local)`,
+      "  Enable Google Picker API + Google Drive API on this Cloud project",
+      "  Create a Browser API key (Application restrictions: HTTP referrers for the admin host)",
+      "  Project number (APIs & Services → Google Cloud project → Project number) is the Picker app id",
+      "  Set GOOGLE_PICKER_API_KEY + GOOGLE_PICKER_APP_ID in deploy-env, or add",
+      "  picker_api_key / picker_app_id on the google-oauth-client secret",
+      "  Consent screen: Drive File + Docs/Sheets/Slides readonly (unified picker).",
+      "  Paste-URL without a picker session still uses the narrower per-type scopes.",
       "  Copy client_id and client_secret",
     ].join("\n");
   }

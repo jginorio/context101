@@ -29,6 +29,7 @@ import {
 import { getGithubInstallationForOrg } from "@/utils/github-installations";
 import { bucketForBrain } from "@/utils/s3";
 import { getPublicOrigin } from "@/utils/public-origin";
+import { readGoogleSession } from "@/utils/google-oauth";
 
 const SUPPORTED_TYPES: ConnectorType[] = [
   "sheets",
@@ -327,6 +328,53 @@ export async function POST(request: NextRequest) {
       // so we hand back a relative URL that simply navigates back to /sources.
       // Preserve the brain query param so the redirect lands on the right
       // brain's sources view.
+      return NextResponse.json({
+        id,
+        oauthUrl: `/sources?brain=${encodeURIComponent(brain.brain_id)}&connected=${id}`,
+      });
+    }
+
+    // ── Google via an existing picker session ─────────────────────────
+    // The add-source dialog already connected Google (GIS + Picker).
+    // Reuse that refresh token so we don't send the user through a
+    // second consent screen. Sync starts immediately, same as GitHub App.
+    const googleSession = isGoogleType(type) ? readGoogleSession(request) : null;
+    if (isGoogleType(type) && googleSession?.refresh_token) {
+      const tokenSecretName = `${CONNECTOR_TOKEN_SECRET_PREFIX}${id}`;
+      const created = await sm.send(
+        new CreateSecretCommand({
+          Name: tokenSecretName,
+          Description: `OAuth token for connector ${id} (${type})`,
+          SecretString: JSON.stringify({
+            refresh_token: googleSession.refresh_token,
+          }),
+        })
+      );
+      await pgUpdateConnector(auth.orgId, brain.brain_id, id, {
+        status: "syncing",
+        tokenSecretArn: created.ARN,
+        ...(googleSession.email
+          ? { metadata: { google_account_email: googleSession.email } }
+          : {}),
+      });
+      const fn = syncFnNameFor(type);
+      if (fn) {
+        await lambdaClient
+          .send(
+            new InvokeCommand({
+              FunctionName: fn,
+              InvocationType: "Event",
+              Payload: new TextEncoder().encode(
+                JSON.stringify({
+                  connectorId: id,
+                  docsBucket,
+                  brainId: brain.brain_id,
+                })
+              ),
+            })
+          )
+          .catch((e) => console.error("initial sync invoke failed:", e));
+      }
       return NextResponse.json({
         id,
         oauthUrl: `/sources?brain=${encodeURIComponent(brain.brain_id)}&connected=${id}`,

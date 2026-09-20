@@ -71,3 +71,15 @@ AWS_PROFILE="plateapr.com"
 # in admin, not here).
 # GITHUB_APP_SECRET_ID="context101-connector-github-app"
 # After setup: `context101 update`, then Add source → Connect in admin.
+#
+# OPTIONAL — Google Drive picker in Add source (Docs / Sheets / Slides).
+# Browser API key + Cloud project *number* (not the project id string).
+# Never commit real keys. Enable Picker API + Drive API on the same
+# project as the OAuth web client (`context101-connectors` on hosted).
+# Add the admin origin as an Authorized JavaScript origin on that client.
+# Consent: first Connect asks for drive.file + Docs/Sheets/Slides readonly.
+# Alternative: add picker_api_key / picker_app_id to the OAuth SM secret.
+# GOOGLE_PICKER_API_KEY=""
+# GOOGLE_PICKER_APP_ID=""
+# NEXT_PUBLIC_GOOGLE_PICKER_API_KEY and NEXT_PUBLIC_GOOGLE_PICKER_APP_ID
+# also work (inlined at Next build). Prefer the server names above.

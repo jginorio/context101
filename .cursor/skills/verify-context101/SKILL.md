@@ -116,6 +116,7 @@ Stable handles:
 | New folder | button `New folder` |
 | Add source | button `Add source` → dialog `Add a source` |
 | Upload files | button `Upload files` in the picker → dialog title `Upload files` |
+| Google provider | button `Google` → dialog title `Add a Google file`. Drive picker when configured (`Browse Google Drive` / `Connect Google account`); collapsed `Or paste a link`. Do not submit in a default run |
 | GitHub provider | button `GitHub` → dialog title `Add a GitHub repository` |
 | Back to types | button `Back to source types` |
 | Connect GitHub | button `Connect GitHub` → `/api/connectors/github-app/install` (do not click in a default run) |

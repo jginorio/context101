@@ -1177,6 +1177,13 @@ export class Context101Stack extends cdk.Stack {
     //      Always provisioned. Default source is a CodeCommit repo in this
     //      stack (IAM / SIGV4 — no githubToken). REPOSITORY + githubToken
     //      remain an optional override to watch an external git host.
+    const googlePickerApiKey = (
+      this.node.tryGetContext("GOOGLE_PICKER_API_KEY") as string | undefined
+    )?.trim();
+    const googlePickerAppId = (
+      this.node.tryGetContext("GOOGLE_PICKER_APP_ID") as string | undefined
+    )?.trim();
+
     const githubToken = this.node.tryGetContext("githubToken") as
       | string
       | undefined;
@@ -1277,6 +1284,14 @@ export class Context101Stack extends cdk.Stack {
           { name: "GOOGLE_OAUTH_CLIENT_SECRET_ID", value: googleOAuthClientSecret.secretName },
           { name: "NOTION_OAUTH_CLIENT_SECRET_ID", value: notionOAuthClientSecret.secretName },
           { name: "CONNECTOR_TOKEN_SECRET_PREFIX", value: `${namePrefix}-connector-` },
+          // Browser Picker key + Cloud project number. Optional — paste-URL
+          // still works without them. Do not put real keys in git.
+          ...(googlePickerApiKey
+            ? [{ name: "GOOGLE_PICKER_API_KEY", value: googlePickerApiKey }]
+            : []),
+          ...(googlePickerAppId
+            ? [{ name: "GOOGLE_PICKER_APP_ID", value: googlePickerAppId }]
+            : []),
           // Postgres + Better Auth env (DATABASE_URL, BETTER_AUTH_*, etc.).
           ...openSaasEnvVars,
         ],
