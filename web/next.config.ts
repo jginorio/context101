@@ -11,10 +11,9 @@ const nextConfig: NextConfig = {
     root: repoRoot,
   },
   // Amplify Hosting's SSR runtime doesn't forward app-level env vars to the
-  // compute Lambda by default. Bake DOCS_BUCKET into the build so
-  // process.env.DOCS_BUCKET works at runtime.
+  // compute Lambda by default. Bake them into the build so process.env.*
+  // works at runtime.
   env: {
-    DOCS_BUCKET: process.env.DOCS_BUCKET,
     WIKI_CLUSTER_ARN: process.env.WIKI_CLUSTER_ARN,
     WIKI_TASK_DEF_ARN: process.env.WIKI_TASK_DEF_ARN,
     WIKI_SUBNET_IDS: process.env.WIKI_SUBNET_IDS,
