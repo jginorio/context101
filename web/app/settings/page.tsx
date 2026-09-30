@@ -5,10 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
-  BarChart3,
-  DollarSign,
   FlaskConical,
-  Plug,
   Settings as SettingsIcon,
   Users,
 } from "lucide-react";
@@ -19,21 +16,17 @@ import { cn } from "@/lib/utils";
 import { OrganizationSettings } from "@/components/settings/organization-settings";
 import { EmbeddingSettings } from "@/components/settings/embedding-settings";
 
-type SectionId = "organization" | "advanced" | "sources" | "costs" | "analytics";
+type SectionId = "organization" | "advanced";
 
 type Section = {
   id: SectionId;
   label: string;
   icon: React.ComponentType<{ className?: string }>;
-  available: boolean;
 };
 
 const SECTIONS: Section[] = [
-  { id: "organization", label: "Organization", icon: Users, available: true },
-  { id: "advanced", label: "Advanced", icon: FlaskConical, available: true },
-  { id: "sources", label: "Source sync", icon: Plug, available: false },
-  { id: "costs", label: "Costs", icon: DollarSign, available: false },
-  { id: "analytics", label: "Analytics", icon: BarChart3, available: false },
+  { id: "organization", label: "Organization", icon: Users },
+  { id: "advanced", label: "Advanced", icon: FlaskConical },
 ];
 
 function SettingsContent() {
@@ -86,24 +79,16 @@ function SettingsContent() {
                 <li key={s.id} className="shrink-0">
                   <button
                     type="button"
-                    onClick={() => s.available && setActive(s.id)}
-                    disabled={!s.available}
+                    onClick={() => setActive(s.id)}
                     className={cn(
                       "flex w-full items-center gap-2 rounded-md px-3 py-2 text-left text-sm transition-colors whitespace-nowrap",
                       isActive
                         ? "bg-muted font-medium"
-                        : "text-muted-foreground hover:bg-muted/60",
-                      !s.available &&
-                        "cursor-not-allowed opacity-50 hover:bg-transparent"
+                        : "text-muted-foreground hover:bg-muted/60"
                     )}
                   >
                     <Icon className="h-4 w-4 shrink-0" />
-                    <span className="flex-1">{s.label}</span>
-                    {!s.available ? (
-                      <span className="hidden rounded-full border px-1.5 py-0.5 text-[10px] text-muted-foreground md:inline">
-                        soon
-                      </span>
-                    ) : null}
+                    <span>{s.label}</span>
                   </button>
                 </li>
               );
