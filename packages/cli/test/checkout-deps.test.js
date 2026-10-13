@@ -8,7 +8,6 @@ import { fileURLToPath } from "node:url";
 import { runCdk } from "../src/cdk-invoke.js";
 import { INSTALLING_DEPS, checkoutNeededMessage, ensureCheckoutDeps } from "../src/checkout-deps.js";
 import { cdkOutputDir, writableCacheDest } from "../src/stack-source.js";
-import { UPDATING_CHECKOUT } from "../src/clone.js";
 import { main } from "./run-main.js";
 import { STACK_NAME } from "../src/defaults.js";
 import {
@@ -185,7 +184,7 @@ test("deploy --dry-run does not npm ci", async () => {
   assert.equal(npmCiCalls(execCalls).length, 0);
   assert.equal(gitPullCalls(execCalls).length, 0);
   assert.equal(io.stdoutText.includes(INSTALLING_DEPS), false);
-  assert.equal(io.stdoutText.includes(UPDATING_CHECKOUT), false);
+  assert.equal(io.stdoutText.includes("updating checkout"), false);
 });
 
 test("list / help / version do not install", async () => {
@@ -205,7 +204,7 @@ test("list / help / version do not install", async () => {
     assert.equal(npmCiCalls(execCalls).length, 0, argv.join(" "));
     assert.equal(gitPullCalls(execCalls).length, 0, argv.join(" "));
     assert.equal(io.stdoutText.includes(INSTALLING_DEPS), false);
-    assert.equal(io.stdoutText.includes(UPDATING_CHECKOUT), false);
+    assert.equal(io.stdoutText.includes("updating checkout"), false);
   }
 });
 
