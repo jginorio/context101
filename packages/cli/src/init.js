@@ -4,7 +4,6 @@ import path from "node:path";
 import {
   ALLOW_PUBLIC_SIGNUP,
   APP_MODE,
-  BILLING_ENABLED,
   DRIVER_POSTGRES,
   EXAMPLE_ENV_REL,
   SMOOTH_REGION,
@@ -290,7 +289,6 @@ export async function runInit(opts, ctx) {
     CREATE_RDS: answers.createRds ? "true" : "",
     APP_MODE,
     ALLOW_PUBLIC_SIGNUP,
-    BILLING_ENABLED,
     REPOSITORY: answers.repository || "",
     EMBED_MODEL_ID: answers.embedModelId || "",
     SPACE: spaceName,

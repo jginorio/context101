@@ -57,6 +57,7 @@ test("dry-run prints the plan and writes nothing", async () => {
   assert.equal(text.includes("dry-run-secret-db"), false);
   assert.equal(text.includes("gho_test_token_must_never_appear"), false);
   assert.equal(text.includes("site/"), false);
+  assert.equal(text.includes("BILLING_ENABLED"), false);
   assert.equal(text.includes("example-do-not-copy"), false);
   assert.equal(text.includes("would ask which profile"), false);
   assert.equal(deployed, false);

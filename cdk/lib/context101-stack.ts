@@ -831,9 +831,6 @@ export class Context101Stack extends cdk.Stack {
     const allowPublicSignup = this.node.tryGetContext(
       "ALLOW_PUBLIC_SIGNUP"
     ) as string | undefined;
-    const billingEnabled = this.node.tryGetContext("BILLING_ENABLED") as
-      | string
-      | undefined;
     const appUrl = ownPublicUrl(
       this.node.tryGetContext("APP_URL") as string | undefined,
       { allowHosted: allowHostedProductUrls }
@@ -873,9 +870,6 @@ export class Context101Stack extends cdk.Stack {
       ...(appMode ? [{ name: "APP_MODE", value: appMode }] : []),
       ...(allowPublicSignup
         ? [{ name: "ALLOW_PUBLIC_SIGNUP", value: allowPublicSignup }]
-        : []),
-      ...(billingEnabled
-        ? [{ name: "BILLING_ENABLED", value: billingEnabled }]
         : []),
       ...(appUrl ? [{ name: "APP_URL", value: appUrl }] : []),
       ...(sesRegion ? [{ name: "SES_REGION", value: sesRegion }] : []),

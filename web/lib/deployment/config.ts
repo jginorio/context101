@@ -26,6 +26,5 @@ export const deploymentConfig = {
   isHosted: isHostedDeployment(),
   isSelfHosted: mode === "self_hosted",
   allowPublicSignup: envFlag("ALLOW_PUBLIC_SIGNUP", mode === "hosted"),
-  billingEnabled: envFlag("BILLING_ENABLED", mode === "hosted"),
   appUrl: process.env.APP_URL ?? process.env.BETTER_AUTH_URL ?? "http://localhost:3000",
 };

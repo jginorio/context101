@@ -6,7 +6,6 @@ export const DRIVER_NEON = "neon-http"; // pragma: allowlist secret
 export const DRIVER_POSTGRES = "postgres-js";
 export const APP_MODE = "self_hosted";
 export const ALLOW_PUBLIC_SIGNUP = "false";
-export const BILLING_ENABLED = "false";
 export const EXAMPLE_ENV_REL = "cdk/.deploy-env.example";
 export const REPO_ENV_REL = "cdk/.deploy-env";
 export const HOME_ENV_REL = ".context101/deploy-env";
